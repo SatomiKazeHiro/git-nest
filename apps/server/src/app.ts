@@ -5,6 +5,7 @@ import { config } from './config.ts'
 import { openDatabase, type DB } from './db/index.ts'
 import { HttpError, toErrorBody } from './lib/errors.ts'
 import { noteRoutes, projectRoutes, tagRoutes } from './routes/index.ts'
+import { gitRoutes } from './routes/git.ts'
 
 export interface AppOptions {
   db?: DB
@@ -22,6 +23,7 @@ export function buildApp(options: AppOptions = {}) {
   app.register(projectRoutes(db), { prefix: '/api' })
   app.register(noteRoutes(db), { prefix: '/api' })
   app.register(tagRoutes(db), { prefix: '/api' })
+  app.register(gitRoutes(db), { prefix: '/api' })
 
   app.setNotFoundHandler((req, reply) =>
     reply.code(404).send({ code: 'not_found', message: `没有这个接口：${req.method} ${req.url}` }),

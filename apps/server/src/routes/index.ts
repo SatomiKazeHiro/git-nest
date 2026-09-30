@@ -15,6 +15,7 @@ import {
 import type { DB } from '../db/index.ts'
 import { HttpError, badRequest, conflict, fromZodError, notFound } from '../lib/errors.ts'
 import { dirExists, toAbsolutePath } from '../lib/paths.ts'
+import { getRemoteUrl } from '../lib/git.ts'
 import {
   deleteProject,
   getProject,
@@ -60,7 +61,7 @@ export const projectRoutes = (db: DB): FastifyPluginAsync => {
         throw conflict('这个路径已经在清单里了')
       }
 
-      const project = createFromInput(db, input, abs)
+      const project = await createFromInput(db, input, abs)
       return reply.code(201).send({ project })
     })
 
@@ -159,7 +160,7 @@ export const tagRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
   })
 }
 
-function createFromInput(
+async function createFromInput(
   db: DB,
   input: {
     name: string
@@ -170,11 +171,14 @@ function createFromInput(
     sortOrder?: number
   },
   absPath: string,
-): ProjectDetail {
+): Promise<ProjectDetail> {
+  // 没填远程地址就从 git 里读，免得清单上写着「纯本地仓库」而实际有 origin
+  const remoteUrl = input.remoteUrl ?? (await getRemoteUrl(absPath))
+
   const id = insertProject(db, {
     name: input.name,
     path: absPath,
-    remoteUrl: input.remoteUrl,
+    remoteUrl,
     category: input.category,
     sourceUrl: input.sourceUrl,
     summary: input.summary,

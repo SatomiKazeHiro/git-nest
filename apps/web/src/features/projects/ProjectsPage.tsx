@@ -2,12 +2,14 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { groupBy, orderBy } from 'es-toolkit'
 import { useDebounce } from 'ahooks'
-import type { ProjectListItem } from '@git-nest/core'
+import type { ProjectListItem, RepoStatus } from '@git-nest/core'
 import { Button, Dialog, EmptyState, ErrorNote, Input } from '@/components/ui'
 import { formatDate, hostOf, shortenPath } from '@/lib/format'
 import { UNCATEGORIZED, useUiStore } from '@/store/ui'
 import { ProjectFormDialog } from './ProjectFormDialog'
 import { useProjects, useRemoveProject } from './queries'
+import { StatusCell } from '@/features/status/StatusCell'
+import { useStatuses } from '@/features/status/queries'
 
 export function ProjectsPage() {
   const filters = useUiStore((s) => s.filters)
@@ -20,6 +22,8 @@ export function ProjectsPage() {
     tag: filters.tag,
     q: debouncedQuery,
   })
+
+  const { data: statuses } = useStatuses((projects ?? []).map((p) => p.id))
 
   const groups = useMemo(() => {
     const byCategory = groupBy(projects ?? [], (p) => p.category || UNCATEGORIZED)
@@ -60,7 +64,12 @@ export function ProjectsPage() {
                 />
                 <ul className="pl-6">
                   {group.items.map((p) => (
-                    <ProjectRow key={p.id} project={p} onRemove={() => setPendingRemoval(p)} />
+                    <ProjectRow
+                      key={p.id}
+                      project={p}
+                      status={statuses?.get(p.id)}
+                      onRemove={() => setPendingRemoval(p)}
+                    />
                   ))}
                 </ul>
               </li>
@@ -104,11 +113,12 @@ function ColumnHeader() {
   return (
     <li className="flex items-center gap-3 border-b border-line pb-1.5 text-[11px] text-ink-3">
       <span className="w-3.5 shrink-0" />
-      <span className="min-w-0 flex-1 sm:w-44 sm:flex-none">名称</span>
-      <span className="hidden w-56 shrink-0 font-mono lg:block">本地路径</span>
-      <span className="hidden min-w-0 flex-1 sm:block">摘要</span>
-      <span className="hidden w-24 shrink-0 font-mono xl:block">远程</span>
-      <span className="w-24 shrink-0 sm:w-32">标签</span>
+      <span className="min-w-0 flex-1 sm:w-40 sm:flex-none">名称</span>
+      <span className="hidden w-52 shrink-0 font-mono lg:block">本地路径</span>
+      <span className="hidden min-w-32 flex-1 sm:block">摘要</span>
+      <span className="hidden w-24 shrink-0 font-mono 2xl:block">远程</span>
+      <span className="hidden w-48 shrink-0 md:block">状态</span>
+      <span className="w-20 shrink-0 sm:w-24">标签</span>
       <span className="hidden w-16 shrink-0 text-right sm:inline-block">备注</span>
       <span className="hidden w-20 shrink-0 text-right md:inline-block">加入</span>
       <span className="w-16 shrink-0" />
@@ -187,7 +197,15 @@ function GroupHeader({
   )
 }
 
-function ProjectRow({ project: p, onRemove }: { project: ProjectListItem; onRemove: () => void }) {
+function ProjectRow({
+  project: p,
+  status,
+  onRemove,
+}: {
+  project: ProjectListItem
+  status: RepoStatus | undefined
+  onRemove: () => void
+}) {
   const selected = useUiStore((s) => s.selected.has(p.id))
   const toggleSelected = useUiStore((s) => s.toggleSelected)
   const openEdit = useUiStore((s) => s.openEdit)
@@ -204,20 +222,23 @@ function ProjectRow({ project: p, onRemove }: { project: ProjectListItem; onRemo
       />
       <Link
         to={`/projects/${p.id}`}
-        className="w-44 min-w-0 shrink-0 truncate text-[13.5px] font-medium text-ink hover:text-accent"
+        className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-ink hover:text-accent sm:w-40 sm:flex-none"
       >
         {p.name}
       </Link>
-      <span className="hidden w-56 shrink-0 truncate font-mono text-[12px] text-ink-3 lg:block">
+      <span className="hidden w-52 shrink-0 truncate font-mono text-[12px] text-ink-3 lg:block">
         {shortenPath(p.path, 2)}
       </span>
-      <span className="hidden min-w-0 flex-1 truncate text-[12.5px] text-ink-2 sm:block">
+      <span className="hidden min-w-32 flex-1 truncate text-[12.5px] text-ink-2 sm:block">
         {p.summary ?? ''}
       </span>
-      <span className="hidden w-24 shrink-0 truncate font-mono text-[12px] text-ink-3 xl:block">
+      <span className="hidden w-24 shrink-0 truncate font-mono text-[12px] text-ink-3 2xl:block">
         {host ?? ''}
       </span>
-      <span className="flex w-32 shrink-0 flex-wrap gap-1">
+      <span className="hidden w-48 shrink-0 md:block">
+        <StatusCell status={status} />
+      </span>
+      <span className="w-20 shrink-0 flex-wrap gap-1 sm:w-24">
         {p.tags.map((t) => (
           <span
             key={t.id}
@@ -227,10 +248,10 @@ function ProjectRow({ project: p, onRemove }: { project: ProjectListItem; onRemo
           </span>
         ))}
       </span>
-      <span className="w-16 shrink-0 text-right font-mono text-[12px] text-ink-3">
+      <span className="hidden w-16 shrink-0 text-right font-mono text-[12px] text-ink-3 sm:block">
         {p.notesCount > 0 ? `${p.notesCount} 条` : ''}
       </span>
-      <span className="w-20 shrink-0 text-right font-mono text-[12px] text-ink-3">
+      <span className="hidden w-20 shrink-0 text-right font-mono text-[12px] text-ink-3 md:block">
         {formatDate(p.addedAt)}
       </span>
       <span className="flex w-16 shrink-0 justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">

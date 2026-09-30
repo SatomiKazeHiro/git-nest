@@ -5,6 +5,9 @@ import { Button, ErrorNote, Textarea } from '@/components/ui'
 import { formatRelative } from '@/lib/format'
 import { useUiStore } from '@/store/ui'
 import { ProjectFormDialog } from '@/features/projects/ProjectFormDialog'
+import { GitGraph } from '@/features/gitgraph/GitGraph'
+import { useProjectStatus } from '@/features/status/queries'
+import { statusText, statusTitle } from '@/features/status/StatusCell'
 import {
   useAddNote,
   useProject,
@@ -101,20 +104,89 @@ export function ProjectDetailPage() {
         <dd className="font-mono text-[12.5px] text-ink-2">{formatRelative(project.addedAt)}</dd>
       </dl>
 
+      <StatusPanel projectId={project.id} />
+
       <section>
         <h2 className="mb-2 text-[15px] font-semibold text-ink">备注</h2>
         <Notes projectId={project.id} notes={project.notes} />
       </section>
 
+      <section>
+        <h2 className="mb-2 text-[15px] font-semibold text-ink">提交图</h2>
+        <div className="border border-line-soft bg-panel px-2 py-1">
+          <GitGraph projectId={project.id} />
+        </div>
+      </section>
+
       <section className="border border-dashed border-line px-4 py-3">
-        <h2 className="text-[13px] font-semibold text-ink">git 状态</h2>
+        <h2 className="text-[13px] font-semibold text-ink">检查更新</h2>
         <p className="mt-1 text-[13px] text-ink-2">
-          分支、ahead/behind 与提交图在 M2 接上。现在这里只有元数据。
+          批量 fetch + 勾选后 ff-only 更新在 M3 接上。现在只能看状态。
         </p>
       </section>
 
       <ProjectFormDialog />
     </div>
+  )
+}
+
+/** git 状态面板：分支、上下游、最后提交。刷新按钮强制绕开短缓存。 */
+function StatusPanel({ projectId }: { projectId: number }) {
+  const [fresh, setFresh] = useState(false)
+  const { data: status, isFetching, refetch } = useProjectStatus(projectId, { fresh })
+
+  if (!status) {
+    return <p className="font-mono text-[12px] text-ink-3">正在读 git 状态…</p>
+  }
+
+  const rows: [string, string][] = [
+    ['状态', statusText(status.status)],
+    ['当前分支', status.branch ?? (status.detached ? 'detached HEAD' : '—')],
+    ['上游分支', status.upstream ?? '—'],
+    [
+      '领先 / 落后',
+      status.upstream ? `${status.ahead ?? 0} / ${status.behind ?? 0}` : '—（没有上游可比）',
+    ],
+    ['远程地址', status.remoteUrl ?? '—'],
+    [
+      '最后提交',
+      status.lastCommit ? `${status.lastCommit.hash} ${status.lastCommit.subject}` : '—',
+    ],
+  ]
+
+  return (
+    <section>
+      <div className="mb-2 flex items-center gap-2">
+        <h2 className="text-[15px] font-semibold text-ink">git 状态</h2>
+        <span className="font-mono text-[11.5px] text-ink-3">{formatRelative(status.checkedAt)}查的</span>
+        <Button
+          className="ml-auto"
+          disabled={isFetching}
+          onClick={() => {
+            setFresh(true)
+            void refetch().finally(() => setFresh(false))
+          }}
+        >
+          {isFetching ? '刷新中…' : '重新读取'}
+        </Button>
+      </div>
+
+      <p className="mb-2 text-[12.5px] text-ink-2" title={statusTitle(status)}>
+        {statusTitle(status)}
+        {status.upstream && (status.ahead || status.behind)
+          ? '（基于上次 fetch 的结果，刷新不会联网）'
+          : ''}
+      </p>
+
+      <dl className="grid grid-cols-[7rem_1fr] gap-y-2 border-y border-line-soft py-3 text-[13px]">
+        {rows.map(([label, value]) => (
+          <div key={label} className="contents">
+            <dt className="text-ink-3">{label}</dt>
+            <dd className="min-w-0 truncate font-mono text-[12.5px] text-ink">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   )
 }
 
