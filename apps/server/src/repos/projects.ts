@@ -1,0 +1,233 @@
+import type { DB } from '../db/index.ts'
+import type { Note, Project, ProjectDetail, ProjectListItem, Tag, UpdateCheckSummary } from '@git-nest/core'
+
+interface ProjectRow {
+  id: number
+  name: string
+  path: string
+  remote_url: string | null
+  category: string
+  source_url: string | null
+  summary: string | null
+  added_at: string
+  sort_order: number
+}
+
+const toProject = (r: ProjectRow): Project => ({
+  id: r.id,
+  name: r.name,
+  path: r.path,
+  remoteUrl: r.remote_url,
+  category: r.category,
+  sourceUrl: r.source_url,
+  summary: r.summary,
+  addedAt: r.added_at,
+  sortOrder: r.sort_order,
+})
+
+export interface ListProjectsOptions {
+  category?: string
+  tag?: string
+  q?: string
+}
+
+export function listProjects(db: DB, opts: ListProjectsOptions = {}): ProjectListItem[] {
+  const where: string[] = []
+  const params: Record<string, string> = {}
+
+  if (opts.category) {
+    where.push('p.category = @category')
+    params['category'] = opts.category
+  }
+  if (opts.q) {
+    where.push('(p.name LIKE @q OR p.summary LIKE @q OR p.path LIKE @q OR p.remote_url LIKE @q)')
+    params['q'] = `%${opts.q}%`
+  }
+  if (opts.tag) {
+    where.push(
+      `EXISTS (SELECT 1 FROM project_tags pt JOIN tags t ON t.id = pt.tag_id
+               WHERE pt.project_id = p.id AND t.name = @tag)`,
+    )
+    params['tag'] = opts.tag
+  }
+
+  const rows = db
+    .prepare(
+      `SELECT p.* FROM projects p
+       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+       ORDER BY CASE WHEN p.category = '' THEN 1 ELSE 0 END,  -- 无分类的排最后
+                p.category COLLATE NOCASE, p.sort_order, p.name COLLATE NOCASE`,
+    )
+    .all(params) as ProjectRow[]
+
+  if (rows.length === 0) return []
+
+  const ids = rows.map((r) => r.id)
+  const tags = tagsByProject(db, ids)
+  const checks = latestChecksByProject(db, ids)
+  const noteCounts = noteCountsByProject(db, ids)
+
+  return rows.map((r) => ({
+    ...toProject(r),
+    tags: tags.get(r.id) ?? [],
+    latestCheck: checks.get(r.id) ?? null,
+    notesCount: noteCounts.get(r.id) ?? 0,
+  }))
+}
+
+export function getProject(db: DB, id: number): ProjectDetail | null {
+  const row = db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as ProjectRow | undefined
+  if (!row) return null
+  const notes = listNotes(db, id)
+  return {
+    ...toProject(row),
+    tags: tagsByProject(db, [id]).get(id) ?? [],
+    latestCheck: latestChecksByProject(db, [id]).get(id) ?? null,
+    notesCount: notes.length,
+    notes,
+  }
+}
+
+export interface InsertProjectInput {
+  name: string
+  path: string
+  remoteUrl: string | null
+  category: string
+  sourceUrl: string | null
+  summary: string | null
+  sortOrder?: number
+  addedAt?: string
+}
+
+export function insertProject(db: DB, input: InsertProjectInput): number {
+  const addedAt = input.addedAt ?? new Date().toISOString()
+  const info = db
+    .prepare(
+      `INSERT INTO projects (name, path, remote_url, category, source_url, summary, added_at, sort_order)
+       VALUES (@name, @path, @remoteUrl, @category, @sourceUrl, @summary, @addedAt, @sortOrder)`,
+    )
+    .run({
+      name: input.name,
+      path: input.path,
+      remoteUrl: input.remoteUrl,
+      category: input.category,
+      sourceUrl: input.sourceUrl,
+      summary: input.summary,
+      addedAt,
+      sortOrder: input.sortOrder ?? nextSortOrder(db, input.category),
+    })
+  return Number(info.lastInsertRowid)
+}
+
+export function nextSortOrder(db: DB, category: string): number {
+  const row = db
+    .prepare('SELECT COALESCE(MAX(sort_order), 0) AS max FROM projects WHERE category = ?')
+    .get(category) as { max: number }
+  return row.max + 10
+}
+
+const UPDATABLE = {
+  name: 'name',
+  category: 'category',
+  remoteUrl: 'remote_url',
+  sourceUrl: 'source_url',
+  summary: 'summary',
+  sortOrder: 'sort_order',
+} as const
+
+export function updateProject(db: DB, id: number, patch: Record<string, unknown>): boolean {
+  const sets: string[] = []
+  const params: Record<string, unknown> = { id }
+  for (const [key, column] of Object.entries(UPDATABLE)) {
+    if (key in patch) {
+      sets.push(`${column} = @${key}`)
+      params[key] = patch[key]
+    }
+  }
+  if (sets.length === 0) return false
+  const info = db.prepare(`UPDATE projects SET ${sets.join(', ')} WHERE id = @id`).run(params)
+  return info.changes > 0
+}
+
+export function deleteProject(db: DB, id: number): boolean {
+  // 只删 DB 记录，绝不动磁盘上的仓库
+  return db.prepare('DELETE FROM projects WHERE id = ?').run(id).changes > 0
+}
+
+export function pathExists(db: DB, p: string, exceptId?: number): boolean {
+  const row = db
+    .prepare('SELECT id FROM projects WHERE path = ? AND (? IS NULL OR id <> ?)')
+    .get(p, exceptId ?? null, exceptId ?? null) as { id: number } | undefined
+  return row !== undefined
+}
+
+export function listNotes(db: DB, projectId: number): Note[] {
+  const rows = db
+    .prepare('SELECT * FROM notes WHERE project_id = ? ORDER BY created_at DESC, id DESC')
+    .all(projectId) as {
+    id: number
+    project_id: number
+    content: string
+    created_at: string
+    updated_at: string
+  }[]
+  return rows.map((r) => ({
+    id: r.id,
+    projectId: r.project_id,
+    content: r.content,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }))
+}
+
+export function tagsByProject(db: DB, ids: number[]): Map<number, Tag[]> {
+  const map = new Map<number, Tag[]>()
+  if (ids.length === 0) return map
+  const rows = db
+    .prepare(
+      `SELECT pt.project_id AS projectId, t.id, t.name, t.color
+       FROM project_tags pt JOIN tags t ON t.id = pt.tag_id
+       WHERE pt.project_id IN (${ids.map(() => '?').join(',')})
+       ORDER BY t.name COLLATE NOCASE`,
+    )
+    .all(...ids) as (Tag & { projectId: number })[]
+  for (const r of rows) {
+    const list = map.get(r.projectId) ?? []
+    list.push({ id: r.id, name: r.name, color: r.color })
+    map.set(r.projectId, list)
+  }
+  return map
+}
+
+function latestChecksByProject(db: DB, ids: number[]): Map<number, UpdateCheckSummary> {
+  const map = new Map<number, UpdateCheckSummary>()
+  if (ids.length === 0) return map
+  const rows = db
+    .prepare(
+      `SELECT project_id AS projectId, checked_at AS checkedAt, status, ahead_count AS aheadCount,
+              behind_count AS behindCount
+       FROM update_checks WHERE id IN (
+         SELECT MAX(id) FROM update_checks WHERE project_id IN (${ids.map(() => '?').join(',')})
+         GROUP BY project_id
+       )`,
+    )
+    .all(...ids) as (UpdateCheckSummary & { projectId: number })[]
+  for (const r of rows) {
+    const { projectId, ...summary } = r
+    map.set(projectId, summary)
+  }
+  return map
+}
+
+function noteCountsByProject(db: DB, ids: number[]): Map<number, number> {
+  const map = new Map<number, number>()
+  if (ids.length === 0) return map
+  const rows = db
+    .prepare(
+      `SELECT project_id AS projectId, COUNT(*) AS n FROM notes
+       WHERE project_id IN (${ids.map(() => '?').join(',')}) GROUP BY project_id`,
+    )
+    .all(...ids) as { projectId: number; n: number }[]
+  for (const r of rows) map.set(r.projectId, r.n)
+  return map
+}
