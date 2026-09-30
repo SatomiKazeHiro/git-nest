@@ -9,6 +9,7 @@ import { noteRoutes, projectRoutes, tagRoutes } from './routes/index.ts'
 import { gitRoutes } from './routes/git.ts'
 import { updateRoutes } from './routes/updates.ts'
 import { settingsRoutes } from './routes/settings.ts'
+import { scanRoutes } from './routes/scan.ts'
 
 export interface AppOptions {
   db?: DB
@@ -30,6 +31,7 @@ export function buildApp(options: AppOptions = {}) {
   app.register(gitRoutes(db), { prefix: '/api' })
   app.register(updateRoutes(db), { prefix: '/api' })
   app.register(settingsRoutes(db), { prefix: '/api' })
+  app.register(scanRoutes(db), { prefix: '/api' })
 
   app.setNotFoundHandler((req, reply) =>
     reply.code(404).send({ code: 'not_found', message: `没有这个接口：${req.method} ${req.url}` }),

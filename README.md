@@ -88,7 +88,9 @@ GET    /api/projects/:id/log?max= 提交图数据
 GET    /api/status?ids=1,2,3      批量状态，列表页一次拿全
 GET/POST/PUT/DELETE  /api/tags、/api/projects/:id/tags、/api/projects/:id/notes、/api/notes/:id
 
-GET    /api/settings              读设置
+POST   /api/scan                   扫一层子目录预览（? 只读；remember=true 记进常用目录）
+POST   /api/projects/import        把扫出来的目录入库（逐条 insert，逐条报跳过原因）
+GET    /api/settings               读设置
 PATCH  /api/settings              改设置（personal 是否参与检查、超时、并发、确认阈值）
 
 POST   /api/updates/check         批量 fetch+分析，202 返回 taskId（ids 省略 = 全部非 personal）
@@ -115,13 +117,18 @@ fetch 十几个仓库，不能让一个 HTTP 请求一直挂着。任务状态�
 git 超时、并发上限、确认阈值。**核心原则：绝不自动更新**，检查只是给建议，
 真正动工作区的只有用户勾选后点的那一次。
 
-测试 105 个用例：git 层全部用临时目录里**真实 git 仓库**跑（init → commit → clone →
+**M4 目录扫描导入** — 设置页的扫描区：输目录（常用目录会记下来）→ 扫描预览
+（仓库名 / 远程 / 摘要，标出哪些已在清单）→ 勾选 → 入库。扫描只读，不写库不动磁盘；
+入库只插 DB，名字取目录名、远程地址从 git 读，摘要与分类留给用户补。
+超过「确认阈值」个时会先问一遍范围。
+
+测试 118 个用例：git 层全部用临时目录里**真实 git 仓库**跑（init → commit → clone →
 构造 behind / ahead / diverged / dirty / detached 各状态），不 mock git。
 
 ## 还没做
 
-M4 目录扫描导入（core 的 `scanDirectory` 已写好并测过，缺 API 与界面）→ M5 错误归因打磨与
-Windows 兼容验证。
+M5 · 错误归因打磨、Windows 兼容验证（长路径 / 凭证弹窗）、把设计文档第 8 节的
+异常场景逐条走一遍。
 
 ## 踩过的坑
 

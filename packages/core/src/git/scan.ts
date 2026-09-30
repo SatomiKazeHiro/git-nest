@@ -21,7 +21,7 @@ const README_NAMES = ['README.md', 'readme.md', 'README.MD', 'README', 'README.t
 export async function scanDirectory(dir: string, options: ScanOptions = {}): Promise<ScanResult> {
   const scheduler = options.scheduler ?? defaultScheduler
   const depth = options.maxDepth ?? 1
-  const tracked = new Set([...(options.trackedPaths ?? [])].map(normalize))
+  const tracked = new Set([...(options.trackedPaths ?? [])].map(comparisonKey))
 
   const candidates = findRepoDirs(dir, depth)
   const found = await scheduler.map(candidates, (d) => d, (d) => describeRepo(d, tracked, options))
@@ -88,7 +88,7 @@ async function describeRepo(
     remoteUrl,
     summary: summary ? summary.slice(0, 60) : null,
     summarySource,
-    alreadyTracked: tracked.has(normalize(dir)),
+    alreadyTracked: tracked.has(comparisonKey(dir)),
   }
 }
 
@@ -129,6 +129,13 @@ function firstParagraph(markdown: string): string | null {
   return text.length > 0 ? text.slice(0, 60) : null
 }
 
+/** 路径存成统一形式：正斜杠、不带尾斜杠。**保留大小写**——这是要入库的路径，
+ * 被 lower 之后清单里就会出现 `c:/users/...`，与用户手输的路径对不上，去重也会失效。 */
 function normalize(p: string): string {
-  return p.replace(/\\/g, '/').replace(/\/$/, '').toLowerCase()
+  return p.replace(/\\/g, '/').replace(/\/$/, '')
+}
+
+/** 比较用的 key：Windows 上路径不区分大小写，判断「是不是同一个」时忽略它。 */
+function comparisonKey(p: string): string {
+  return normalize(p).toLowerCase()
 }

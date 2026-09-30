@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ErrorNote, Field, Input } from '@/components/ui'
 import { ApiError } from '@/lib/api'
 import { useSaveSettings, useSettings } from '@/features/settings/queries'
+import { ScanSection } from '@/features/settings/ScanSection'
 import { TagSection } from '@/features/settings/TagSection'
 
 export function SettingsPage() {
@@ -12,16 +13,17 @@ export function SettingsPage() {
         <p className="mt-1 text-[13px] text-ink-2">影响批量检查更新与 git 执行的参数。</p>
       </div>
 
+      <ScanSection />
+
       <GitSection />
 
       <TagSection />
 
       <section className="border border-dashed border-line px-4 py-3">
         <h2 className="text-[13px] font-semibold text-ink">待接上</h2>
-        <ul className="mt-1.5 flex flex-col gap-1 text-[13px] text-ink-2">
-          <li>M4 · 扫描目录导入、移除管理</li>
-          <li>M5 · 错误归因打磨与 Windows 兼容验证</li>
-        </ul>
+        <p className="mt-1 text-[13px] text-ink-2">
+          M5 · 错误归因打磨与 Windows 兼容验证。扫描结果页直接改元数据在 M5。
+        </p>
       </section>
     </div>
   )

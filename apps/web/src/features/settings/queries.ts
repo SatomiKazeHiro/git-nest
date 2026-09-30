@@ -6,6 +6,7 @@ export interface Settings {
   gitTimeoutMs: number
   concurrency: number
   confirmThreshold: number
+  scanDirs: string[]
 }
 
 export function useSettings() {
