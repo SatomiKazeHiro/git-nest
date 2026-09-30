@@ -10,11 +10,14 @@ import { ProjectFormDialog } from './ProjectFormDialog'
 import { useProjects, useRemoveProject } from './queries'
 import { StatusCell } from '@/features/status/StatusCell'
 import { useStatuses } from '@/features/status/queries'
+import { UpdatePanel } from '@/features/updates/UpdatePanel'
 
 export function ProjectsPage() {
   const filters = useUiStore((s) => s.filters)
   const setCategory = useUiStore((s) => s.setCategory)
+  const selected = useUiStore((s) => s.selected)
   const [pendingRemoval, setPendingRemoval] = useState<ProjectListItem | null>(null)
+  const [panelOpen, setPanelOpen] = useState(false)
 
   const debouncedQuery = useDebounce(filters.q, { wait: 200 })
   const { data: projects, isPending, error } = useProjects({
@@ -44,9 +47,21 @@ export function ProjectsPage() {
 
   return (
     <div className="flex min-h-full flex-col">
-      <Toolbar total={projects?.length ?? 0} />
+      <Toolbar
+        total={projects?.length ?? 0}
+        onCheckUpdates={() => setPanelOpen(true)}
+        checking={panelOpen}
+      />
 
       <div className="flex-1 px-6 pb-24">
+        {panelOpen ? (
+          <div className="pt-4">
+            <UpdatePanel
+              ids={selected.size > 0 ? [...selected] : (projects ?? []).map((p) => p.id)}
+              onClose={() => setPanelOpen(false)}
+            />
+          </div>
+        ) : null}
         {isPending ? (
           <p className="py-10 font-mono text-[13px] text-ink-3">正在读清单…</p>
         ) : !projects || projects.length === 0 ? (
@@ -126,8 +141,17 @@ function ColumnHeader() {
   )
 }
 
-function Toolbar({ total }: { total: number }) {
+function Toolbar({
+  total,
+  onCheckUpdates,
+  checking,
+}: {
+  total: number
+  onCheckUpdates: () => void
+  checking: boolean
+}) {
   const { filters, setQuery, clearFilters, openCreate } = useUiStore()
+  const selectedCount = useUiStore((s) => s.selected.size)
   const filtering = Boolean(filters.category || filters.tag || filters.q)
 
   return (
@@ -141,8 +165,14 @@ function Toolbar({ total }: { total: number }) {
         />
       </div>
       {filtering ? <Button onClick={clearFilters}>清掉筛选</Button> : null}
-      <span className="font-mono text-[12px] text-ink-3">{total} 个项目</span>
-      <div className="ml-auto">
+      <span className="font-mono text-[12px] text-ink-3">
+        {total} 个项目
+        {selectedCount > 0 ? ` · 已选 ${selectedCount}` : ''}
+      </span>
+      <div className="ml-auto flex items-center gap-2">
+        <Button onClick={onCheckUpdates} className={checking ? 'border-accent text-accent' : ''}>
+          检查更新
+        </Button>
         <Button variant="primary" onClick={openCreate}>
           添加项目
         </Button>
@@ -160,7 +190,9 @@ function SelectionBar() {
       <div className="flex items-center gap-3">
         <span className="font-mono text-[13px] text-ink-2">已选 {selected.size} 个项目</span>
         <Button onClick={clearSelection}>取消选择</Button>
-        <span className="text-[12px] text-ink-3">批量检查更新在 M3 接上</span>
+        <span className="text-[12px] text-ink-3">
+          勾选后点「检查更新」，只会检查这几个
+        </span>
       </div>
     </div>
   )

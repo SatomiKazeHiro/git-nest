@@ -73,6 +73,43 @@ export interface GitLogEntry {
   refs: string[]
 }
 
+export interface UpdateReportEntry {
+  shortHash: string
+  subject: string
+  author: string
+  date: string
+}
+
+/** 一次检查更新的结果：fetch 之后本地与远程的差异。 */
+export interface UpdateReport {
+  status: UpdateStatus
+  /** 本地有、远程没有的提交数（还没推上去的） */
+  ahead: number | null
+  /** 远程有、本地没有的提交数（要拉进来的） */
+  behind: number | null
+  outgoing: UpdateReportEntry[]
+  /** 远程有、本地没有的提交 */
+  incoming: UpdateReportEntry[]
+  /** fetch 之后新出现的本地 tag */
+  tags: string[]
+  error: GitError | null
+}
+
+/** 一次更新（pull --ff-only）的结果。 */
+export type PullOutcome = 'updated' | 'already_up_to_date' | 'skipped' | 'failed'
+
+export interface PullResult {
+  outcome: PullOutcome
+  /** 本次快进了几个提交 */
+  newCommits: number
+  status: UpdateStatus
+  /** 被跳过时给用户的理由（中文，可直接显示） */
+  reason: string | null
+  error: GitError | null
+  /** 给结果表直接显示的一句话 */
+  summary: string
+}
+
 export interface ScannedRepo {
   dir: string
   name: string

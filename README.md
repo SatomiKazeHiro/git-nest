@@ -87,7 +87,19 @@ GET    /api/projects/:id/status   实时 git 状态（?fresh=true 绕开短缓�
 GET    /api/projects/:id/log?max= 提交图数据
 GET    /api/status?ids=1,2,3      批量状态，列表页一次拿全
 GET/POST/PUT/DELETE  /api/tags、/api/projects/:id/tags、/api/projects/:id/notes、/api/notes/:id
+
+GET    /api/settings              读设置
+PATCH  /api/settings              改设置（personal 是否参与检查、超时、并发、确认阈值）
+
+POST   /api/updates/check         批量 fetch+分析，202 返回 taskId（ids 省略 = 全部非 personal）
+GET    /api/updates/:taskId       任务快照
+GET    /api/updates/:taskId/events  进度 SSE（认 Last-Event-ID，断线重连不丢）
+POST   /api/updates/apply         对勾选的仓库逐个 pull --ff-only，同样 202 + SSE
 ```
+
+更新任务为什么是「POST 启动 + GET 订阅」：`EventSource` 只能发 GET，而批量检查可能要联网
+fetch 十几个仓库，不能让一个 HTTP 请求一直挂着。任务状态放内存（半小时 TTL），进度事件
+用「缓冲数组 + 游标」而不是发布订阅——前端拿到 id 再开连接是常态，缓冲保证不丢事件。
 
 ## 已完成
 
@@ -98,13 +110,18 @@ GET/POST/PUT/DELETE  /api/tags、/api/projects/:id/tags、/api/projects/:id/note
 错误归因）、清单页状态列、详情页 git 状态面板与提交图（自研泳道图，接口隔离在单个组件内，
 将来可替换成 react-git-log）。
 
-测试 78 个用例：git 层全部用临时目录里**真实 git 仓库**跑（init → commit → clone →
+**M3 更新模块** — 批量检查更新 → 逐仓库分析报告（新增 commit / 新 tag / ahead-behind）→
+勾选 → ff-only 更新 → 结果汇总，全程 SSE 推进度。设置页可调 personal 是否参与检查、
+git 超时、并发上限、确认阈值。**核心原则：绝不自动更新**，检查只是给建议，
+真正动工作区的只有用户勾选后点的那一次。
+
+测试 105 个用例：git 层全部用临时目录里**真实 git 仓库**跑（init → commit → clone →
 构造 behind / ahead / diverged / dirty / detached 各状态），不 mock git。
 
 ## 还没做
 
-M3 批量检查更新 + 勾选后 ff-only 更新（SSE）→ M4 目录扫描导入 → M5 错误归因打磨与 Windows 兼容验证。
-core 里 `analyzeUpdates`、`pullRepo`、`scanDirectory` 已写好并测过，缺的是 API 层与界面。
+M4 目录扫描导入（core 的 `scanDirectory` 已写好并测过，缺 API 与界面）→ M5 错误归因打磨与
+Windows 兼容验证。
 
 ## 踩过的坑
 
@@ -112,5 +129,11 @@ core 里 `analyzeUpdates`、`pullRepo`、`scanDirectory` 已写好并测过，�
   `onlyBuiltDependencies` 里放行；换机器后报 `ERR_PNPM_IGNORED_BUILDS` 就跑 `pnpm approve-builds --all`。
 - pnpm 12 偶尔会把 `node_modules/.pnpm/` 里的软链指到不存在的目录，表现为某个包的
   `node_modules/.bin` 里少了命令。`pnpm dedupe` 能修好。
+- `pullRepo` 的前置检查只用本地事实（不是仓库 / 空仓库 / 脏 / detached），
+  **不拿旧的 ahead/behind 去判「没东西可拉」**——那个数字来自上次 fetch，会把真有更新的仓库
+  误报成「已是最新」。拉取交给 `pull --ff-only` 自己 fetch，失败后再用新 refs 判分叉。
 - 停后台服务要按端口找 PID 再杀：`netstat -ano | grep :5174`。**别用 `taskkill /IM node.exe`**，
   会把跑着 agent 的 node 一起杀掉。
+- `Scheduler.schedule` 不会重入：不要在已排队的任务里再对同一个仓库 key 调 `schedule`，
+  会自锁。core 的 `getRepoStatus` / `analyzeUpdates` / `pullRepo` 内部都自己排队，调用方
+  直接 `Promise.all` 就行，限流交给它们。

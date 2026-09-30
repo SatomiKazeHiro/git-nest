@@ -1,4 +1,17 @@
-export * from './types.ts'
+export type {
+  UpdateStatus,
+  GitError,
+  GitErrorKind,
+  GitCommitRef,
+  RepoStatus,
+  GitLogEntry,
+  UpdateReport,
+  UpdateReportEntry,
+  PullOutcome,
+  PullResult,
+  ScannedRepo,
+  ScanResult,
+} from './types.ts'
 export { Scheduler, defaultScheduler, type SchedulerOptions } from './scheduler.ts'
 export {
   runGit,
@@ -23,13 +36,6 @@ export {
   parseGitLog,
   analyzeUpdates,
   type LogOptions,
-  type UpdateReport,
-  type UpdateReportEntry,
 } from './log.ts'
 export { scanDirectory, type ScanOptions } from './scan.ts'
-export {
-  pullRepo,
-  type PullOptions,
-  type PullResult,
-  type PullOutcome,
-} from './pull.ts'
+export { pullRepo, type PullOptions } from './pull.ts'

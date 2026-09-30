@@ -8,6 +8,7 @@ import { ProjectFormDialog } from '@/features/projects/ProjectFormDialog'
 import { GitGraph } from '@/features/gitgraph/GitGraph'
 import { useProjectStatus } from '@/features/status/queries'
 import { statusText, statusTitle } from '@/features/status/StatusCell'
+import { UpdatePanel } from '@/features/updates/UpdatePanel'
 import {
   useAddNote,
   useProject,
@@ -19,6 +20,7 @@ export function ProjectDetailPage() {
   const { id } = useParams()
   const projectId = Number(id)
   const openEdit = useUiStore((s) => s.openEdit)
+  const [updating, setUpdating] = useState(false)
   const { data: project, isPending, error } = useProject(Number.isFinite(projectId) ? projectId : null)
 
   if (error) {
@@ -41,9 +43,12 @@ export function ProjectDetailPage() {
         <Link to="/" className="font-mono text-[12px] text-ink-3 hover:text-accent hover:underline">
           ← 清单
         </Link>
-        <div className="mt-1.5 flex items-start gap-3">
+        <div className="mt-1.5 flex items-start gap-2">
           <h1 className="text-[22px] font-semibold leading-tight text-ink">{project.name}</h1>
           <Button onClick={() => openEdit(project.id)}>编辑</Button>
+          <Button onClick={() => setUpdating((v) => !v)}>
+            {updating ? '收起更新' : '检查更新'}
+          </Button>
         </div>
         {project.summary ? (
           <p className="mt-2 max-w-prose text-[13.5px] text-ink-2">{project.summary}</p>
@@ -104,6 +109,10 @@ export function ProjectDetailPage() {
         <dd className="font-mono text-[12.5px] text-ink-2">{formatRelative(project.addedAt)}</dd>
       </dl>
 
+      {updating ? (
+        <UpdatePanel ids={[project.id]} onClose={() => setUpdating(false)} />
+      ) : null}
+
       <StatusPanel projectId={project.id} />
 
       <section>
@@ -119,9 +128,9 @@ export function ProjectDetailPage() {
       </section>
 
       <section className="border border-dashed border-line px-4 py-3">
-        <h2 className="text-[13px] font-semibold text-ink">检查更新</h2>
+        <h2 className="text-[13px] font-semibold text-ink">还没做的</h2>
         <p className="mt-1 text-[13px] text-ink-2">
-          批量 fetch + 勾选后 ff-only 更新在 M3 接上。现在只能看状态。
+          提交图与 git 状态已接上。扫描目录导入在 M4。
         </p>
       </section>
 

@@ -99,6 +99,28 @@ describe('pullRepo', () => {
     expect(result.reason).toContain('没有上游')
   })
 
+  it('远程连不上 → failed，并说清是网络问题', async () => {
+    const dir = track(initRepo())
+    git(dir, 'remote', 'add', 'origin', 'https://no-such-host.invalid/x.git')
+    const result = await pullRepo(dir)
+
+    expect(result.outcome).toBe('failed')
+    expect(result.error?.kind).toBe('network')
+    expect(result.summary).toContain('失败')
+  })
+
+  it('新开的本地分支：交给 pull 报真实原因，而不是被前置检查拦下', async () => {
+    const { clone } = track(initClone(0))
+    // 新建的本地分支本来就没有上游；之前的前置检查会直接跳过，
+    // 那样「远程挂了」和「没设上游」就分不出来了
+    git(clone, 'checkout', '-q', '-b', 'fresh')
+
+    const result = await pullRepo(clone)
+    expect(result.outcome).toBe('skipped')
+    expect(result.status).toBe('no_upstream')
+    expect(result.reason).toContain('没有上游')
+  })
+
   it('空仓库 → 跳过', async () => {
     const dir = track(initClone(0).origin)
     const result = await pullRepo(dir)

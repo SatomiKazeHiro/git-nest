@@ -1,19 +1,8 @@
 import { probe, runGit, toGitError, type RunOptions } from './runner.ts'
 import { defaultScheduler, type Scheduler } from './scheduler.ts'
-import type { GitError, UpdateStatus } from './types.ts'
+import type { PullOutcome, PullResult, UpdateStatus } from './types.ts'
 
-export type PullOutcome = 'updated' | 'already_up_to_date' | 'skipped' | 'failed'
-
-export interface PullResult {
-  outcome: PullOutcome
-  /** 本次拉进来多少个提交 */
-  newCommits: number
-  status: UpdateStatus
-  reason: string | null
-  error: GitError | null
-  /** pull 之后仓库的新状态描述（供结果表直接显示） */
-  summary: string
-}
+export type { PullOutcome, PullResult }
 
 export interface PullOptions extends Partial<RunOptions> {
   scheduler?: Scheduler
@@ -48,10 +37,20 @@ export async function pullRepo(path: string, options: PullOptions = {}): Promise
       if (pre) return pre
     }
 
-    const before = await countCommits(cwd, 'HEAD')
+    // 不在这里用 ahead/behind 提前判「没东西可拉」：那个数字来自上次 fetch，是旧的。
+    // 直接让 `pull --ff-only` 去 fetch + 快进，它才是权威。
     const result = await runGit(['pull', '--ff-only'], { ...cwd, env: { GIT_PROGRESS: '0' } })
 
     if (result.code !== 0) {
+      // pull 失败时它已经 fetch 过了，refs 是新的——这时候再判分叉才准
+      const blocked = await explainBlocked(cwd)
+      if (blocked) return blocked
+
+      const combined = `${result.stderr}\n${result.stdout}`
+      if (/no upstream|no tracking information|does not have a branch/i.test(combined)) {
+        return SKIP('当前分支没有上游', 'no_upstream')
+      }
+
       const error = toGitError(result, 'pull 失败')
       return {
         outcome: 'failed',
@@ -63,8 +62,8 @@ export async function pullRepo(path: string, options: PullOptions = {}): Promise
       }
     }
 
-    const after = await countCommits(cwd, 'HEAD')
-    const newCommits = before !== null && after !== null ? Math.max(0, after - before) : 0
+    // pull 前后的 HEAD 差值：reflog 里 HEAD@{1} 就是拉之前的那个 commit
+    const newCommits = await countPulled(cwd)
     const upToDate = /already up to date/i.test(result.stdout)
 
     return {
@@ -78,7 +77,15 @@ export async function pullRepo(path: string, options: PullOptions = {}): Promise
   })
 }
 
-/** 返回非 null 表示该跳过。 */
+/** 快进了几个提交：拉之前的 HEAD 留在 reflog 里，差值就是答案。 */
+async function countPulled(cwd: RunOptions): Promise<number> {
+  const result = await probe(['rev-list', '--count', 'HEAD@{1}..HEAD'], cwd)
+  if (!result.ok) return 0
+  const n = Number(result.stdout.trim())
+  return Number.isFinite(n) ? n : 0
+}
+
+/** 返回非 null 表示该跳过。全部是本地事实，不依赖 fetch。 */
 async function preflight(cwd: RunOptions): Promise<PullResult | null> {
   const inside = await probe(['rev-parse', '--is-inside-work-tree'], cwd)
   if (!inside.ok || inside.stdout.trim() !== 'true') {
@@ -97,29 +104,31 @@ async function preflight(cwd: RunOptions): Promise<PullResult | null> {
   const head = await probe(['symbolic-ref', '-q', '--short', 'HEAD'], cwd)
   if (!head.ok) return SKIP('HEAD 处于游离状态', 'detached')
 
-  const upstream = await probe(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'], cwd)
-  if (!upstream.ok) return SKIP('当前分支没有上游', 'no_upstream')
-
-  const counts = await probe(['rev-list', '--left-right', '--count', 'HEAD...@{u}'], cwd)
-  if (counts.ok) {
-    const [ahead = 0, behind = 0] = counts.stdout.trim().split(/\s+/).map((n) => Number(n))
-    if (ahead > 0 && behind > 0) {
-      return SKIP(`分支已分叉（领先 ${ahead}、落后 ${behind}），需要手动处理`, 'diverged')
-    }
-    if (behind === 0) {
-      return {
-        ...SKIP('没有需要拉取的提交', 'up_to_date'),
-        outcome: 'already_up_to_date',
-        summary: '已是最新',
-      }
-    }
-  }
-
+  // 这里不查上游：远程跟踪引用可能只是还没 fetch 出来，
+  // 那种情况真正的失败原因在远程（网络/认证），让 pull 去报更准
   return null
 }
 
-async function countCommits(cwd: RunOptions, rev: string): Promise<number | null> {
-  const result = await probe(['rev-list', '--count', rev], cwd)
-  if (!result.ok) return null
-  return Number(result.stdout.trim())
+/**
+ * pull 失败后判断「是不是本来就不该硬来」。
+ * 此刻 refs 已被 pull 刷新过，所以 ahead/behind 是准的。
+ */
+async function explainBlocked(cwd: RunOptions): Promise<PullResult | null> {
+  const counts = await probe(['rev-list', '--left-right', '--count', 'HEAD...@{u}'], cwd)
+  if (!counts.ok) return null
+  const [ahead = 0, behind = 0] = counts.stdout.trim().split(/\s+/).map((n) => Number(n))
+
+  if (ahead > 0 && behind > 0) {
+    return SKIP(
+      `分支已分叉（领先 ${ahead}、落后 ${behind}），需要你自己决定怎么合`,
+      'diverged',
+    )
+  }
+  if (ahead > 0) {
+    return SKIP(`本地有 ${ahead} 个提交没推，远程没有新东西可拉`, 'ahead')
+  }
+  if (behind > 0) {
+    return SKIP(`本地有提交会挡路，无法快进到远程的 ${behind} 个提交`, 'diverged')
+  }
+  return null
 }

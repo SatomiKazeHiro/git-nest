@@ -50,4 +50,14 @@ export const migrations = [
       CREATE INDEX idx_update_checks_project ON update_checks(project_id, checked_at DESC);
     `,
   },
+  {
+    id: '002_settings',
+    sql: `
+      -- 键值设置：设计文档第 7.3 节那几个参数。本机单用户工具，不做正经的配置系统。
+      CREATE TABLE settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `,
+  },
 ] as const

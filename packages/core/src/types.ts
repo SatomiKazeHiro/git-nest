@@ -16,6 +16,10 @@ export type {
   GitLogEntry,
   ScannedRepo,
   ScanResult,
+  UpdateReport,
+  UpdateReportEntry,
+  PullOutcome,
+  PullResult,
 } from './git/types.ts'
 
 /** 项目分类是自由字符串，不做枚举；这五个只是初始值。 */

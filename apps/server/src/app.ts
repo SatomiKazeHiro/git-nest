@@ -4,8 +4,11 @@ import { ZodError } from 'zod'
 import { config } from './config.ts'
 import { openDatabase, type DB } from './db/index.ts'
 import { HttpError, toErrorBody } from './lib/errors.ts'
+import { bindSettings } from './lib/git.ts'
 import { noteRoutes, projectRoutes, tagRoutes } from './routes/index.ts'
 import { gitRoutes } from './routes/git.ts'
+import { updateRoutes } from './routes/updates.ts'
+import { settingsRoutes } from './routes/settings.ts'
 
 export interface AppOptions {
   db?: DB
@@ -14,6 +17,7 @@ export interface AppOptions {
 
 export function buildApp(options: AppOptions = {}) {
   const db = options.db ?? openDatabase()
+  bindSettings(db)
   const app = Fastify({ logger: options.logger ?? true })
 
   app.register(cors, { origin: config.corsOrigin })
@@ -24,6 +28,8 @@ export function buildApp(options: AppOptions = {}) {
   app.register(noteRoutes(db), { prefix: '/api' })
   app.register(tagRoutes(db), { prefix: '/api' })
   app.register(gitRoutes(db), { prefix: '/api' })
+  app.register(updateRoutes(db), { prefix: '/api' })
+  app.register(settingsRoutes(db), { prefix: '/api' })
 
   app.setNotFoundHandler((req, reply) =>
     reply.code(404).send({ code: 'not_found', message: `没有这个接口：${req.method} ${req.url}` }),

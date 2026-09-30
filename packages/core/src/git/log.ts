@@ -1,6 +1,6 @@
 import { probe, runGit, toGitError, type RunOptions } from './runner.ts'
 import { defaultScheduler, type Scheduler } from './scheduler.ts'
-import type { GitLogEntry } from './types.ts'
+import type { GitLogEntry, UpdateReport, UpdateReportEntry } from './types.ts'
 
 /**
  * 提交图数据。字段用 0x1F（单元分隔）隔开、记录用 0x1E（记录分隔），
@@ -68,59 +68,44 @@ export async function getLog(path: string, options: LogOptions = {}): Promise<Gi
   })
 }
 
-export interface UpdateReportEntry {
-  shortHash: string
-  subject: string
-  author: string
-  date: string
-}
-
-export interface UpdateReport {
-  status: import('./types.ts').UpdateStatus
-  ahead: number | null
-  behind: number | null
-  /** 远程有、本地没有的提交（要拉进来的） */
-  incoming: UpdateReportEntry[]
-  /** 本地有、远程没有的提交 */
-  outgoing: UpdateReportEntry[]
-  tags: string[]
-  error: import('./types.ts').GitError | null
-}
-
 /**
  * fetch 之后看远程比本地多了什么。只动 refs/remotes/*，不碰工作区。
  * M3 的批量检查更新会复用这个函数。
+ *
+ * 注意：incoming 用 `HEAD..@{u}`（远程有、本地没有），outgoing 用 `@{u}..HEAD`。
+ * 这两个范围写反了会把「本地没推的」当成「要拉的」，面板上就全反了。
  */
 export async function analyzeUpdates(path: string, options: LogOptions = {}): Promise<UpdateReport> {
   const scheduler = options.scheduler ?? defaultScheduler
   return scheduler.schedule(path, async () => {
     const cwd = { cwd: path, timeoutMs: options.timeoutMs }
 
+    // 没有 origin 就别去 fetch 了：git 会报一堆看着像网络问题的错
+    // 先确认这是个仓库，再看有没有 origin：
+    // 非仓库目录里跑 `git remote` 会报错，不能当成「没有远程」
+    const inside = await probe(['rev-parse', '--is-inside-work-tree'], cwd)
+    if (!inside.ok || inside.stdout.trim() !== 'true') {
+      return emptyReport('not_a_repo')
+    }
+
+    const remote = await probe(['remote'], cwd)
+    const hasOrigin = remote.ok && remote.stdout.split('\n').some((l) => l.trim() === 'origin')
+    if (!hasOrigin) {
+      return emptyReport('no_remote')
+    }
+
+    const localTagsBefore = new Set(await listTags(cwd))
+
     // 只动 refs/remotes/*，不碰工作区
     const fetch = await runGit(['fetch', '--prune', 'origin'], cwd)
     if (fetch.code !== 0) {
-      return {
-        status: 'error',
-        ahead: null,
-        behind: null,
-        incoming: [],
-        outgoing: [],
-        tags: [],
-        error: toGitError(fetch, 'fetch 失败'),
-      }
+      const error = toGitError(fetch, 'fetch 失败')
+      return { ...emptyReport('error'), error }
     }
 
     const upstream = await probe(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'], cwd)
     if (!upstream.ok) {
-      return {
-        status: 'no_upstream',
-        ahead: null,
-        behind: null,
-        incoming: [],
-        outgoing: [],
-        tags: [],
-        error: null,
-      }
+      return emptyReport('no_upstream')
     }
     const ref = upstream.stdout.trim()
 
@@ -129,14 +114,13 @@ export async function analyzeUpdates(path: string, options: LogOptions = {}): Pr
       ? counts.stdout.trim().split(/\s+/).map((n) => Number(n))
       : [null, null]
 
-    const range = `${ref}..HEAD`
-    const incomingRaw = await probe(
-      ['log', range, '-n', '50', '--date=iso-strict', '--pretty=format:%h%x1f%s%x1f%an%x1f%cI'],
-      cwd,
-    )
-    const incoming = incomingRaw.ok ? parseReportEntries(incomingRaw.stdout) : []
+    // incoming = 远程有本地没有（要拉进来的）；outgoing = 本地有远程没有（还没推的）
+    const incoming = await readRange(cwd, `HEAD..${ref}`, 50)
+    const outgoing = await readRange(cwd, `${ref}..HEAD`, 50)
 
-    const tags = await listRemoteTags(cwd)
+    // fetch 之后新出现的 tag：本地 refs/tags 里没有的
+    const localTagsAfter = new Set(await listTags(cwd))
+    const newTags = [...localTagsAfter].filter((t) => !localTagsBefore.has(t))
 
     return {
       status:
@@ -150,11 +134,45 @@ export async function analyzeUpdates(path: string, options: LogOptions = {}): Pr
       ahead: ahead ?? null,
       behind: behind ?? null,
       incoming,
-      outgoing: [],
-      tags,
+      outgoing,
+      tags: newTags,
       error: null,
     }
   })
+}
+
+async function readRange(
+  cwd: { cwd: string; timeoutMs?: number },
+  range: string,
+  max: number,
+): Promise<UpdateReportEntry[]> {
+  const result = await probe(
+    ['log', range, '-n', String(max), '--date=iso-strict', '--pretty=format:%h%x1f%s%x1f%an%x1f%cI'],
+    cwd,
+  )
+  return result.ok ? parseReportEntries(result.stdout) : []
+}
+
+function emptyReport(status: UpdateReport['status']): UpdateReport {
+  return {
+    status,
+    ahead: null,
+    behind: null,
+    incoming: [],
+    outgoing: [],
+    tags: [],
+    error: null,
+  }
+}
+
+async function listTags(cwd: { cwd: string; timeoutMs?: number }): Promise<string[]> {
+  const result = await probe(['tag', '--list'], cwd)
+  return result.ok
+    ? result.stdout
+        .split('\n')
+        .map((t) => t.trim())
+        .filter(Boolean)
+    : []
 }
 
 function parseReportEntries(raw: string): UpdateReportEntry[] {
@@ -166,21 +184,4 @@ function parseReportEntries(raw: string): UpdateReportEntry[] {
       const [shortHash = '', subject = '', author = '', date = ''] = line.split('\x1f')
       return { shortHash, subject, author, date }
     })
-}
-
-/** fetch 之后新出现的 tag：本地 refs/tags 里没有、远程有的。 */
-async function listRemoteTags(cwd: { cwd: string; timeoutMs?: number }): Promise<string[]> {
-  const local = await probe(['tag', '--list'], cwd)
-  const localSet = new Set(local.ok ? local.stdout.split('\n').map((t) => t.trim()) : [])
-
-  const ls = await probe(['ls-remote', '--tags', '--refs', 'origin'], cwd)
-  if (!ls.ok) return []
-
-  const remote: string[] = []
-  for (const line of ls.stdout.split('\n')) {
-    const m = /refs\/tags\/(.+)$/.exec(line.trim())
-    const name = m?.[1]
-    if (name && !localSet.has(name)) remote.push(name)
-  }
-  return remote
 }

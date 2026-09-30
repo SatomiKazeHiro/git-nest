@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { idParamSchema, type RepoStatus } from '@git-nest/core'
 import type { DB } from '../db/index.ts'
-import { getRepoLog, repoStatus, repoStatuses } from '../lib/git.ts'
+import { repoLog, repoStatus, repoStatuses } from '../lib/git.ts'
 import { badRequest, notFound } from '../lib/errors.ts'
 
 /**
@@ -41,7 +41,7 @@ export const gitRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
     const query = (req.query ?? {}) as { max?: string }
     const requested = Number(query.max)
     const max = Number.isFinite(requested) && requested > 0 ? Math.min(Math.floor(requested), 1000) : 200
-    return { entries: await getRepoLog(path, max) }
+    return { entries: await repoLog(path, max) }
   })
 }
 

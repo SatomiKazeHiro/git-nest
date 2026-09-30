@@ -11,13 +11,24 @@ export interface SchedulerOptions {
 }
 
 export class Scheduler {
-  private readonly limit: number
+  private limit: number
   private active = 0
   private readonly queue: (() => void)[] = []
   private readonly chains = new Map<string, Promise<unknown>>()
 
   constructor(options: SchedulerOptions = {}) {
     this.limit = Math.max(1, options.concurrency ?? 4)
+  }
+
+  /** 运行中改并发上限（设置页可调）。已经在跑的不打断，只影响排队中的。 */
+  setLimit(limit: number): void {
+    this.limit = Math.max(1, limit)
+    // 放低了就把队列里的放出去几个
+    while (this.active < this.limit) {
+      const next = this.queue.shift()
+      if (!next) break
+      next()
+    }
   }
 
   /** 拿不到许可就排队；任务结束（无论成败）都会释放。 */
@@ -35,7 +46,13 @@ export class Scheduler {
     })
   }
 
-  /** 同一个 key（一般是仓库路径）的任务严格排队执行。 */
+  /**
+   * 同一个 key（一般是仓库路径）的任务严格排队执行。
+   *
+   * 注意：**不要在已排队的任务里再对同一个 key 调 schedule**——那会等自己完成，死锁。
+   * core 里 getRepoStatus / analyzeUpdates / pullRepo 内部都自己排队了，
+   * 所以调用方直接 Promise.all 就行，限流交给它们。
+   */
   schedule<T>(key: string, task: () => Promise<T>): Promise<T> {
     const previous = this.chains.get(key) ?? Promise.resolve()
     const run = previous.then(
