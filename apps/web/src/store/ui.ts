@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
 
 /** 未归类的项目在界面上归到这个桶 */
 export const UNCATEGORIZED = '未分类'
@@ -58,3 +59,24 @@ export const useUiStore = create<UiState>((set) => ({
   openEdit: (editingId) => set({ formOpen: true, editingId }),
   closeForm: () => set({ formOpen: false, editingId: null }),
 }))
+
+/**
+ * 已选项目的 id 列表。
+ *
+ * 直接订阅 `s.selected` 有两个坑：`toggleSelected` 每次都 new 一个 Set，
+ * 所以**引用永远在变**，订阅它的组件每次勾选都会重渲染；而且拿到的 Set
+ * 每次都是新对象，当 props 往下传时会把子组件的 memo 全部打穿。
+ *
+ * 这里用 `useShallow` 按**内容**比较，并把结果固定成数组：勾选集合没变
+ * （哪怕 Set 是新对象）就不重渲染，变了也只在真正用到它的组件里更新。
+ */
+const EMPTY_IDS: number[] = []
+
+export function useSelectedIds(): number[] {
+  return useUiStore(useShallow((s) => (s.selected.size === 0 ? EMPTY_IDS : [...s.selected])))
+}
+
+/** 只关心「有没有选、选了几个」的地方用这个（返回基本类型，天然稳定）。 */
+export function useSelectedCount(): number {
+  return useUiStore((s) => s.selected.size)
+}

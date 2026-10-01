@@ -5,7 +5,7 @@ import { useDebounce } from 'ahooks'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
 import { Button, Dialog, EmptyState, ErrorNote, Input, Meta } from '@/components/ui'
 import { formatDate, formatRelative, hostOf, shortenPath } from '@/lib/format'
-import { UNCATEGORIZED, useUiStore } from '@/store/ui'
+import { UNCATEGORIZED, useSelectedCount, useSelectedIds, useUiStore } from '@/store/ui'
 import { ProjectFormDialog } from './ProjectFormDialog'
 import { useProjects, useRemoveProject } from './queries'
 import { StatusCell } from '@/features/status/StatusCell'
@@ -16,7 +16,8 @@ export function ProjectsPage() {
   const navigate = useNavigate()
   const filters = useUiStore((s) => s.filters)
   const setCategory = useUiStore((s) => s.setCategory)
-  const selected = useUiStore((s) => s.selected)
+  // 用内容稳定的 id 列表，而不是 `s.selected` 那个每次都换引用的 Set
+  const selectedIds = useSelectedIds()
   const [pendingRemoval, setPendingRemoval] = useState<ProjectListItem | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
 
@@ -59,7 +60,7 @@ export function ProjectsPage() {
         {panelOpen ? (
           <div className="pt-4">
             <UpdatePanel
-              ids={selected.size > 0 ? [...selected] : (projects ?? []).map((p) => p.id)}
+              ids={selectedIds.length > 0 ? selectedIds : (projects ?? []).map((p) => p.id)}
               onClose={() => setPanelOpen(false)}
             />
           </div>
@@ -155,8 +156,13 @@ function Toolbar({
   onScan: () => void
   checking: boolean
 }) {
-  const { filters, setQuery, clearFilters, openCreate } = useUiStore()
-  const selectedCount = useUiStore((s) => s.selected.size)
+  // 逐个字段订阅，而不是 `useUiStore()` 整店订阅 ——
+  // 整店订阅会让「勾选任何一行」都重渲染整个顶栏（搜索框、三个按钮、计数）。
+  const filters = useUiStore((s) => s.filters)
+  const setQuery = useUiStore((s) => s.setQuery)
+  const clearFilters = useUiStore((s) => s.clearFilters)
+  const openCreate = useUiStore((s) => s.openCreate)
+  const selectedCount = useSelectedCount()
   const filtering = Boolean(filters.category || filters.tag || filters.q)
 
   return (
@@ -190,13 +196,13 @@ function Toolbar({
 }
 
 function SelectionBar() {
-  const selected = useUiStore((s) => s.selected)
+  const selectedIds = useSelectedIds()
   const clearSelection = useUiStore((s) => s.clearSelection)
-  if (selected.size === 0) return null
+  if (selectedIds.length === 0) return null
   return (
     <div className="fixed inset-x-0 bottom-0 border-t border-line bg-panel/95 px-6 py-2.5 backdrop-blur">
       <div className="flex items-center gap-3">
-        <span className="font-mono text-[13px] text-ink-2">已选 {selected.size} 个项目</span>
+        <span className="font-mono text-[13px] text-ink-2">已选 {selectedIds.length} 个项目</span>
         <Button onClick={clearSelection}>取消选择</Button>
         <span className="text-[12px] text-ink-3">
           勾选后点「检查更新」，只会检查这几个

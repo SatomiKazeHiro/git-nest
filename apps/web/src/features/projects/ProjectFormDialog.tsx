@@ -40,7 +40,10 @@ function issuesToMap(issues: { path: (string | number | symbol)[]; message: stri
 }
 
 export function ProjectFormDialog() {
-  const { formOpen, editingId, closeForm } = useUiStore()
+  // 逐个字段订阅：整店订阅会让这个弹窗在「勾选行」「改筛选」时也跟着重渲染
+  const formOpen = useUiStore((s) => s.formOpen)
+  const editingId = useUiStore((s) => s.editingId)
+  const closeForm = useUiStore((s) => s.closeForm)
 
   const { data: tags = [] } = useTags()
   const { data: editing } = useProject(formOpen ? editingId : null)
