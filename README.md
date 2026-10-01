@@ -69,7 +69,7 @@ git-nest/
 全部实现在 `packages/core/src/git/`，照抄 `.reference/github-kb` 的安全规则：
 
 1. 每次调用都带 `GIT_TERMINAL_PROMPT=0` + `credential.interactive=false` + `credential.helper=`，
-   单命令硬超时（默认 120s，`GIT_NEST_GIT_TIMEOUT` 可调）
+   单命令硬超时（默认 120s，在设置页改；见下面「超时怎么调」）
 2. 用 `execFile` + argv 传参，不走 shell；仓库目录用 `git -C <dir>` 而不是 spawn 的 cwd
    （cwd 走 OS 的 SetCurrentDirectory，路径过长会直接 spawn 失败）
 3. **同仓库串行、跨仓库并发上限 4**（`Scheduler`），防 `index.lock` 冲突与远程限流
@@ -88,30 +88,58 @@ git-nest/
 
 ## API
 
-```
-GET    /api/projects?category=&tag=&q=
-POST   /api/projects              路径必须是已存在的目录；不填 remoteUrl 时从 git 的 origin 自动填
-PATCH  /api/projects/:id
-DELETE /api/projects/:id          只删 DB 记录，绝不动磁盘仓库
-GET    /api/projects/:id/status   实时 git 状态（?fresh=true 绕开短缓存）
-GET    /api/projects/:id/log?max= 提交图数据
-GET    /api/status?ids=1,2,3      批量状态，列表页一次拿全
-GET/POST/PUT/DELETE  /api/tags、/api/projects/:id/tags、/api/projects/:id/notes、/api/notes/:id
+方法逐条写清（别写成 `GET/POST/PUT/DELETE /api/tags` 那种——实际每个路径支持的方法
+并不一样，照着写客户端会 404）。`apps/server/test/docs-api-drift.test.ts` 会拿这段
+和源码里真实注册的路由对账，写错了测试就红。
 
-POST   /api/scan                   扫一层子目录预览（? 只读；remember=true 记进常用目录）
-POST   /api/projects/import        把扫出来的目录入库（逐条 insert，逐条报跳过原因）
+```
+GET    /api/health
+
+GET    /api/projects?category=&tag=&q=
+POST   /api/projects               路径必须是已存在的目录；不填 remoteUrl 时从 git 的 origin 自动填
+GET    /api/projects/:id           单个项目（含标签、备注、最近一次检查）
+PATCH  /api/projects/:id           部分更新：只提交的字段会被改（可改 path 重新指路）
+DELETE /api/projects/:id           只删 DB 记录，绝不动磁盘仓库
+
+GET    /api/projects/:id/status    实时 git 状态（?fresh=true 绕开服务端 3 秒短缓存）
+GET    /api/projects/:id/log?max=  当前检出分支的提交记录（提交图用；max 上限 1000，默认 200）
+GET    /api/status?ids=1,2,3       批量状态，列表页一次拿全（一次最多 200 个）
+
+PUT    /api/projects/:id/tags      整体替换项目的标签集合（不存在的标签名按需创建）
+GET    /api/projects/:id/notes     备注列表
+POST   /api/projects/:id/notes     加一条备注
+PATCH  /api/notes/:id             改备注内容
+DELETE /api/notes/:id             删备注
+GET    /api/tags                  标签列表（带每个标签的项目数）
+POST   /api/tags                  建标签（名字唯一、最长 40 字）
+DELETE /api/tags/:id              删标签（注意要带 :id；没有对集合的 DELETE）
+
+POST   /api/scan                   扫一层子目录预览（只读；remember=true 记进常用目录；depth 1–3）
+POST   /api/projects/import        把扫出来的目录入库（一个事务：要么全进、要么全不进）
 GET    /api/settings               读设置
-PATCH  /api/settings              改设置（personal 是否参与检查、超时、并发、确认阈值）
+PATCH  /api/settings              改设置（personal 是否参与检查、git 超时、并发、确认阈值、常用目录）
 
 POST   /api/updates/check         批量 fetch+分析，202 返回 taskId（ids 省略 = 全部非 personal）
 GET    /api/updates/:taskId       任务快照
-GET    /api/updates/:taskId/events  进度 SSE（认 Last-Event-ID，断线重连不丢）
+GET    /api/updates/:taskId/events  进度 SSE（?cursor= 可取历史事件；服务端会重放缓冲）
 POST   /api/updates/apply         对勾选的仓库逐个 pull --ff-only，同样 202 + SSE
 ```
 
+**超时怎么调**：没有 `GIT_NEST_GIT_TIMEOUT` 这个环境变量——超时是设置表里的
+`gitTimeoutMs`（默认 120s，允许 1s–600s），在设置页改，或 `PATCH /api/settings`。
+代码真正读的环境变量只有这几个：
+
+| 变量 | 用途 | 默认 |
+|---|---|---|
+| `GIT_NEST_DB` | SQLite 文件位置 | `data/git-nest.db` |
+| `GIT_NEST_PORT` | server 端口 | `5174` |
+| `GIT_NEST_HOST` | server 监听地址 | `127.0.0.1` |
+| `GIT_NEST_CORS` | 允许的跨域来源 | `http://localhost:5173` |
+| `GIT_NEST_API` | web 开发服务器的 API 代理目标 | `http://127.0.0.1:5174` |
+
 更新任务为什么是「POST 启动 + GET 订阅」：`EventSource` 只能发 GET，而批量检查可能要联网
-fetch 十几个仓库，不能让一个 HTTP 请求一直挂着。任务状态放内存（半小时 TTL），进度事件
-用「缓冲数组 + 游标」而不是发布订阅——前端拿到 id 再开连接是常态，缓冲保证不丢事件。
+fetch 十几个仓库，不能让一个 HTTP 请求一直挂着。任务状态放内存（半小时 TTL，**只清已结束的任务**），
+进度事件用「缓冲数组 + 游标」而不是发布订阅——前端拿到 id 再开连接是常态，缓冲保证不丢事件。
 
 ## 已完成
 
@@ -143,14 +171,14 @@ web 层按设计文档第 9 节用 MSW 测了勾选更新流程的组件级 happ
 
 ## 还没做
 
-五个里程碑都完成了。设计文档第 13 节列了实现与文档的全部差异（10 条），
-包括为什么 `credential.helper=` 不能少、为什么用 `-C` 而不是 cwd。
+五个里程碑都完成了。设计文档第 13 节记了实现与文档的**全部差异**（17 条，其中
+2026-10 审计时补记了原来漏掉的 7 条），包括为什么 `credential.helper=` 不能少、
+为什么用 `-C` 而不是 cwd。质量审计的完整结论在 [`docs/AUDIT-2026-10-01.md`](docs/AUDIT-2026-10-01.md)。
 
 往后的方向：
 
 - **Agent 接入**（设计文档第 10 节）：`packages/core` 无 UI/HTTP 依赖、API 覆盖全部用户操作，
   Agent 的能力上限 = 用户的能力上限，没有特权后门。可以先做「哪些项目值得关注」这类分析。
-- ~~提交图换 react-git-log~~ 已完成（M2 的自研泳道图有车道泄漏，已换回库）
 - `update_checks` 的历史趋势利用（现在只存不用）
 
 ## 踩过的坑
@@ -162,7 +190,9 @@ web 层按设计文档第 9 节用 MSW 测了勾选更新流程的组件级 happ
   最初的 chdir）。这类仓库现在直接报 `path_too_long` 并说清怎么办，而不是含糊地说
   「不是 git 仓库」。
 - `better-sqlite3` 需要跑安装脚本。pnpm 10+ 默认拦截，已在 `pnpm-workspace.yaml` 的
-  `onlyBuiltDependencies` 里放行；换机器后报 `ERR_PNPM_IGNORED_BUILDS` 就跑 `pnpm approve-builds --all`。
+  `allowBuilds` 里放行（**pnpm 12 的键名是 `allowBuilds`**；pnpm 10/11 时代叫
+  `onlyBuiltDependencies`，旧键在 12 里已被合并、写了不生效）；换机器后报
+  `ERR_PNPM_IGNORED_BUILDS` 就跑 `pnpm approve-builds --all`。
 - pnpm 12 偶尔会把 `node_modules/.pnpm/` 里的软链指到不存在的目录，表现为某个包的
   `node_modules/.bin` 里少了命令。`pnpm dedupe` 能修好。
 - `pullRepo` 的前置检查只用本地事实（不是仓库 / 空仓库 / 脏 / detached），

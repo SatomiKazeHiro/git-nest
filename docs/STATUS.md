@@ -7,8 +7,13 @@
 
 ## 一句话现状
 
-git-nest 已完成 M1–M5 五个里程碑，功能与设计文档对齐（含 10 条已记录的差异），
-141 个测试全绿。**唯一没做的是设计文档第 10 节的 Agent 预留**（本来就说本期不实现）。
+git-nest 已完成 M1–M5 五个里程碑，功能与设计文档对齐（含 10 条已记录的差异）。
+2026-10 做过一轮全量质量审计（`docs/AUDIT-2026-10-01.md`）并修掉其中的真实缺陷：
+提交图换回设计文档指定的 `@tomplum/react-git-log`（自研泳道图有车道泄漏）、
+PATCH 部分更新不再静默清空字段、批量路径恢复「同仓库串行」、失败不再被报成
+「已是最新」等。**唯一没做的是设计文档第 10 节的 Agent 预留**（本来就说本期不实现）。
+
+> 测试数量会随每次改动变化，别把它写进结论里 —— 跑 `pnpm test` 看实际数字。
 
 ## 里程碑与提交
 
@@ -23,6 +28,7 @@ git-nest 已完成 M1–M5 五个里程碑，功能与设计文档对齐（含 1
 | 补 | **状态不再说没有依据的话** + 补齐详情页 tag 管理、扫描区移除管理 | `52c4f19` |
 | 补 | MSW 组件测试（第 9 节要求） | `1068283` |
 | 文档 | 设计文档第 13 节：实现与文档的 10 条差异 | `e90fce1` |
+| 质量 | 全量审计 + 逐条修复（详见 `docs/AUDIT-2026-10-01.md`） | `95380e2` 起 |
 
 ## 怎么跑 / 怎么验
 
@@ -30,13 +36,18 @@ git-nest 已完成 M1–M5 五个里程碑，功能与设计文档对齐（含 1
 pnpm install          # 见「坑」里的 pnpm 12 软链问题
 pnpm dev              # server :5174 + web :5173
 pnpm typecheck        # 三个包一起 tsc --noEmit
-pnpm test             # 141 个用例，15 个文件
+pnpm test             # vitest（core / server / web 三个 project）
 pnpm build            # 只构建 web
 pnpm check:encoding   # 扫 U+FFFD 坏字符（提交前跑）
 ```
 
 数据库在 `data/git-nest.db`（已 gitignore），删掉即回到空清单。
-`GIT_NEST_DB` / `GIT_NEST_PORT` / `GIT_NEST_GIT_TIMEOUT` 可覆盖。
+可覆盖的环境变量：`GIT_NEST_DB` / `GIT_NEST_PORT` / `GIT_NEST_HOST` / `GIT_NEST_CORS`
+（web 侧还有 `GIT_NEST_API`，见 README 的表）。
+**超时不是环境变量**：它是设置表里的 `gitTimeoutMs`（默认 120s），在设置页改。
+
+> `apps/server/test/docs-api-drift.test.ts` 会检查这三份文档里写的 API 端点与
+> `GIT_NEST_*` 变量是否真在代码里存在——写错了测试就红，不用靠人肉对账。
 
 ## 代码地图（改东西先看这里）
 
@@ -59,7 +70,7 @@ apps/server/
 ├── src/lib/git.ts             git 层在 server 侧的入口（超时/并发读设置 + 3 秒短缓存）
 ├── src/lib/settings.ts        键值设置，支持 JSON 数组值
 ├── src/lib/tasks.ts           批量任务 + 事件缓冲（缓冲数组+游标，不是发布订阅）
-├── src/routes/                projects / notes / tags / git / updates / scan / settings
+├── src/routes/                index(projects/notes/tags) + git / updates / scan / settings
 └── test/*.test.ts             Fastify inject（app.inject，不起真端口）
 
 apps/web/src/
@@ -126,7 +137,9 @@ apps/web/src/
    `pnpm install` 偶尔会「假装 up-to-date」什么都不做，删 `node_modules/.modules.yaml` 也没用，
    全量 `rm -rf node_modules && pnpm install` 才行（store 有硬链接，很快）。
 8. `better-sqlite3` 要跑安装脚本，pnpm 10+ 默认拦截，已在 `pnpm-workspace.yaml` 的
-   `onlyBuiltDependencies` 放行；换机器报 `ERR_PNPM_IGNORED_BUILDS` 就 `pnpm approve-builds --all`。
+   `allowBuilds` 放行（**pnpm 12 的键名就叫这个**；pnpm 10/11 时代是
+   `onlyBuiltDependencies`，旧键在 12 里已合并、写了不生效）；换机器报
+   `ERR_PNPM_IGNORED_BUILDS` 就 `pnpm approve-builds --all`。
 9. msw 3.x 里 `server.listen` 的选项叫 `onUnhandledFrame`（2.x 是 `onUnhandledRequest`）。
 10. 验证 UI 用 `playwright-cli`（全局命令）：`open` / `snapshot` / `find` / `screenshot`。
     起服务前记得先 `rm -rf apps/web/node_modules/.vite` 清 HMR 缓存，
@@ -138,17 +151,22 @@ apps/web/src/
 
 - 批量检查时**只显示被检查过的仓库**：personal 分类默认跳过，面板顶部会说明跳过了谁。
 - 一个仓库同时被两个 `pnpm dev` 占用端口时会启动失败——先按上面第 1 条杀干净。
-- 早期跑全量测试时观察到一次偶发失败（analyze 的 tag 用例、pull 的 ff-only 用例，
-  都涉及跨进程 git 状态），之后连跑 3 次 130/130。判断是 Windows 环境抖动而非逻辑竞态，
-  但没 100% 排除；如果再遇到，值得查一下。
+- 早期跑全量测试时观察到偶发失败（analyze 的 tag 用例、pull 的 ff-only 用例）。
+  **已定位并修掉**：根因是 `packages/core` 跑真实 git 集成测试却没有 vitest 配置、
+  继承默认 5s 超时——并行跑全套时 git 进程争 IO，单例能从 2.3s 拖到 5s+，
+  于是随机超时。补上 `packages/core/vitest.config.ts`（60s）后全量稳定。
+  教训：这类「单独跑绿、并发跑红」先看超时配置，别急着怀疑竞态。
 
 ## 测试怎么组织
 
-- `packages/core/test/helpers/repo.ts` 提供 `makeRepo` / `initClone` / `commitIn`，
-  所有 git 集成测试都用它造真实仓库，**不 mock git**。
+- `packages/core/test/helpers/repo.ts` 提供 `git` / `tempDir` / `write` / `commit` /
+  `initRepo` / `initClone` / `cleanup`，所有 git 集成测试都用它造真实仓库，**不 mock git**。
 - `apps/server/test/*.test.ts` 用 `app.inject`（不起真端口），内存库 `openDatabase(':memory:')`。
   批量任务用 `waitForTask()` 轮询快照——SSE 在测试里不测（web 侧用假 EventSource 覆盖）。
 - `apps/web/src/**/*.test.tsx` 用 msw；`onUnhandledFrame: 'error'` 保证没 mock 的请求会失败，
   避免「测试通过但压根没打到接口」的假绿。
-- 测试里造仓库很慢（Windows 上每条 git 命令几百毫秒），所以 server 的集成测试
-  `vi.setConfig({ testTimeout: 90_000 })`。全量约 2 分钟。
+- `apps/server/test/docs-api-drift.test.ts` 拿文档里写的 API 端点、`GIT_NEST_*` 变量
+  和源码对账——改路由却忘了改文档时会红。
+- 测试里造仓库很慢（Windows 上每条 git 命令几百毫秒），所以 core 与 server 都把
+  vitest 超时放宽到 60s（core 在 `vitest.config.ts`，server 在各测试文件里
+  `vi.setConfig({ testTimeout: 60_000 })`）。全量约 40–60 秒。
