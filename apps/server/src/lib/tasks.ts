@@ -55,7 +55,9 @@ export function createTask(kind: TaskKind, projects: { id: number; name: string 
   return task
 }
 
+/** 快照与 SSE 都从这里拿任务：顺手清扫，别只依赖 createTask 那一次。 */
 export function getTask(id: string): Task | null {
+  sweep()
   return tasks.get(id) ?? null
 }
 
@@ -127,10 +129,21 @@ function itemOf(task: Task, projectId: number): TaskItem | null {
   return task.items.find((i) => i.projectId === projectId) ?? null
 }
 
-/** 半小时前的任务没人看了，清掉，别让内存慢慢涨。 */
-function sweep(): void {
-  const now = Date.now()
+/**
+ * 清掉过期的任务，别让内存慢慢涨。
+ *
+ * 两条硬规矩：
+ * 1. **不碰还在 running 的任务**。真实批量任务的耗时没有上限可言：
+ *    MAX_BATCH=200 ÷ 并发 4 × 单命令超时 120s ≈ 100 分钟，远超这里 30 分钟的 TTL。
+ *    按 createdAt 一刀切会把正在跑的任务从表里摘掉 —— 之后 `/updates/:taskId`
+ *    与 SSE 入口都返回 404，前端进度彻底丢失，也没有任何取消路径。
+ * 2. TTL 从**结束时间**开始算，不是创建时间。一个跑了 40 分钟的任务，
+ *    刚出结果就被清掉，用户根本来不及看。
+ */
+function sweep(now = Date.now()): void {
   for (const [id, task] of tasks) {
-    if (now - task.createdAt > TTL_MS) tasks.delete(id)
+    if (task.status === 'running') continue
+    const since = task.finishedAt ?? task.createdAt
+    if (now - since > TTL_MS) tasks.delete(id)
   }
 }
