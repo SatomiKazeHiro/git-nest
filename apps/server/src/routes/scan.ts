@@ -74,6 +74,10 @@ export const scanRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
     const created: { id: number; name: string; path: string }[] = []
     const skipped: { path: string; reason: string }[] = []
 
+    // 先把「哪些能进、各自的远程地址是什么」算完（这一步要 await）。
+    // 读远程地址失败只降级成 null —— git 起不来 / 目录不是仓库都属可降级，
+    // 不该把整批导入变成 500。
+    const candidates: { name: string; path: string; remoteUrl: string | null }[] = []
     for (const raw of paths) {
       const abs = toAbsolutePath(raw)
 
@@ -86,20 +90,34 @@ export const scanRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
         continue
       }
 
+      let remoteUrl: string | null = null
+      try {
+        remoteUrl = await getRemoteUrl(abs)
+      } catch {
+        remoteUrl = null
+      }
+
       // 名字取目录名，远程地址从 git 读；摘要留空，等用户补
-      const name = path.basename(abs) || abs
-      const remoteUrl = await getRemoteUrl(abs)
-      const id = insertProject(db, {
-        name,
-        path: abs,
-        remoteUrl,
-        category: cat,
-        sourceUrl: null,
-        summary: null,
-        sortOrder: nextSortOrder(db, cat),
-      })
-      created.push({ id, name, path: abs })
+      candidates.push({ name: path.basename(abs) || abs, path: abs, remoteUrl })
     }
+
+    // 写入放进一个事务：中途任何一条失败都不留下部分结果，
+    // 要么整批进、要么整批不进（原来的写法会留下写了一半的清单）。
+    const insertAll = db.transaction(() => {
+      for (const candidate of candidates) {
+        const id = insertProject(db, {
+          name: candidate.name,
+          path: candidate.path,
+          remoteUrl: candidate.remoteUrl,
+          category: cat,
+          sourceUrl: null,
+          summary: null,
+          sortOrder: nextSortOrder(db, cat),
+        })
+        created.push({ id, name: candidate.name, path: candidate.path })
+      }
+    })
+    insertAll()
 
     return { created, skipped }
   })

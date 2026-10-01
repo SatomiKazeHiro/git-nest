@@ -53,6 +53,12 @@ export function buildApp(options: AppOptions = {}) {
         issues: err.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
       })
     }
+    // 数据库唯一约束：并发下「先查再插」之间总有窗口，所以这种事一定会发生。
+    // 它是**冲突**（409），不是服务器故障（500）—— 把约束交给库层兜底，
+    // 应用层只负责把错误翻译对。
+    if (isUniqueConstraintError(err)) {
+      return reply.code(409).send({ code: 'conflict', message: '这条记录已经存在了' })
+    }
     const candidate = err as { statusCode?: unknown; message?: unknown }
     if (typeof candidate.statusCode === 'number' && candidate.statusCode < 500) {
       return reply
@@ -64,4 +70,19 @@ export function buildApp(options: AppOptions = {}) {
   })
 
   return { app, db }
+}
+
+/**
+ * better-sqlite3 的 UNIQUE 约束错误。
+ *
+ * 它的 `code` 是 `SQLITE_CONSTRAINT_UNIQUE`，`message` 形如
+ * `UNIQUE constraint failed: projects.path`（或索引名）。两个都认一下，
+ * 免得驱动换文案时静默退化成 500。
+ */
+function isUniqueConstraintError(err: unknown): boolean {
+  const candidate = err as { code?: unknown; message?: unknown }
+  if (candidate.code === 'SQLITE_CONSTRAINT_UNIQUE') return true
+  return (
+    typeof candidate.message === 'string' && /UNIQUE constraint failed/i.test(candidate.message)
+  )
 }
