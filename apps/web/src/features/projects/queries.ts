@@ -1,6 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ProjectDetail, ProjectListItem, Tag } from '@git-nest/core'
 import { api } from '@/lib/api'
+import { logKeys } from '@/features/gitgraph/queries'
+
+/** 提交记录的 key 前缀（真正的定义在 gitgraph/queries.ts） */
+const logPrefix = logKeys.prefix
 
 export interface TagWithUsage extends Tag {
   projectCount: number
@@ -18,7 +22,8 @@ export const queryKeys = {
   tags: ['tags'] as const,
   status: ['status'] as const,
   settings: ['settings'] as const,
-  log: ['log'] as const,
+  // 提交记录的 key 前缀由它自己的 feature 定义，这里只引用，别写第二份
+  log: logPrefix,
 }
 
 function toQuery(params: { category?: string | null; tag?: string | null; q?: string }) {
@@ -68,6 +73,9 @@ export function useInvalidate() {
     void qc.invalidateQueries({ queryKey: queryKeys.tags })
     void qc.invalidateQueries({ queryKey: queryKeys.status })
     void qc.invalidateQueries({ queryKey: queryKeys.settings })
+    // 提交记录也要一起失效：一次 pull 之后仓库多出提交，提交图不能停在旧数据上。
+    // （这条原来漏了 —— `queryKeys.log` 定义了却没有任何地方用它。）
+    void qc.invalidateQueries({ queryKey: queryKeys.log })
   }
 }
 

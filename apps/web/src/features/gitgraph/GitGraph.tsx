@@ -1,7 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
 import { GitLog, type GitLogEntry as LibGitLogEntry } from '@tomplum/react-git-log'
 import type { GitLogEntry } from '@git-nest/core'
-import { api } from '@/lib/api'
+import { useRepoLog } from './queries'
 
 /**
  * 提交图。
@@ -12,25 +11,10 @@ import { api } from '@/lib/api'
  * 没人引用，再被宽度上限一夹，75/120 个提交点被画到画布外。这个缺陷整类来自
  * 「自己写图布局」，用库就不存在了。
  *
- * 这一层只做两件事：取数 + 把服务器字段映射成库要的形状。
- * 接口仍然只在这一个文件里，将来要换库/换渲染方式只动这里。
+ * **这个文件是与渲染库绑定的唯一一处**：字段映射（`toLibraryEntry`）与
+ * `<GitLog>` 的用法都在这里，所以换渲染方式只动这一个文件。
+ * 取数在 `./queries.ts`，与库无关（那边换后端接口时才动）。
  */
-
-export interface RepoLog {
-  entries: GitLogEntry[]
-  /** 当前检出的分支名（detached 时是 HEAD） */
-  branch: string
-}
-
-export function useRepoLog(projectId: number | null, max = 120) {
-  return useQuery({
-    queryKey: ['log', projectId, max],
-    queryFn: () =>
-      api.get<RepoLog>(`/projects/${projectId}/log?max=${max}`),
-    enabled: projectId !== null,
-    staleTime: 10_000,
-  })
-}
 
 /** 服务器的 GitLogEntry → 库的 GitLogEntry。字段一一对应，只差命名。 */
 function toLibraryEntry(entry: GitLogEntry, branch: string): LibGitLogEntry {

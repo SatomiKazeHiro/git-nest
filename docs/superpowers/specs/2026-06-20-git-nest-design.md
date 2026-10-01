@@ -285,9 +285,11 @@ POST   /api/updates/apply                  { ids: [...] } → 勾选仓库 pull 
    root 的 merge」会让第二个父提交预定过的列从此无人释放，列数随 merge 数量单调
    膨胀；真实仓库 archify（120 提交、19 个 merge）算出 40 条列（其中 8 条无人引用），
    再被宽度上限一夹，75/120 个提交点被画到画布外。
-   后来换回库：`apps/web/src/features/gitgraph/GitGraph.tsx` 现在是薄封装
-   （取数 + 把 `packages/core` 的 `GitLogEntry` 映射成库的形状），
-   自研的 `layout.ts` 与其测试已删除。接口仍然只在这一个文件里，将来换渲染方式只动它。
+   后来换回库：`apps/web/src/features/gitgraph/` 下两个文件，职责按「是否与库绑定」分：
+   - `queries.ts` —— 取数，**与渲染库无关**（换后端接口时才动）
+   - `GitGraph.tsx` —— 字段映射 + `<GitLog>` 用法，**与库绑定的唯一一处**，
+     换渲染方式只动它
+   自研的 `layout.ts` 与其测试已删除。
    附带一处语义调整：`getLog` 默认只取当前检出分支（不再 `--all`），
    因为库按 `branch` 组织图，混入别的分支会让提交的分支归属说不清。
 8. 第 7.2 节的「更新分析报告区」做成了按需展开（点「检查更新」才出现），

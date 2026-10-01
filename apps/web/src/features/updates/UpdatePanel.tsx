@@ -7,6 +7,7 @@ import { statusText, statusTone, Delta } from '@/features/status/StatusCell'
 import { isPull, isReport, useUpdateTask, type TaskSnapshot } from './taskStream'
 import { useSettings } from '@/features/settings/queries'
 import { useInvalidate } from '@/features/projects/queries'
+import { logKeys } from '@/features/gitgraph/queries'
 
 /** 能安全 ff-only 更新的状态：远程有、本地没有，且本地没有会挡路的提交 */
 const UPDATABLE = new Set(['behind'])
@@ -30,7 +31,7 @@ export function UpdatePanel({
   const { task, busy, error, connected, startCheck, startApply, reset } = useUpdateTask(() => {
     // 任务跑完可能改了检查时间与状态，统一走同一个失效入口
     invalidate()
-    void qc.invalidateQueries({ queryKey: ['log'] })
+    void qc.invalidateQueries({ queryKey: logKeys.prefix })
   })
   const [picked, setPicked] = useState<Set<number>>(new Set())
   const [confirming, setConfirming] = useState(false)
