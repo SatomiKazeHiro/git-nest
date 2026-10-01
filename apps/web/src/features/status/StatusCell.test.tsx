@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { render, screen } from '@testing-library/react'
 import {
   STALE_AFTER_MS,
+  Delta,
   freshnessOf,
   textFor,
   toneFor,
@@ -87,5 +89,24 @@ describe('措辞与颜色：远程相关的结论必须看新鲜度', () => {
       expect(textFor(s, 'stale')).toBe(textFor(s, 'fresh'))
       expect(toneFor(s, 'never')).toBe(toneFor(s, 'fresh'))
     }
+  })
+})
+
+/**
+ * `Delta` 是列表页状态列与更新面板结果行**共用**的那一份
+ * （原来 UpdatePanel 里另写了一份，容易只改一处）。这里钉住它的文案，
+ * 免得两处又飘开。
+ */
+describe('Delta', () => {
+  it('领先：↑ + 数字 + 可读的 title', () => {
+    render(<Delta n={3} dir="ahead" />)
+    expect(screen.getByText('↑3')).toBeTruthy()
+    expect(screen.getByTitle('领先 3 个提交')).toBeTruthy()
+  })
+
+  it('落后：↓ + 数字 + 可读的 title', () => {
+    render(<Delta n={2411} dir="behind" />)
+    expect(screen.getByText('↓2411')).toBeTruthy()
+    expect(screen.getByTitle('落后 2411 个提交')).toBeTruthy()
   })
 })

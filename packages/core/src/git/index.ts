@@ -28,7 +28,6 @@ export {
   getRepoStatus,
   getRepoStatuses,
   getRemoteUrl,
-  describeStatus,
   deriveStatus,
   type StatusOptions,
   type DeriveInput,

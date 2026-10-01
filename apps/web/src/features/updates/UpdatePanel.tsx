@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import type { UpdateReport } from '@git-nest/core'
 import { Button, ErrorNote, Meta } from '@/components/ui'
-import { statusText, statusTone } from '@/features/status/StatusCell'
+import { statusText, statusTone, Delta } from '@/features/status/StatusCell'
 import { isPull, isReport, useUpdateTask, type TaskSnapshot } from './taskStream'
 import { useSettings } from '@/features/settings/queries'
 import { useInvalidate } from '@/features/projects/queries'
@@ -266,12 +266,8 @@ function ReportCell({ report }: { report: UpdateReport }) {
       <span className={`text-[12.5px] ${statusTone(report.status)}`}>
         {statusText(report.status)}
       </span>
-      {report.behind ? (
-        <span className="font-mono text-[12px] text-signal-behind">↓{report.behind}</span>
-      ) : null}
-      {report.ahead ? (
-        <span className="font-mono text-[12px] text-signal-ahead">↑{report.ahead}</span>
-      ) : null}
+      {report.behind ? <Delta n={report.behind} dir="behind" /> : null}
+      {report.ahead ? <Delta n={report.ahead} dir="ahead" /> : null}
       {report.tags.map((t) => (
         <span
           key={t}

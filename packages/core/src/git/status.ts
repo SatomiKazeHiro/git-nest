@@ -295,36 +295,4 @@ export async function getRepoStatuses(
   return scheduler.map(paths, (p) => p, (p) => readStatus(p, options.timeoutMs))
 }
 
-/** 供 UI 直接显示的一句话说明。 */
-export function describeStatus(status: RepoStatus): string {
-  switch (status.status) {
-    case 'up_to_date':
-      return '已是最新'
-    case 'ahead':
-      return `领先远程 ${status.ahead ?? 0} 个提交`
-    case 'behind':
-      return `落后远程 ${status.behind ?? 0} 个提交`
-    case 'diverged':
-      return `分叉：领先 ${status.ahead ?? 0}、落后 ${status.behind ?? 0}`
-    case 'dirty':
-      return `工作区有 ${status.dirtyCount} 处未提交改动`
-    case 'no_upstream':
-      return '当前分支没有上游'
-    case 'gone':
-      return '上游分支已被远程删掉'
-    case 'detached':
-      return 'HEAD 处于游离状态'
-    case 'no_remote':
-      return '没有配置远程'
-    case 'no_commits':
-      return '仓库还没有提交'
-    case 'missing':
-      return '目录不在了'
-    case 'not_a_repo':
-      return '不是 git 仓库'
-    default:
-      return status.error?.message ?? '状态未知'
-  }
-}
-
 export { toGitError, runGit }

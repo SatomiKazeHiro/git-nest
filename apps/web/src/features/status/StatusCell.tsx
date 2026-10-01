@@ -193,7 +193,14 @@ export function StatusCell({
   )
 }
 
-function Delta({ n, dir }: { n: number; dir: 'ahead' | 'behind' }) {
+/**
+ * `↑N` / `↓N`（领先/落后几个提交）。
+ *
+ * 列表页的状态列与更新面板的结果行都要这个，文案、箭头、颜色必须一致，
+ * 所以只有这一份实现。原来 UpdatePanel 里另写了一份——两个地方各改一次很容易
+ * 只改一处（比如只给一边加了 title）。
+ */
+export function Delta({ n, dir }: { n: number; dir: 'ahead' | 'behind' }) {
   return (
     <span
       className={`font-mono text-[12px] ${dir === 'ahead' ? 'text-signal-ahead' : 'text-signal-behind'}`}
