@@ -60,6 +60,7 @@ const TEXT: Record<UpdateStatus, string> = {
   diverged: '已分叉',
   dirty: '有未提交改动',
   no_upstream: '没有上游',
+  gone: '上游已被删',
   detached: '游离 HEAD',
   no_remote: '没有远程',
   no_commits: '还没有提交',
@@ -76,6 +77,7 @@ const TONE: Record<UpdateStatus, string> = {
   diverged: 'text-signal-bad',
   dirty: 'text-signal-ahead',
   no_upstream: 'text-ink-3',
+  gone: 'text-ink-3',
   detached: 'text-signal-ahead',
   no_remote: 'text-ink-3',
   no_commits: 'text-ink-3',
@@ -119,6 +121,8 @@ function describe(s: RepoStatus): string {
       return '与上次 fetch 到的远程一致'
     case 'no_upstream':
       return '当前分支没有上游分支'
+    case 'gone':
+      return '上游分支已经被远程删掉了，本地这个分支还在；要重新推就 push -u，不用了就删掉本地分支'
     case 'no_remote':
       return '这个仓库没有配置 origin'
     case 'detached':

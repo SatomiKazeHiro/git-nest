@@ -7,6 +7,8 @@ export type UpdateStatus =
   | 'diverged'
   | 'dirty'
   | 'no_upstream'
+  /** 上游分支已被远程删掉（git 的 upstream:track 报 [gone]） */
+  | 'gone'
   | 'detached'
   | 'no_remote'
   | 'error'

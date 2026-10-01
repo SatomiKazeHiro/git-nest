@@ -106,7 +106,7 @@ describe('getRepoStatus', () => {
     expect(status.status).toBe('no_upstream')
   })
 
-  it('远程分支被删掉（prune 之后）→ 归到 no_upstream', async () => {
+  it('远程分支被删掉（prune 之后）→ gone', async () => {
     const { origin, clone } = track(initClone(0))
     git(origin, 'checkout', '-q', '-b', 'doomed')
     commit(origin, 'doomed 的提交')
@@ -119,8 +119,11 @@ describe('getRepoStatus', () => {
 
     const status = await getRepoStatus(clone)
     expect(status.branch).toBe('doomed')
-    expect(status.upstream === null || status.upstreamGone).toBe(true)
-    expect(status.status).toBe('no_upstream')
+    // 原来的断言是 `upstream === null || upstreamGone` —— upstreamGone 恒为 false，
+    // 所以它只可能靠 upstream === null 通过，和「没有上游」那条测的是同一件事。
+    // 现在钉死：这确实是「上游被删」，而不是「从来没配过上游」。
+    expect(status.upstreamGone).toBe(true)
+    expect(status.status).toBe('gone')
   })
 
   it('目录不存在 → missing', async () => {

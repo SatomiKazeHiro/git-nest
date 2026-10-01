@@ -81,26 +81,29 @@ async function readStatus(path: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise
   const branch = head.ok ? head.stdout.trim() : null
   const detached = !head.ok && hasCommits
 
-  // 5. 上游 —— 同样，非零退出只意味着「没有上游」
-  const upstreamRef = await probe(
-    ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'],
-    cwd,
-  )
-  let upstream: string | null = upstreamRef.ok ? upstreamRef.stdout.trim() : null
+  // 5. 上游 —— 用 for-each-ref 一次问出「上游是谁」和「它是不是已经被删了」。
+  //
+  // 以前是解析 `rev-parse @{u}` 的退出码 + 失败后再猜 stderr 正则。实测那样判不出来：
+  // remote-tracking ref 被 prune 之后 `@{u}` 直接 exit 128，于是 upstream 先变成 null、
+  // 后面那段判定 upstreamGone 的分支根本不会执行，字段恒为 false。
+  // `%(upstream:track)` 是 git 自己给的权威结论：上游被删时输出 `[gone]`。
+  const upstream = await readUpstream(cwd, branch)
+  let upstreamName = upstream?.name ?? null
+  const upstreamGone = upstream?.gone ?? false
+  if (upstreamGone) upstreamName = null
 
   // 6. ahead / behind，依赖上游
   let ahead: number | null = null
   let behind: number | null = null
-  let upstreamGone = false
-  if (upstream && hasCommits) {
-    const counts = await probe(['rev-list', '--left-right', '--count', `HEAD...${upstream}`], cwd)
+  if (upstreamName && hasCommits) {
+    const counts = await probe(
+      ['rev-list', '--left-right', '--count', `HEAD...${upstreamName}`],
+      cwd,
+    )
     if (counts.ok) {
       const [left, right] = counts.stdout.trim().split(/\s+/).map((n) => Number(n))
       ahead = left ?? null
       behind = right ?? null
-    } else {
-      upstreamGone = /no such|unknown revision|bad revision|gone/i.test(counts.result.stderr)
-      if (upstreamGone) upstream = null
     }
   }
 
@@ -115,7 +118,8 @@ async function readStatus(path: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise
     isRepo: true,
     dirty,
     detached,
-    hasCommits: lastCommit !== null,    upstream: upstream !== null,
+    hasCommits: lastCommit !== null,
+    upstream: upstreamName !== null,
     ahead,
     behind,
     upstreamGone,
@@ -129,7 +133,7 @@ async function readStatus(path: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise
     detached,
     dirty,
     dirtyCount: dirtyLines.length,
-    upstream,
+    upstream: upstreamName,
     upstreamGone,
     ahead,
     behind,
@@ -138,6 +142,29 @@ async function readStatus(path: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise
     status,
     error: null,
   }
+}
+
+/**
+ * 一次问出当前分支的上游与它是否已被远程删掉。
+ *
+ * `%(upstream:track)` 是 git 的权威判据：上游还在时形如 `[ahead 1]` / `[behind 2]`
+ * 或空，上游被删时是 `[gone]`。比「解析 @{u} 的报错再猜正则」稳得多 ——
+ * 后者在 prune 之后根本走不到。
+ */
+async function readUpstream(
+  cwd: { cwd: string; timeoutMs?: number },
+  branch: string | null,
+): Promise<{ name: string; gone: boolean } | null> {
+  if (!branch) return null
+  const result = await probe(
+    ['for-each-ref', '--format=%(upstream:short)%00%(upstream:track)', `refs/heads/${branch}`],
+    cwd,
+  )
+  if (!result.ok) return null
+
+  const [name = '', track = ''] = result.stdout.trim().split('\0')
+  if (!name.trim()) return null
+  return { name: name.trim(), gone: /\[gone\]/.test(track) }
 }
 
 export interface DeriveInput {
@@ -164,7 +191,9 @@ export function deriveStatus(input: DeriveInput): UpdateStatus {
   if (!input.hasCommits) return 'no_commits'
   if (input.dirty) return 'dirty'
   if (input.detached) return 'detached'
-  if (input.upstreamGone) return 'no_upstream'
+  // 「上游被远程删了」要单独说：它的下一步动作和「从来没配过上游」完全不同
+  // （前者重新 push -u 或删掉本地分支，后者才需要设上游）
+  if (input.upstreamGone) return 'gone'
   if (!input.upstream) return input.hasRemote ? 'no_upstream' : 'no_remote'
 
   const ahead = input.ahead ?? 0
@@ -239,6 +268,8 @@ export function describeStatus(status: RepoStatus): string {
       return `工作区有 ${status.dirtyCount} 处未提交改动`
     case 'no_upstream':
       return '当前分支没有上游'
+    case 'gone':
+      return '上游分支已被远程删掉'
     case 'detached':
       return 'HEAD 处于游离状态'
     case 'no_remote':
