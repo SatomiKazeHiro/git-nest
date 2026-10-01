@@ -41,6 +41,17 @@ async function readStatus(path: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise
   if (!fs.existsSync(path)) {
     return { ...EMPTY(path, 'missing'), error: { kind: 'missing', message: '目录不在了' } }
   }
+  if (path.length > 240 && process.platform === 'win32') {
+    // Windows 的 MAX_PATH 约 260 字符；git 自己进不去，早点说清比让它报
+    // 「Filename too long」强得多
+    return {
+      ...EMPTY(path, 'error'),
+      error: {
+        kind: 'path_too_long',
+        message: `路径 ${path.length} 个字符，超过 Windows 的长度上限（约 260 字符），git 进不去`,
+      },
+    }
+  }
 
   const cwd = { cwd: path, timeoutMs }
   const base = EMPTY(path, 'error')
@@ -48,11 +59,13 @@ async function readStatus(path: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise
   // 1. 是不是仓库
   const inside = await probe(['rev-parse', '--is-inside-work-tree'], cwd)
   if (!inside.ok || inside.stdout.trim() !== 'true') {
-    return {
-      ...base,
-      status: 'not_a_repo',
-      error: { kind: 'not_a_repo', message: '这个目录不是 git 仓库' },
+    // 这条失败有多种可能：真的不是仓库，也可能是路径太长 / 进不去。
+    // 直接说「不是仓库」会把用户引向错误的方向，所以把真实原因归因后透出。
+    const err = toGitError(inside.ok ? { code: 1, stdout: '', stderr: '', timedOut: false } : inside.result, '这个目录不是 git 仓库')
+    if (err.kind === 'not_a_repo') {
+      return { ...base, status: 'not_a_repo', error: err }
     }
+    return { ...base, status: 'error', error: err }
   }
 
   // 2. 脏标记（porcelain 稳定，不受 locale 影响）

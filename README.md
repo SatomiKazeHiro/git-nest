@@ -65,13 +65,15 @@ git-nest/
 
 全部实现在 `packages/core/src/git/`，照抄 `.reference/github-kb` 的安全规则：
 
-1. 每次调用都带 `GIT_TERMINAL_PROMPT=0` + `credential.interactive=false`，单命令硬超时
-   （默认 120s，`GIT_NEST_GIT_TIMEOUT` 可调）
-2. 用 `execFile` + argv 传参，不走 shell——路径与 ref 不用手动加引号，也就没有引号绕过导致的注入
+1. 每次调用都带 `GIT_TERMINAL_PROMPT=0` + `credential.interactive=false` + `credential.helper=`，
+   单命令硬超时（默认 120s，`GIT_NEST_GIT_TIMEOUT` 可调）
+2. 用 `execFile` + argv 传参，不走 shell；仓库目录用 `git -C <dir>` 而不是 spawn 的 cwd
+   （cwd 走 OS 的 SetCurrentDirectory，路径过长会直接 spawn 失败）
 3. **同仓库串行、跨仓库并发上限 4**（`Scheduler`），防 `index.lock` 冲突与远程限流
 4. 探测命令逐个执行、单独判退出码：「没有上游」「detached HEAD」是预期内的非零退出
 5. `pull` 只允许 `--ff-only`；脏工作区 / detached / 无上游 / 已分叉一律跳过并说清原因
-6. 失败按 网络 / 认证 / 锁残留 / 目录丢失 归因，各自给可操作的提示
+6. 失败按 网络 / 认证 / 锁残留 / 路径过长 / 目录丢失 归因，各自给可操作的提示；
+   「远程仓库找不到」单独说，不当成「要认证」——那会把人引向错误的方向
 
 状态机覆盖的常态分支（不是异常）：`up_to_date` `behind` `ahead` `diverged` `dirty`
 `no_upstream` `detached` `no_remote` `no_commits` `missing` `not_a_repo`。
@@ -122,16 +124,31 @@ git 超时、并发上限、确认阈值。**核心原则：绝不自动更新**
 入库只插 DB，名字取目录名、远程地址从 git 读，摘要与分类留给用户补。
 超过「确认阈值」个时会先问一遍范围。
 
-测试 118 个用例：git 层全部用临时目录里**真实 git 仓库**跑（init → commit → clone →
-构造 behind / ahead / diverged / dirty / detached 各状态），不 mock git。
+**M5 异常与 Windows 验证** — 错误归因落到每一类都带可操作的提示；目录没了不自动移除，
+而是置灰 + 引导改路径（`PATCH` 支持改 path，校验存在与撞车）；详情页 / 提交图把
+「目录不在了」和「不是仓库」区分开说。
+
+测试 128 个用例：git 层全部用临时目录里**真实 git 仓库**跑（init → commit → clone →
+构造 behind / ahead / diverged / dirty / detached 各状态），不 mock git；
+M5 另有一个只回 401 的本地假远程，用来验证凭证场景既不弹窗也不挂死。
 
 ## 还没做
 
-M5 · 错误归因打磨、Windows 兼容验证（长路径 / 凭证弹窗）、把设计文档第 8 节的
-异常场景逐条走一遍。
+五个里程碑都完成了。剩下的方向：
+
+- **Agent 接入**（设计文档第 10 节）：`packages/core` 无 UI/HTTP 依赖、API 覆盖全部用户操作，
+  Agent 的能力上限 = 用户的能力上限，没有特权后门。可以先做「哪些项目值得关注」这类分析。
+- 提交图换 react-git-log（接口已隔离在 `features/gitgraph/` 一个组件里）
+- `update_checks` 的历史趋势利用（现在只存不用）
 
 ## 踩过的坑
 
+- **`-c credential.helper=` 是必须的。** 只设 `GIT_TERMINAL_PROMPT=0` 不够：遇到要密码的
+  远程时 git 会卡在凭证链上（实测挂 8 秒以上无任何输出），一个私有仓库就能把整个批量检查
+  拖到超时。清空 helper 之后它立即报 `unable to get password from user`。
+- **长路径**：Windows 上超过约 260 字符的路径 git 根本进不去（`core.longpaths` 救不了
+  最初的 chdir）。这类仓库现在直接报 `path_too_long` 并说清怎么办，而不是含糊地说
+  「不是 git 仓库」。
 - `better-sqlite3` 需要跑安装脚本。pnpm 10+ 默认拦截，已在 `pnpm-workspace.yaml` 的
   `onlyBuiltDependencies` 里放行；换机器后报 `ERR_PNPM_IGNORED_BUILDS` 就跑 `pnpm approve-builds --all`。
 - pnpm 12 偶尔会把 `node_modules/.pnpm/` 里的软链指到不存在的目录，表现为某个包的

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { orderBy } from 'es-toolkit'
+import type { RepoStatus } from '@git-nest/core'
 import { Button, ErrorNote, Textarea } from '@/components/ui'
 import { formatRelative } from '@/lib/format'
 import { useUiStore } from '@/store/ui'
@@ -21,7 +22,15 @@ export function ProjectDetailPage() {
   const projectId = Number(id)
   const openEdit = useUiStore((s) => s.openEdit)
   const [updating, setUpdating] = useState(false)
-  const { data: project, isPending, error } = useProject(Number.isFinite(projectId) ? projectId : null)
+  // 点一次「重新读取」就把 nonce 加一，绕过服务端短缓存重查一遍
+  const [freshNonce, setFreshNonce] = useState(0)
+  const validId = Number.isFinite(projectId) ? projectId : null
+  const { data: project, isPending, error } = useProject(validId)
+  // 状态提到页面这一层：missing 的提示要出现在页面最上面，不只是状态面板里
+  const { data: status, isFetching } = useProjectStatus(validId, {
+    fresh: freshNonce > 0,
+    nonce: freshNonce,
+  })
 
   if (error) {
     return (
@@ -39,6 +48,17 @@ export function ProjectDetailPage() {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-7 px-6 py-6">
+      {status?.status === 'missing' ? (
+        <div className="border-l-2 border-signal-bad bg-panel px-4 py-3">
+          <p className="text-[13.5px] font-medium text-signal-bad">这个目录不在了</p>
+          <p className="mt-1 text-[13px] text-ink-2">
+            清单里的记录还在（备注、标签都留着），只是磁盘上找不到
+            <span className="font-mono text-[12px]"> {project.path}</span>。
+            仓库如果是搬了家或改了名，点「编辑」把路径指到新位置就行；要是不用了就「移出清单」。
+          </p>
+        </div>
+      ) : null}
+
       <div>
         <Link to="/" className="font-mono text-[12px] text-ink-3 hover:text-accent hover:underline">
           ← 清单
@@ -113,7 +133,11 @@ export function ProjectDetailPage() {
         <UpdatePanel ids={[project.id]} onClose={() => setUpdating(false)} />
       ) : null}
 
-      <StatusPanel projectId={project.id} />
+      <StatusPanel
+        status={status}
+        isFetching={isFetching}
+        onRefresh={() => setFreshNonce((n) => n + 1)}
+      />
 
       <section>
         <h2 className="mb-2 text-[15px] font-semibold text-ink">备注</h2>
@@ -128,9 +152,10 @@ export function ProjectDetailPage() {
       </section>
 
       <section className="border border-dashed border-line px-4 py-3">
-        <h2 className="text-[13px] font-semibold text-ink">还没做的</h2>
+        <h2 className="text-[13px] font-semibold text-ink">这一页只读</h2>
         <p className="mt-1 text-[13px] text-ink-2">
-          提交图与 git 状态已接上。扫描目录导入在 M4。
+          提交、合并、rebase 不在这里做——它们会改写仓库，交给工具就等于越界。
+          要操作就去终端，完了回来点「重新读取」。
         </p>
       </section>
 
@@ -139,15 +164,19 @@ export function ProjectDetailPage() {
   )
 }
 
-/** git 状态面板：分支、上下游、最后提交。刷新按钮强制绕开短缓存。 */
-function StatusPanel({ projectId }: { projectId: number }) {
-  const [fresh, setFresh] = useState(false)
-  const { data: status, isFetching, refetch } = useProjectStatus(projectId, { fresh })
-
+/** git 状态面板：分支、上下游、最后提交。「重新读取」强制绕开短缓存并绕开服务端缓存。 */
+function StatusPanel({
+  status,
+  isFetching,
+  onRefresh,
+}: {
+  status: RepoStatus | undefined
+  isFetching: boolean
+  onRefresh: () => void
+}) {
   if (!status) {
     return <p className="font-mono text-[12px] text-ink-3">正在读 git 状态…</p>
   }
-
   const rows: [string, string][] = [
     ['状态', statusText(status.status)],
     ['当前分支', status.branch ?? (status.detached ? 'detached HEAD' : '—')],
@@ -168,14 +197,7 @@ function StatusPanel({ projectId }: { projectId: number }) {
       <div className="mb-2 flex items-center gap-2">
         <h2 className="text-[15px] font-semibold text-ink">git 状态</h2>
         <span className="font-mono text-[11.5px] text-ink-3">{formatRelative(status.checkedAt)}查的</span>
-        <Button
-          className="ml-auto"
-          disabled={isFetching}
-          onClick={() => {
-            setFresh(true)
-            void refetch().finally(() => setFresh(false))
-          }}
-        >
+        <Button className="ml-auto" disabled={isFetching} onClick={onRefresh}>
           {isFetching ? '刷新中…' : '重新读取'}
         </Button>
       </div>

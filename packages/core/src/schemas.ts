@@ -18,6 +18,8 @@ export type CreateProjectInput = z.input<typeof createProjectSchema>
 export const updateProjectSchema = z
   .object({
     name: trimmed.min(1, '名称不能为空').max(120).optional(),
+    // 仓库被移动 / 改名后需要重新指路，所以允许改 path
+    path: trimmed.min(1, '本地路径不能为空').max(400).optional(),
     category: trimmed.max(60).optional(),
     remoteUrl: trimmed.max(500).nullish().transform((v) => v || null),
     sourceUrl: trimmed.max(500).nullish().transform((v) => v || null),

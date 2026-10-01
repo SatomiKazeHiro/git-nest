@@ -103,7 +103,7 @@ export function ProjectFormDialog() {
 
     if (editingId) {
       update.mutate(
-        { id: editingId, patch: payload },
+        { id: editingId, patch: { ...payload, path: parsed.data.path } },
         {
           onSuccess: () => {
             if (tagNames.join() !== editing?.tags.map((t) => t.name).join()) {
@@ -140,7 +140,11 @@ export function ProjectFormDialog() {
   return (
     <Dialog
       title={editingId ? '编辑项目' : '添加项目'}
-      description={editingId ? '路径不可改：它就是这个仓库在本机的位置' : '把已经在本机的仓库加进清单'}
+      description={
+        editingId
+          ? '路径就是仓库在本机的位置；仓库搬走了就改这里'
+          : '把已经在本机的仓库加进清单'
+      }
       onClose={closeForm}
     >
       <form
@@ -167,7 +171,11 @@ export function ProjectFormDialog() {
         <Field
           label="本地路径"
           error={errors['path']}
-          hint="目录必须已存在。正斜杠即可，例如 D:/Git/canvas-editor"
+          hint={
+            editingId
+              ? '仓库被移动或改名了就改这里，指到新位置'
+              : '目录必须已存在。正斜杠即可，例如 D:/Git/canvas-editor'
+          }
         >
           {(id) => (
             <Input
@@ -175,8 +183,6 @@ export function ProjectFormDialog() {
               value={form.path}
               onChange={set('path')}
               placeholder="D:/Git/canvas-editor"
-              readOnly={Boolean(editingId)}
-              className={editingId ? 'text-ink-3' : ''}
             />
           )}
         </Field>

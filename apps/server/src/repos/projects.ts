@@ -128,6 +128,7 @@ export function nextSortOrder(db: DB, category: string): number {
 
 const UPDATABLE = {
   name: 'name',
+  path: 'path',
   category: 'category',
   remoteUrl: 'remote_url',
   sourceUrl: 'source_url',

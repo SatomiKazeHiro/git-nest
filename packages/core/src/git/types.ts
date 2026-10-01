@@ -18,6 +18,8 @@ export type UpdateStatus =
 export type GitErrorKind =
   | 'missing'
   | 'not_a_repo'
+  /** Windows 路径超过 MAX_PATH，git 进不去 */
+  | 'path_too_long'
   | 'timeout'
   | 'auth'
   | 'network'

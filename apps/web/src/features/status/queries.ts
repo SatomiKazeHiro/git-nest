@@ -9,7 +9,7 @@ export interface ProjectStatus {
 
 export const statusKeys = {
   batch: (ids: number[]) => ['status', ids.join(',')] as const,
-  one: (id: number, fresh: boolean) => ['status', 'one', id, fresh] as const,
+  one: (id: number, fresh: boolean, nonce: number) => ['status', 'one', id, fresh, nonce] as const,
 }
 
 /**
@@ -28,12 +28,17 @@ export function useStatuses(ids: number[]) {
   })
 }
 
-export function useProjectStatus(id: number | null, options: { fresh?: boolean } = {}) {
+export function useProjectStatus(
+  id: number | null,
+  options: { fresh?: boolean; nonce?: number } = {},
+) {
+  const fresh = options.fresh ?? false
   return useQuery({
-    queryKey: statusKeys.one(id ?? 0, options.fresh ?? false),
+    // nonce 变化就重新发一次请求：手动「重新读取」要绕开服务端那 3 秒短缓存
+    queryKey: statusKeys.one(id ?? 0, fresh, options.nonce ?? 0),
     queryFn: () =>
       api
-        .get<{ status: RepoStatus }>(`/projects/${id}/status${options.fresh ? '?fresh=true' : ''}`)
+        .get<{ status: RepoStatus }>(`/projects/${id}/status${fresh ? '?fresh=true' : ''}`)
         .then((r) => r.status),
     enabled: id !== null,
     staleTime: 3_000,

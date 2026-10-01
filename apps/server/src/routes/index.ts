@@ -15,7 +15,7 @@ import {
 import type { DB } from '../db/index.ts'
 import { HttpError, badRequest, conflict, fromZodError, notFound } from '../lib/errors.ts'
 import { dirExists, toAbsolutePath } from '../lib/paths.ts'
-import { getRemoteUrl } from '../lib/git.ts'
+import { getRemoteUrl, clearStatusCache } from '../lib/git.ts'
 import {
   deleteProject,
   getProject,
@@ -71,7 +71,17 @@ export const projectRoutes = (db: DB): FastifyPluginAsync => {
       const patch = parse(updateProjectSchema, req.body)
 
       if (!getProject(db, projectId)) throw notFound('项目')
+
+      // 改 path = 把这个项目重新指到另一个目录，先确认那个目录真的在
+      if (patch.path !== undefined) {
+        const abs = toAbsolutePath(patch.path)
+        if (!dirExists(abs)) throw badRequest(`目录不存在：${abs}`)
+        if (pathExists(db, abs, projectId)) throw conflict('这个路径已经在清单里了')
+        patch.path = abs
+      }
+
       if (!updateProject(db, projectId, patch)) throw notFound('项目')
+      clearStatusCache()
       return { project: getProject(db, projectId) }
     })
 
@@ -80,6 +90,7 @@ export const projectRoutes = (db: DB): FastifyPluginAsync => {
       const { id } = req.params as { id: string }
       const projectId = idParamSchema.parse(id)
       if (!deleteProject(db, projectId)) throw notFound('项目')
+      clearStatusCache()
       return { removed: projectId }
     })
 

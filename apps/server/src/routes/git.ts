@@ -38,6 +38,17 @@ export const gitRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
   fastify.get('/projects/:id/log', async (req) => {
     const { id } = req.params as { id: string }
     const path = requirePath(db, idParamSchema.parse(id))
+
+    // 目录没了 / 不是仓库时要说清楚，不能让前端显示成「还没有提交」
+    const status = await repoStatus(path, { fresh: true })
+    if (!status.isRepo) {
+      throw badRequest(
+        status.status === 'missing'
+          ? '目录不在了，读不到提交记录'
+          : '这个目录不是 git 仓库，读不到提交记录',
+      )
+    }
+
     const query = (req.query ?? {}) as { max?: string }
     const requested = Number(query.max)
     const max = Number.isFinite(requested) && requested > 0 ? Math.min(Math.floor(requested), 1000) : 200

@@ -242,9 +242,14 @@ function ProjectRow({
   const toggleSelected = useUiStore((s) => s.toggleSelected)
   const openEdit = useUiStore((s) => s.openEdit)
   const host = hostOf(p.remoteUrl)
+  // 目录没了：置灰但保留入口，让用户能改路径或移除——不自动消失
+  const gone = status?.status === 'missing'
 
   return (
-    <li className="row-link group flex items-center gap-3 py-1.5 pr-2">
+    <li
+      className={`row-link group flex items-center gap-3 py-1.5 pr-2 ${gone ? 'opacity-50' : ''}`}
+      title={gone ? '目录不在了。点「编辑」可以把它指到新位置。' : undefined}
+    >
       <input
         type="checkbox"
         checked={selected}

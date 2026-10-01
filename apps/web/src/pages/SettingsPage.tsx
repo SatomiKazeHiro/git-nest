@@ -20,9 +20,10 @@ export function SettingsPage() {
       <TagSection />
 
       <section className="border border-dashed border-line px-4 py-3">
-        <h2 className="text-[13px] font-semibold text-ink">待接上</h2>
+        <h2 className="text-[13px] font-semibold text-ink">接下来</h2>
         <p className="mt-1 text-[13px] text-ink-2">
-          M5 · 错误归因打磨与 Windows 兼容验证。扫描结果页直接改元数据在 M5。
+          五个里程碑都做完了：清单、git 状态、批量更新、扫描导入、异常与 Windows 验证。
+          往后要么接 Agent，要么就把用不顺手的地方磨一磨。
         </p>
       </section>
     </div>
