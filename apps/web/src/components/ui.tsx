@@ -50,7 +50,12 @@ export function Field({ label, hint, error, children }: FieldProps) {
 const inputClass =
   'w-full rounded-[3px] border border-line bg-panel px-2.5 py-1.5 font-mono text-[13px] text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none'
 
-export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
+type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
+  // React 19 里 ref 是普通 prop，直接透传即可（不用 forwardRef）
+  ref?: React.Ref<HTMLInputElement>
+}
+
+export function Input(props: InputProps) {
   const { className = '', ...rest } = props
   return <input {...rest} className={`${inputClass} ${className}`} />
 }

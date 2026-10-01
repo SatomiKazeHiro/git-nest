@@ -140,6 +140,35 @@ describe('POST /api/scan', () => {
       path.join(root, 'nested').replace(/\\/g, '/'),
     )
   })
+
+  it('常用目录可以删掉，并记住这次删除', async () => {
+    const before = await app.inject({ method: 'GET', url: '/api/settings' })
+    const dirs: string[] = before.json().settings.scanDirs
+    expect(dirs.length).toBeGreaterThan(0)
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/settings',
+      headers: json,
+      payload: { scanDirs: dirs.filter((d) => d !== dirs[0]) },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().settings.scanDirs).toEqual(dirs.slice(1))
+
+    // 再读一次确认真的落库了（不是只改了内存）
+    const after = await app.inject({ method: 'GET', url: '/api/settings' })
+    expect(after.json().settings.scanDirs).toEqual(dirs.slice(1))
+  })
+
+  it('损坏的 scanDirs 值不把整个设置搞坏', async () => {
+    db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(
+      'scanDirs',
+      '{不是 JSON',
+    )
+    const res = await app.inject({ method: 'GET', url: '/api/settings' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().settings.scanDirs).toEqual([])
+  })
 })
 
 describe('POST /api/projects/import', () => {

@@ -5,6 +5,7 @@ import type { UpdateReport } from '@git-nest/core'
 import { Button, ErrorNote } from '@/components/ui'
 import { statusText, statusTone } from '@/features/status/StatusCell'
 import { isPull, isReport, useUpdateTask, type TaskSnapshot } from './taskStream'
+import { useSettings } from '@/features/settings/queries'
 
 /** 能安全 ff-only 更新的状态：远程有、本地没有，且本地没有会挡路的提交 */
 const UPDATABLE = new Set(['behind'])
@@ -30,6 +31,8 @@ export function UpdatePanel({
     void qc.invalidateQueries({ queryKey: ['project'] })
   })
   const [picked, setPicked] = useState<Set<number>>(new Set())
+  const [confirming, setConfirming] = useState(false)
+  const { data: settings } = useSettings()
 
   const reports = useMemo(
     () => (task?.items ?? []).filter((i) => isReport(i.result)),
@@ -38,6 +41,10 @@ export function UpdatePanel({
   const updatable = reports.filter(
     (i) => isReport(i.result) && UPDATABLE.has(i.result.status),
   )
+
+  // 数量多时先确认范围：检查会联网 fetch 十几个仓库，不能一点就开跑
+  const threshold = settings?.confirmThreshold ?? 20
+  const overThreshold = ids.length > threshold
 
   const toggle = (projectId: number) =>
     setPicked((prev) => {
@@ -48,6 +55,11 @@ export function UpdatePanel({
     })
 
   const startCheckNow = () => {
+    if (overThreshold && !confirming) {
+      setConfirming(true)
+      return
+    }
+    setConfirming(false)
     reset()
     setPicked(new Set())
     void startCheck(ids.length > 0 ? ids : undefined)
@@ -69,8 +81,7 @@ export function UpdatePanel({
           ) : null}
           <Button onClick={startCheckNow} disabled={busy}>
             {busy ? '检查中…' : task ? '重新检查' : '检查更新'}
-          </Button>
-          <button
+          </Button>          <button
             onClick={() => {
               reset()
               onClose()
@@ -83,6 +94,18 @@ export function UpdatePanel({
         </div>
       </header>
 
+      {confirming && overThreshold ? (
+        <p className="flex flex-wrap items-center gap-3 border-b border-line-soft px-4 py-2.5">
+          <span className="text-[13px] text-signal-ahead">
+            要对 {ids.length} 个项目联网 fetch（超过确认阈值 {threshold}），确认吗？
+          </span>
+          <Button variant="primary" onClick={startCheckNow} disabled={busy}>
+            确认，检查这 {ids.length} 个
+          </Button>
+          <Button onClick={() => setConfirming(false)}>再想想</Button>
+        </p>
+      ) : null}
+
       {error ? (
         <div className="px-4 pt-3">
           <ErrorNote message={error} />
@@ -92,8 +115,8 @@ export function UpdatePanel({
       {!task ? (
         <p className="px-4 py-4 text-[13px] text-ink-2">
           {ids.length > 0
-            ? `将对勾选的 ${ids.length} 个项目做检查。`
-            : '将对当前清单里的项目做检查（personal 分类默认跳过，可在设置里打开）。'}
+            ? `将检查当前筛选出的 ${ids.length} 个项目（personal 分类默认跳过，可在设置里打开）。`
+            : '先在上方勾选项目，就只检查勾选的那几个。'}
         </p>
       ) : task.status === 'failed' ? (
         <div className="px-4 py-3">
@@ -218,7 +241,7 @@ function TaskRow({
         <ul className="mt-1.5 ml-12 flex flex-col gap-0.5">
           {item.result.incoming.slice(0, 4).map((c) => (
             <li key={c.shortHash} className="flex gap-2 text-[12.5px]">
-              <span className="w-14 shrink-0 font-mono text-[11.5px] text-ink-3">
+              <span className="w-20 shrink-0 truncate font-mono text-[11.5px] text-ink-3">
                 {c.shortHash}
               </span>
               <span className="min-w-0 flex-1 truncate text-ink-2">{c.subject}</span>

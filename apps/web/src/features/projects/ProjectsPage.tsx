@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { groupBy, orderBy } from 'es-toolkit'
 import { useDebounce } from 'ahooks'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
 import { Button, Dialog, EmptyState, ErrorNote, Input } from '@/components/ui'
-import { formatDate, hostOf, shortenPath } from '@/lib/format'
+import { formatDate, formatRelative, hostOf, shortenPath } from '@/lib/format'
 import { UNCATEGORIZED, useUiStore } from '@/store/ui'
 import { ProjectFormDialog } from './ProjectFormDialog'
 import { useProjects, useRemoveProject } from './queries'
@@ -13,6 +13,7 @@ import { useStatuses } from '@/features/status/queries'
 import { UpdatePanel } from '@/features/updates/UpdatePanel'
 
 export function ProjectsPage() {
+  const navigate = useNavigate()
   const filters = useUiStore((s) => s.filters)
   const setCategory = useUiStore((s) => s.setCategory)
   const selected = useUiStore((s) => s.selected)
@@ -50,6 +51,7 @@ export function ProjectsPage() {
       <Toolbar
         total={projects?.length ?? 0}
         onCheckUpdates={() => setPanelOpen(true)}
+        onScan={() => navigate('/settings#scan')}
         checking={panelOpen}
       />
 
@@ -135,6 +137,7 @@ function ColumnHeader() {
       <span className="hidden w-48 shrink-0 md:block">状态</span>
       <span className="w-20 shrink-0 sm:w-24">标签</span>
       <span className="hidden w-16 shrink-0 text-right sm:inline-block">备注</span>
+      <span className="hidden w-20 shrink-0 text-right lg:inline-block">检查</span>
       <span className="hidden w-20 shrink-0 text-right md:inline-block">加入</span>
       <span className="w-16 shrink-0" />
     </li>
@@ -144,10 +147,12 @@ function ColumnHeader() {
 function Toolbar({
   total,
   onCheckUpdates,
+  onScan,
   checking,
 }: {
   total: number
   onCheckUpdates: () => void
+  onScan: () => void
   checking: boolean
 }) {
   const { filters, setQuery, clearFilters, openCreate } = useUiStore()
@@ -172,6 +177,9 @@ function Toolbar({
       <div className="ml-auto flex items-center gap-2">
         <Button onClick={onCheckUpdates} className={checking ? 'border-accent text-accent' : ''}>
           检查更新
+        </Button>
+        <Button onClick={onScan} title="去设置里扫描一个目录，把本机仓库批量加进清单">
+          扫描目录
         </Button>
         <Button variant="primary" onClick={openCreate}>
           添加项目
@@ -287,6 +295,12 @@ function ProjectRow({
       </span>
       <span className="hidden w-16 shrink-0 text-right font-mono text-[12px] text-ink-3 sm:block">
         {p.notesCount > 0 ? `${p.notesCount} 条` : ''}
+      </span>
+      <span
+        className="hidden w-20 shrink-0 text-right font-mono text-[12px] text-ink-3 lg:block"
+        title={p.latestCheck ? `上次检查：${p.latestCheck.status}` : '还没检查过更新'}
+      >
+        {p.latestCheck ? formatRelative(p.latestCheck.checkedAt) : '—'}
       </span>
       <span className="hidden w-20 shrink-0 text-right font-mono text-[12px] text-ink-3 md:block">
         {formatDate(p.addedAt)}

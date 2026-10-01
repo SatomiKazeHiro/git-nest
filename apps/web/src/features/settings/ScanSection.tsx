@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router'
+import { Link, useLocation } from 'react-router'
 import type { ScannedRepo } from '@git-nest/core'
 import { ApiError, api } from '@/lib/api'
 import { Button, ErrorNote, Field, Input } from '@/components/ui'
-import { useSettings } from './queries'
+import { useSaveSettings, useSettings } from './queries'
 
 export interface ScannedRepoWithProject extends ScannedRepo {
   projectId: number | null
@@ -18,9 +18,14 @@ interface ScanResponse {
 }
 
 export function useScan() {
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: { dir: string; depth: number; remember: boolean }) =>
       api.post<ScanResponse>('/scan', input),
+    onSuccess: (_data, input) => {
+      // remember 会把目录写进设置，不刷新的话新加的常用目录不会出现在页面上
+      if (input.remember) void qc.invalidateQueries({ queryKey: ['settings'] })
+    },
   })
 }
 
@@ -48,6 +53,7 @@ export function useImport() {
  */
 export function ScanSection() {
   const { data: settings } = useSettings()
+  const saveSettings = useSaveSettings()
   const scan = useScan()
   const importRepos = useImport()
   const [dir, setDir] = useState('')
@@ -55,6 +61,21 @@ export function ScanSection() {
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [result, setResult] = useState<ScanResponse | null>(null)
   const [banner, setBanner] = useState<string | null>(null)
+
+  // 从清单页点「扫描目录」跳过来时（/settings#scan），直接把焦点放到输入框
+  const { hash } = useLocation()
+  const dirRef = useRef<HTMLInputElement>(null)
+  const sectionRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (hash !== '#scan') return
+    sectionRef.current?.scrollIntoView({ block: 'start' })
+    dirRef.current?.focus()
+  }, [hash])
+
+  const forgetDir = (target: string) => {
+    const next = (settings?.scanDirs ?? []).filter((d) => d !== target)
+    saveSettings.mutate({ scanDirs: next })
+  }
 
   const runScan = (target: string, remember = false) => {
     const value = target.trim()
@@ -112,7 +133,7 @@ export function ScanSection() {
   }
 
   return (
-    <section>
+    <section ref={sectionRef} id="scan">
       <h2 className="text-[15px] font-semibold text-ink">扫描目录</h2>
       <p className="mt-0.5 text-[13px] text-ink-2">
         扫描只读：它只看有哪些仓库，不写清单也不动磁盘。挑中的才会入库。
@@ -123,6 +144,7 @@ export function ScanSection() {
           {(id) => (
             <Input
               id={id}
+              ref={dirRef}
               value={dir}
               onChange={(e) => setDir(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && runScan(dir, true)}
@@ -157,15 +179,23 @@ export function ScanSection() {
           <p className="text-[12px] text-ink-3">常用目录</p>
           <ul className="mt-1 flex flex-wrap gap-1.5">
             {settings.scanDirs.map((d) => (
-              <li key={d}>
+              <li key={d} className="flex items-center rounded-[3px] border border-line bg-panel">
                 <button
                   onClick={() => {
                     setDir(d)
                     runScan(d, true)
                   }}
-                  className="rounded-[3px] border border-line bg-panel px-1.5 py-0.5 font-mono text-[11.5px] text-ink-2 hover:border-ink-3 hover:text-ink"
+                  className="px-1.5 py-0.5 font-mono text-[11.5px] text-ink-2 hover:text-ink"
                 >
                   {d}
+                </button>
+                <button
+                  onClick={() => forgetDir(d)}
+                  aria-label={`不再记住 ${d}`}
+                  title="不再记住这个目录"
+                  className="border-l border-line px-1 py-0.5 font-mono text-[11.5px] text-ink-3 hover:bg-panel hover:text-signal-bad"
+                >
+                  ×
                 </button>
               </li>
             ))}
