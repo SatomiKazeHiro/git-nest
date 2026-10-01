@@ -60,7 +60,12 @@ afterEach(async () => {
 afterAll(async () => {
   await app.close()
   db.close()
-  fs.rmSync(root, { recursive: true, force: true })
+  // Windows 上文件句柄偶尔还开着，清理失败不该让整轮挂掉（与 test/helpers 的处理一致）
+  try {
+    fs.rmSync(root, { recursive: true, force: true })
+  } catch {
+    // 忽略
+  }
 })
 
 function url(instance: ReturnType<typeof buildApp>['app']): string {
@@ -97,6 +102,30 @@ async function createSlowTask(target: string): Promise<string> {
 }
 
 describe('进度 SSE 的连接生命周期', () => {
+  it('任务跑完时按顺序推出事件并以 closed 收尾', async () => {
+    // 审计指出这一整块原来零测试。这里钉住事件的形状与顺序：
+    // started → item（每个仓库）→ finished → closed。
+    const taskId = await createSlowTask('sequence-repo')
+
+    const res = await fetch(`${baseUrl}/api/updates/${taskId}/events`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('text/event-stream')
+
+    const body = await res.text()
+    const events = body
+      .split('\n\n')
+      .filter((chunk) => chunk.startsWith('data: '))
+      .map((chunk) => JSON.parse(chunk.slice('data: '.length)) as { type: string })
+
+    const types = events.map((e) => e.type)
+    expect(types[0]).toBe('started')
+    expect(types).toContain('item')
+    expect(types).toContain('finished')
+    expect(types[types.length - 1]).toBe('closed')
+    // finished 必须在 closed 之前 —— 客户端靠这个顺序决定要不要回调 onFinished
+    expect(types.indexOf('finished')).toBeLessThan(types.lastIndexOf('closed'))
+  })
+
   it('订阅不存在的任务返回 404，不是挂住', async () => {
     const res = await fetch(`${baseUrl}/api/updates/does-not-exist/events`)
     expect(res.status).toBe(404)

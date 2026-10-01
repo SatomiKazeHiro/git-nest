@@ -304,18 +304,29 @@ describe('批量操作的部分失败', () => {
 })
 
 describe('锁文件残留', () => {
-  it('index.lock 存在时给出可操作的提示', async () => {
+  it('index.lock 残留时：要么能读，要么报错必须说清是锁的问题', async () => {
+    // 归因映射本身在 packages/core/test/git/errors.test.ts 里单独测过；
+    // 这条测的是**真实场景**：残留一个 index.lock 之后 git 到底还读不读得出来。
+    //
+    // 原来这里是 `if (status.error) { ... }` —— 没有 error 时零断言通过，
+    // 永远不会失败（审计指出的假绿）。现在两个分支都显式断言。
     const { getRepoStatus } = await import('@git-nest/core/git')
     const dir = makeRepo(path.join(root, 'locked'))
-    // 造一个残留的锁文件
     fs.writeFileSync(path.join(dir, '.git', 'index.lock'), '', 'utf8')
 
     const status = await getRepoStatus(dir, { timeoutMs: 10_000 })
-    // 不是所有 git 命令都会被锁卡住（status --porcelain 只读，通常还能跑），
-    // 所以只要它给出了错误，就必须说清是锁的问题
+
     if (status.error) {
+      // 只读命令通常不被锁挡住，被挡住了就必须说清是锁 + 怎么办
       expect(status.error.kind).toBe('locked')
       expect(status.error.message).toContain('index.lock')
+    } else {
+      // 没被挡住也是合法结果，但得真的读出了东西（不能是「没报错也没数据」）
+      expect(status.isRepo).toBe(true)
+      expect(status.branch).toBe('main')
+      // makeRepo 造的是「有远程、没上游」的仓库，所以是 no_upstream 而不是 up_to_date
+      expect(status.status).toBe('no_upstream')
+      expect(status.lastCommit).not.toBeNull()
     }
   })
 })

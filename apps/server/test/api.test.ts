@@ -246,24 +246,50 @@ describe('PATCH / DELETE /api/projects/:id', () => {
     expect(res.statusCode).toBe(409)
   })
 
-  it('删除项目不会留下备注与标签关联', async () => {
+  it('删除项目不会留下备注、标签关联与检查历史', async () => {
+    // 标题原来写「备注与标签关联」，但只断言了 notes（审计指出：假绿）。
+    // 这里把三种会级联的子行都真的造出来 —— 空表上的 COUNT(*) = 0 说明不了任何事。
     const created = await makeProject('temporary')
     const id = created.json().project.id
+
     await app.inject({
       method: 'POST',
       url: `/api/projects/${id}/notes`,
       headers: json,
       payload: { content: '待会儿删掉' },
     })
+    const tagged = await app.inject({
+      method: 'PUT',
+      url: `/api/projects/${id}/tags`,
+      headers: json,
+      payload: { tagNames: ['要删的标签'] },
+    })
+    expect(tagged.statusCode).toBe(200)
+    db.prepare(
+      `INSERT INTO update_checks (project_id, checked_at, status, ahead_count, behind_count, detail)
+       VALUES (?, ?, ?, ?, ?, NULL)`,
+    ).run(id, new Date().toISOString(), 'behind', 0, 1)
+
+    // 先确认三张表真的有行（否则下面的 0 是空的 0）
+    const countOf = (table: string) =>
+      (db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE project_id = ?`).get(id) as { n: number })
+        .n
+    expect(countOf('notes')).toBe(1)
+    expect(countOf('project_tags')).toBe(1)
+    expect(countOf('update_checks')).toBe(1)
 
     const res = await app.inject({ method: 'DELETE', url: `/api/projects/${id}` })
     expect(res.statusCode).toBe(200)
     expect((await app.inject({ method: 'GET', url: `/api/projects/${id}` })).statusCode).toBe(404)
 
-    const left = db
-      .prepare('SELECT COUNT(*) AS n FROM notes WHERE project_id = ?')
-      .get(id) as { n: number }
-    expect(left.n).toBe(0)
+    for (const table of ['notes', 'project_tags', 'update_checks']) {
+      expect(countOf(table), `${table} 不该留下孤儿行`).toBe(0)
+    }
+    // 标签本身留着（可能还有别的项目在用）
+    const tagLeft = db.prepare('SELECT COUNT(*) AS n FROM tags WHERE name = ?').get('要删的标签') as {
+      n: number
+    }
+    expect(tagLeft.n).toBe(1)
     // 磁盘目录仍在：删除只动 DB
     expect(fs.existsSync(path.join(repoDir, 'temporary'))).toBe(true)
   })
