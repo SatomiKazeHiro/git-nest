@@ -281,7 +281,7 @@ function ProjectRow({
         {host ?? ''}
       </span>
       <span className="hidden w-48 shrink-0 md:block">
-        <StatusCell status={status} />
+        <StatusCell status={status} checkedAt={p.latestCheck?.checkedAt ?? null} />
       </span>
       <span className="w-20 shrink-0 flex-wrap gap-1 sm:w-24">
         {p.tags.map((t) => (

@@ -8,20 +8,27 @@ import { useUiStore } from '@/store/ui'
 import { ProjectFormDialog } from '@/features/projects/ProjectFormDialog'
 import { GitGraph } from '@/features/gitgraph/GitGraph'
 import { useProjectStatus } from '@/features/status/queries'
-import { statusText, statusTitle } from '@/features/status/StatusCell'
+import { statusTitle, textFor, freshnessOf } from '@/features/status/StatusCell'
 import { UpdatePanel } from '@/features/updates/UpdatePanel'
 import {
   useAddNote,
   useProject,
   useRemoveNote,
+  useSetProjectTags,
+  useTags,
   useUpdateNote,
 } from '@/features/projects/queries'
+import { TagPicker } from '@/features/projects/TagPicker'
 
 export function ProjectDetailPage() {
   const { id } = useParams()
   const projectId = Number(id)
   const openEdit = useUiStore((s) => s.openEdit)
   const [updating, setUpdating] = useState(false)
+  const [editingTags, setEditingTags] = useState(false)
+  const [tagNames, setTagNames] = useState<string[]>([])
+  const { data: allTags = [] } = useTags()
+  const setTags = useSetProjectTags()
   // 点一次「重新读取」就把 nonce 加一，绕过服务端短缓存重查一遍
   const [freshNonce, setFreshNonce] = useState(0)
   const validId = Number.isFinite(projectId) ? projectId : null
@@ -94,7 +101,7 @@ export function ProjectDetailPage() {
         <dd className="font-mono text-[12.5px] text-ink">{project.category || '未分类'}</dd>
 
         <dt className="text-ink-3">标签</dt>
-        <dd className="flex flex-wrap gap-1">
+        <dd className="flex flex-wrap items-center gap-1">
           {project.tags.length === 0 ? (
             <span className="text-ink-3">—</span>
           ) : (
@@ -106,6 +113,30 @@ export function ProjectDetailPage() {
                 {t.name}
               </span>
             ))
+          )}
+          {/* 设计文档 7.2：tag 管理放在详情页，不必先点「编辑」弹窗 */}
+          {editingTags ? (
+            <dd className="col-span-2 mt-1.5 flex flex-wrap items-center gap-2">
+              <TagPicker
+                tags={allTags}
+                value={tagNames}
+                onChange={(next) => {
+                  setTagNames(next)
+                  setTags.mutate({ id: project.id, tagNames: next })
+                }}
+              />
+              <Button onClick={() => setEditingTags(false)}>好了</Button>
+            </dd>
+          ) : (
+            <button
+              onClick={() => {
+                setTagNames(project.tags.map((t) => t.name))
+                setEditingTags(true)
+              }}
+              className="ml-1 text-[12px] text-ink-2 hover:text-accent hover:underline"
+            >
+              编辑
+            </button>
           )}
         </dd>
 
@@ -132,11 +163,11 @@ export function ProjectDetailPage() {
       {updating ? (
         <UpdatePanel ids={[project.id]} onClose={() => setUpdating(false)} />
       ) : null}
-
       <StatusPanel
         status={status}
         isFetching={isFetching}
         onRefresh={() => setFreshNonce((n) => n + 1)}
+        lastCheckAt={project.latestCheck?.checkedAt ?? null}
       />
 
       <section>
@@ -169,16 +200,20 @@ function StatusPanel({
   status,
   isFetching,
   onRefresh,
+  lastCheckAt,
 }: {
   status: RepoStatus | undefined
   isFetching: boolean
   onRefresh: () => void
+  lastCheckAt: string | null
 }) {
   if (!status) {
     return <p className="font-mono text-[12px] text-ink-3">正在读 git 状态…</p>
   }
+  const freshness = freshnessOf({ checkedAt: lastCheckAt })
+
   const rows: [string, string][] = [
-    ['状态', statusText(status.status)],
+    ['状态', textFor(status.status, freshness)],
     ['当前分支', status.branch ?? (status.detached ? 'detached HEAD' : '—')],
     ['上游分支', status.upstream ?? '—'],
     [
@@ -194,19 +229,24 @@ function StatusPanel({
 
   return (
     <section>
-      <div className="mb-2 flex items-center gap-2">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
         <h2 className="text-[15px] font-semibold text-ink">git 状态</h2>
-        <span className="font-mono text-[11.5px] text-ink-3">{formatRelative(status.checkedAt)}查的</span>
+        <span className="font-mono text-[11.5px] text-ink-3">
+          本地状态 · {formatRelative(status.checkedAt)}读取
+        </span>
+        <span className="font-mono text-[11.5px] text-ink-3">
+          远程上次检查 · {lastCheckAt ? `${formatRelative(lastCheckAt)}查的` : '从没查过'}
+        </span>
         <Button className="ml-auto" disabled={isFetching} onClick={onRefresh}>
-          {isFetching ? '刷新中…' : '重新读取'}
+          {isFetching ? '读取中…' : '重新读取'}
         </Button>
       </div>
 
-      <p className="mb-2 text-[12.5px] text-ink-2" title={statusTitle(status)}>
-        {statusTitle(status)}
-        {status.upstream && (status.ahead || status.behind)
-          ? '（基于上次 fetch 的结果，刷新不会联网）'
-          : ''}
+      <p className="mb-2 text-[12.5px] text-ink-2" title={statusTitle(status, { checkedAt: lastCheckAt })}>
+        {statusTitle(status, { checkedAt: lastCheckAt })}
+      </p>
+      <p className="mb-2 text-[12px] text-ink-3">
+        「重新读取」只读本地，不会联网。想知道远程有没有新东西，点上面的「检查更新」。
       </p>
 
       <dl className="grid grid-cols-[7rem_1fr] gap-y-2 border-y border-line-soft py-3 text-[13px]">

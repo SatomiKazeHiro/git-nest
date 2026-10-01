@@ -5,6 +5,7 @@ import type { ScannedRepo } from '@git-nest/core'
 import { ApiError, api } from '@/lib/api'
 import { Button, ErrorNote, Field, Input } from '@/components/ui'
 import { useSaveSettings, useSettings } from './queries'
+import { useRemoveProject } from '@/features/projects/queries'
 
 export interface ScannedRepoWithProject extends ScannedRepo {
   projectId: number | null
@@ -61,6 +62,8 @@ export function ScanSection() {
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [result, setResult] = useState<ScanResponse | null>(null)
   const [banner, setBanner] = useState<string | null>(null)
+  const [removing, setRemoving] = useState<ScannedRepoWithProject | null>(null)
+  const removeProject = useRemoveProject()
 
   // 从清单页点「扫描目录」跳过来时（/settings#scan），直接把焦点放到输入框
   const { hash } = useLocation()
@@ -244,6 +247,7 @@ export function ScanSection() {
                   repo={repo}
                   picked={picked.has(repo.dir)}
                   onToggle={() => toggle(repo.dir)}
+                  onRemove={() => setRemoving(repo)}
                 />
               ))}
             </ul>
@@ -283,7 +287,65 @@ export function ScanSection() {
           ) : null}
         </div>
       ) : null}
+      {removing?.projectId ? (
+        <RemoveDialog
+          repo={removing}
+          busy={removeProject.isPending}
+          onClose={() => setRemoving(null)}
+          onConfirm={() => {
+            removeProject.mutate(removing.projectId!, {
+              onSuccess: () => {
+                setBanner(`已把 ${removing.name} 移出清单（磁盘上的仓库没动）`)
+                setRemoving(null)
+                // 重新扫一遍，让置灰状态跟上
+                runScan(result?.dir ?? dir)
+              },
+              onError: (e) =>
+                setBanner(e instanceof ApiError ? e.message : '移除失败'),
+            })
+          }}
+        />
+      ) : null}
     </section>
+  )
+}
+
+/** 设计文档 7.3：扫描区里也能「移除管理」——只删记录，不动磁盘。 */
+function RemoveDialog({
+  repo,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  repo: ScannedRepoWithProject
+  busy: boolean
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 p-6"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="w-full max-w-md rounded-[4px] border border-line bg-panel px-5 py-4 shadow-[0_8px_32px_rgba(19,24,29,0.14)]"
+      >
+        <h2 className="text-[15px] font-semibold text-ink">把 {repo.name} 移出清单？</h2>
+        <p className="mt-1.5 text-[13px] text-ink-2">
+          只删掉这一条记录。磁盘上的{' '}
+          <span className="font-mono text-[12px]">{repo.dir}</span> 和它的 git 历史都不动，
+          备注与标签关联会一起清掉。
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button onClick={onClose}>留下</Button>
+          <Button variant="danger" disabled={busy} onClick={onConfirm}>
+            移出清单
+          </Button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -291,10 +353,12 @@ function ScanRow({
   repo,
   picked,
   onToggle,
+  onRemove,
 }: {
   repo: ScannedRepoWithProject
   picked: boolean
   onToggle: () => void
+  onRemove: () => void
 }) {
   return (
     <li
@@ -336,8 +400,19 @@ function ScanRow({
       </span>
 
       {repo.alreadyTracked ? (
-        <span className="shrink-0 font-mono text-[11px] text-ink-3">
-          已在清单{repo.projectCategory ? ` · ${repo.projectCategory}` : ''}
+        <span className="flex shrink-0 items-center gap-2">
+          <span className="font-mono text-[11px] text-ink-3">
+            已在清单{repo.projectCategory ? ` · ${repo.projectCategory}` : ''}
+          </span>
+          {repo.projectId ? (
+            <button
+              onClick={onRemove}
+              className="text-[11.5px] text-ink-2 underline decoration-dotted hover:text-signal-bad"
+              title="只从清单里移除这一条记录，磁盘上的仓库不动"
+            >
+              移出清单
+            </button>
+          ) : null}
         </span>
       ) : (
         <span className="shrink-0 font-mono text-[11px] text-ink-3">
