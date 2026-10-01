@@ -17,11 +17,6 @@ export function createTag(db: DB, input: { name: string; color: string | null })
   return { id: Number(info.lastInsertRowid), name: input.name, color: input.color }
 }
 
-export function tagIdByName(db: DB, name: string): number | null {
-  const row = db.prepare('SELECT id FROM tags WHERE name = ?').get(name) as { id: number } | undefined
-  return row?.id ?? null
-}
-
 /** 整体替换某个项目的 tag 集合；不存在的标签名按需创建。 */
 export function setProjectTags(db: DB, projectId: number, tagNames: string[]): void {
   const unique = [...new Set(tagNames.map((n) => n.trim()).filter(Boolean))]

@@ -6,11 +6,19 @@ export interface TagWithUsage extends Tag {
   projectCount: number
 }
 
+/**
+ * 所有 query key。写操作后需要失效哪些前缀，统一看 `invalidateAll`，
+ * 别在各个组件里各写一份（以前 UpdatePanel / ScanSection / 这里各有一份，
+ * 加一个 key 就要改三处）。
+ */
 export const queryKeys = {
   projects: (params: { category?: string | null; tag?: string | null; q?: string }) =>
     ['projects', params] as const,
   project: (id: number) => ['project', id] as const,
   tags: ['tags'] as const,
+  status: ['status'] as const,
+  settings: ['settings'] as const,
+  log: ['log'] as const,
 }
 
 function toQuery(params: { category?: string | null; tag?: string | null; q?: string }) {
@@ -45,13 +53,21 @@ export function useTags() {
   })
 }
 
-/** 任何写操作后都让清单与标签重新对齐 */
-function useInvalidate() {
+/**
+ * 任何写操作后都让清单与标签重新对齐。
+ *
+ * 这里是**唯一**的失效入口：状态列、检查时间、设置都可能被一次写入影响
+ * （比如删项目会清状态缓存、导入会改常用目录），所以一起失效最省心，
+ * 也免得某处漏掉一个 key 导致界面停在旧数据上。
+ */
+export function useInvalidate() {
   const qc = useQueryClient()
   return () => {
-    void qc.invalidateQueries({ queryKey: ['projects'] })
-    void qc.invalidateQueries({ queryKey: ['project'] })
-    void qc.invalidateQueries({ queryKey: ['tags'] })
+    void qc.invalidateQueries({ queryKey: queryKeys.projects({}) })
+    void qc.invalidateQueries({ queryKey: queryKeys.project(0) })
+    void qc.invalidateQueries({ queryKey: queryKeys.tags })
+    void qc.invalidateQueries({ queryKey: queryKeys.status })
+    void qc.invalidateQueries({ queryKey: queryKeys.settings })
   }
 }
 

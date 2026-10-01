@@ -9,6 +9,7 @@ import {
   type Tag,
   type UpdateCheckSummary,
 } from '@git-nest/core'
+import { listNotes as listNotesImpl } from './notes.ts'
 
 interface ProjectRow {
   id: number
@@ -180,24 +181,9 @@ export function pathExists(db: DB, p: string, exceptId?: number): boolean {
 }
 
 export function listNotes(db: DB, projectId: number): Note[] {
-  const rows = db
-    .prepare('SELECT * FROM notes WHERE project_id = ? ORDER BY created_at DESC, id DESC')
-    .all(projectId) as {
-    id: number
-    project_id: number
-    content: string
-    created_at: string
-    updated_at: string
-  }[]
-  return rows.map((r) => ({
-    id: r.id,
-    projectId: r.project_id,
-    content: r.content,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
-  }))
+  // 实现在 repos/notes.ts；这里保留转发是为了不动既有调用方
+  return listNotesImpl(db, projectId)
 }
-
 export function tagsByProject(db: DB, ids: number[]): Map<number, Tag[]> {
   const map = new Map<number, Tag[]>()
   if (ids.length === 0) return map

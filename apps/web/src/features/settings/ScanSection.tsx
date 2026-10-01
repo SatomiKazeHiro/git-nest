@@ -5,7 +5,7 @@ import type { ScannedRepo } from '@git-nest/core'
 import { ApiError, api } from '@/lib/api'
 import { Button, ErrorNote, Field, Input } from '@/components/ui'
 import { useSaveSettings, useSettings } from './queries'
-import { useRemoveProject } from '@/features/projects/queries'
+import { useRemoveProject, useInvalidate } from '@/features/projects/queries'
 
 export interface ScannedRepoWithProject extends ScannedRepo {
   projectId: number | null
@@ -31,18 +31,14 @@ export function useScan() {
 }
 
 export function useImport() {
-  const qc = useQueryClient()
+  const invalidate = useInvalidate()
   return useMutation({
     mutationFn: (input: { paths: string[]; category: string }) =>
       api.post<{ created: { id: number; name: string }[]; skipped: { path: string; reason: string }[] }>(
         '/projects/import',
         input,
       ),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['projects'] })
-      void qc.invalidateQueries({ queryKey: ['status'] })
-      void qc.invalidateQueries({ queryKey: ['settings'] })
-    },
+    onSuccess: invalidate,
   })
 }
 

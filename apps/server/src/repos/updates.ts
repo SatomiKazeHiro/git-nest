@@ -20,25 +20,3 @@ export function recordUpdateCheck(db: DB, projectId: number, report: UpdateRepor
     }),
   )
 }
-
-export interface UpdateCheckRow {
-  id: number
-  projectId: number
-  checkedAt: string
-  status: string
-  aheadCount: number | null
-  behindCount: number | null
-  detail: string | null
-}
-
-export function historyOf(db: DB, projectId: number, limit = 20): UpdateCheckRow[] {
-  const rows = db
-    .prepare(
-      `SELECT id, project_id AS projectId, checked_at AS checkedAt, status,
-              ahead_count AS aheadCount, behind_count AS behindCount, detail
-       FROM update_checks WHERE project_id = ?
-       ORDER BY checked_at DESC, id DESC LIMIT ?`,
-    )
-    .all(projectId, limit) as UpdateCheckRow[]
-  return rows
-}

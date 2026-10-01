@@ -25,6 +25,7 @@ import {
   pathExists,
   updateProject,
 } from '../repos/projects.ts'
+import { createNote, deleteNote, updateNote } from '../repos/notes.ts'
 import { createTag, listTags, setProjectTags, tagUsageCount, deleteTag } from '../repos/tags.ts'
 
 type InferOutput<S> = S extends ZodType<infer O, unknown> ? O : never
@@ -115,13 +116,7 @@ export const projectRoutes = (db: DB): FastifyPluginAsync => {
       const projectId = idParamSchema.parse(id)
       const { content } = parse(createNoteSchema, req.body)
       if (!getProject(db, projectId)) throw notFound('项目')
-      const now = new Date().toISOString()
-      const info = db
-        .prepare(
-          'INSERT INTO notes (project_id, content, created_at, updated_at) VALUES (?, ?, ?, ?)',
-        )
-        .run(projectId, content, now, now)
-      return reply.code(201).send({ noteId: Number(info.lastInsertRowid) })
+      return reply.code(201).send({ noteId: createNote(db, projectId, content) })
     })
   }
   return app
@@ -132,18 +127,14 @@ export const noteRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
     const { id } = req.params as { id: string }
     const noteId = idParamSchema.parse(id)
     const { content } = parse(updateNoteSchema, req.body)
-    const info = db
-      .prepare('UPDATE notes SET content = ?, updated_at = ? WHERE id = ?')
-      .run(content, new Date().toISOString(), noteId)
-    if (info.changes === 0) throw notFound('备注')
+    if (!updateNote(db, noteId, content)) throw notFound('备注')
     return { ok: true }
   })
 
   fastify.delete('/notes/:id', async (req) => {
     const { id } = req.params as { id: string }
     const noteId = idParamSchema.parse(id)
-    const info = db.prepare('DELETE FROM notes WHERE id = ?').run(noteId)
-    if (info.changes === 0) throw notFound('备注')
+    if (!deleteNote(db, noteId)) throw notFound('备注')
     return { ok: true }
   })
 }
