@@ -198,6 +198,38 @@ describe('PATCH / DELETE /api/projects/:id', () => {
     expect(res.statusCode).toBe(422)
   })
 
+  it('同一路径不同大小写也算重复（Windows 上目录不区分大小写）', async () => {
+    // SQLite 的 `=` 对 TEXT 默认区分大小写，而 NTFS 不区分。
+    // 只靠应用层比较，同一个目录能进清单两条：状态查两次、DELETE 只删一条。
+    const created = await makeProject('case-canonical')
+    expect(created.statusCode).toBe(201)
+    const original = created.json().project.path as string
+
+    const again = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      headers: json,
+      payload: { name: 'case-upper', path: original.toUpperCase() },
+    })
+
+    expect(again.statusCode).toBe(409)
+  })
+
+  it('改 path 时也要做同样的大小写比较', async () => {
+    const first = await makeProject('case-a')
+    const second = await makeProject('case-b')
+    const target = first.json().project.path as string
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/projects/${second.json().project.id}`,
+      headers: json,
+      payload: { path: target.toUpperCase() },
+    })
+
+    expect(res.statusCode).toBe(409)
+  })
+
   it('删除项目不会留下备注与标签关联', async () => {
     const created = await makeProject('temporary')
     const id = created.json().project.id

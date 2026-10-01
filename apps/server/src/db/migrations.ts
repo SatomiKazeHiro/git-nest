@@ -60,4 +60,15 @@ export const migrations = [
       );
     `,
   },
+  {
+    id: '003_projects_path_ci_unique',
+    sql: `
+      -- path 原有 UNIQUE 是区分大小写的，而 Windows 的文件系统不区分：
+      -- 同一个目录可以用不同大小写写进清单两条（状态查两次、DELETE 只删一条）。
+      -- 这里在库层再兜一道（应用层 pathExists 也按 lower 比较，两边语义一致）。
+      -- 用部分索引：path 为空的记录不参与。
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_path_ci
+        ON projects(lower(path)) WHERE path IS NOT NULL;
+    `,
+  },
 ] as const
