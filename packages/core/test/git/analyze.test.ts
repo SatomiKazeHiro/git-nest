@@ -91,6 +91,17 @@ describe('analyzeUpdates', () => {
     expect(report.error?.message).toContain('代理')
   })
 
+  it('有 origin 但当前分支没有上游 → no_upstream（不是 error）', async () => {
+    // 这条守着「把 `rev-list HEAD...@{u}` 的失败区分成两类」：
+    // 上游不存在 → no_upstream；上游在但读不出来 → error。
+    const { clone } = track(initClone(0))
+    git(clone, 'checkout', '-q', '-b', 'no-upstream-branch')
+
+    const report = await analyzeUpdates(clone)
+    expect(report.status).toBe('no_upstream')
+    expect(report.error).toBeNull()
+  })
+
   it('重复检查不会把同一个 tag 反复报成新的', async () => {
     const { origin, clone } = track(initClone(0))
     commit(origin, '远程提交')

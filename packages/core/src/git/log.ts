@@ -107,19 +107,18 @@ export async function analyzeUpdates(path: string, options: LogOptions = {}): Pr
   return scheduler.schedule(path, async () => {
     const cwd = { cwd: path, timeoutMs: options.timeoutMs }
 
-    // 没有 origin 就别去 fetch 了：git 会报一堆看着像网络问题的错
-    // 先确认这是个仓库，再看有没有 origin：
-    // 非仓库目录里跑 `git remote` 会报错，不能当成「没有远程」
-    const inside = await probe(['rev-parse', '--is-inside-work-tree'], cwd)
-    if (!inside.ok || inside.stdout.trim() !== 'true') {
-      return emptyReport('not_a_repo')
-    }
-
+    // 有没有 origin？没有就别去 fetch —— git 会报一堆看着像网络问题的错。
+    // 这一条也顺带回答了「是不是仓库」：非仓库目录里 `git remote` 会失败。
+    //
+    // 注意不能用 `remote get-url origin` 代替：没有 origin 时它会报
+    // 「No such remote 'origin'」，归因不出「没有远程」这个**常态**。
     const remote = await probe(['remote'], cwd)
-    const hasOrigin = remote.ok && remote.stdout.split('\n').some((l) => l.trim() === 'origin')
-    if (!hasOrigin) {
-      return emptyReport('no_remote')
+    if (!remote.ok) {
+      const err = toGitError(remote.result, '这个目录不是 git 仓库')
+      return err.kind === 'not_a_repo' ? emptyReport('not_a_repo') : { ...emptyReport('error'), error: err }
     }
+    const hasOrigin = remote.stdout.split('\n').some((l) => l.trim() === 'origin')
+    if (!hasOrigin) return emptyReport('no_remote')
 
     const localTagsBefore = new Set(await listTags(cwd))
 
@@ -130,14 +129,16 @@ export async function analyzeUpdates(path: string, options: LogOptions = {}): Pr
       return { ...emptyReport('error'), error }
     }
 
-    const upstream = await probe(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'], cwd)
-    if (!upstream.ok) {
-      return emptyReport('no_upstream')
-    }
-    const ref = upstream.stdout.trim()
-
-    const counts = await probe(['rev-list', '--left-right', '--count', `HEAD...${ref}`], cwd)
+    // 领先/落后：一条 `rev-list` 就够，而且它**自己**就能回答「有没有上游」——
+    // `HEAD...@{u}` 在上游不存在时直接失败。原来这里先探一次 `@{u}` 再跑 rev-list，
+    // 等于为同一件事起两个进程。
+    // 区分两类失败：上游不存在（no_upstream，常态）vs 读不出来（error）。
+    const counts = await probe(['rev-list', '--left-right', '--count', 'HEAD...@{u}'], cwd)
     if (!counts.ok) {
+      const combined = `${counts.result.stderr}\n${counts.result.stdout}`
+      if (/unknown revision|no such|does not have a branch|no upstream|ambiguous argument/i.test(combined)) {
+        return emptyReport('no_upstream')
+      }
       // 探测失败 ≠ 「没有差异」。以前这里把失败当成 ahead/behind 双 null，
       // 三元链一路落到 'up_to_date'，于是把一个**根本没读成功**的仓库
       // 报成「已是最新」且 error 为 null —— 最危险的假绿方向。
@@ -159,8 +160,9 @@ export async function analyzeUpdates(path: string, options: LogOptions = {}): Pr
     }
 
     // incoming = 远程有本地没有（要拉进来的）；outgoing = 本地有远程没有（还没推的）
-    const incoming = await readRange(cwd, `HEAD..${ref}`, 50)
-    const outgoing = await readRange(cwd, `${ref}..HEAD`, 50)
+    // 直接用 `@{u}`，省掉「先 rev-parse 出上游全名」那一次进程。
+    const incoming = await readRange(cwd, 'HEAD..@{u}', 50)
+    const outgoing = await readRange(cwd, '@{u}..HEAD', 50)
 
     // fetch 之后新出现的 tag：本地 refs/tags 里没有的
     const localTagsAfter = new Set(await listTags(cwd))

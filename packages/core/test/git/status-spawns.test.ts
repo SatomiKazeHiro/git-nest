@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { getRepoStatus } from '../../src/git/status.ts'
+import { analyzeUpdates } from '../../src/git/log.ts'
 import { gitSpawnCount, resetGitSpawnCount } from '../../src/git/runner.ts'
 import { cleanup, commit, git, initClone, initRepo } from '../helpers/repo.ts'
 
@@ -66,5 +67,37 @@ describe('读状态的 git 子进程数', () => {
     resetGitSpawnCount()
     for (const d of dirsToCheck) await getRepoStatus(d)
     expect(gitSpawnCount()).toBeLessThanOrEqual(15)
+  })
+})
+
+describe('批量检查一次更新的 git 子进程数', () => {
+  /**
+   * `analyzeUpdates` 比读状态更贵（它要真的 fetch）。原来的探针顺序是
+   * `rev-parse --is-inside-work-tree` → `remote` → `tag` → `fetch` → `tag` →
+   * `@{u}` → `rev-list` → 两段 `log` = 10 条；现在去掉了预检与单独的 `@{u}`。
+   * 上限给得比实际松一点，只拦住「又变回十条」这种量级的变化。
+   */
+  async function analyzeSpawns(dir: string): Promise<number> {
+    resetGitSpawnCount()
+    await analyzeUpdates(dir)
+    return gitSpawnCount()
+  }
+
+  it('落后：不超过 8 条', async () => {
+    const { origin, clone } = initClone(0)
+    track(origin)
+    track(clone)
+    commit(origin, '远程提交')
+    expect(await analyzeSpawns(clone)).toBeLessThanOrEqual(8)
+  })
+
+  it('不是仓库：1 条就够', async () => {
+    const dir = track(fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-not-a-repo-')))
+    expect(await analyzeSpawns(dir)).toBeLessThanOrEqual(1)
+  })
+
+  it('没有 origin：2 条（不联网）', async () => {
+    const dir = track(initRepo())
+    expect(await analyzeSpawns(dir)).toBeLessThanOrEqual(2)
   })
 })
