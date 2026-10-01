@@ -41,14 +41,25 @@ export function toneFor(status: UpdateStatus, freshness: FreshnessState): string
   return TONE[status]
 }
 
-/** 没查过远程时，措辞要退一步：只说本地看到的事实 */
+/**
+ * 远程相关的结论按新鲜度降级措辞。
+ *
+ * **限定词是附加在真实状态上的，不是替换它。** 以前这里对 `up_to_date` /
+ * `behind` / `ahead` / `diverged` 一律返回「没查过远程」，把方向和数字都丢了 ——
+ * 结果是同一个仓库、同一次渲染里，提示行说「落后远程 2411 个提交」，
+ * 表格却说「没查过远程」，自相矛盾。
+ *
+ * 事实是：`ahead/behind` 来自本地 refs（也就是上次 fetch 的结果），方向是可靠的，
+ * 不可靠的是「它现在还是不是这样」。所以数字照给，只标注「这是本地看到的」。
+ */
 export function textFor(status: UpdateStatus, freshness: FreshnessState): string {
-  if (freshness === 'never' && REMOTE_CLAIMS.has(status)) {
-    return status === 'up_to_date' ? '没查过远程' : '没查过远程'
+  if (!REMOTE_CLAIMS.has(status)) return TEXT[status]
+
+  if (freshness === 'never') {
+    if (status === 'up_to_date') return '没查过远程'
+    return `${TEXT[status]}（本地看到的，没联网确认）`
   }
-  if (freshness === 'stale' && status === 'up_to_date') {
-    return '上次看是最新'
-  }
+  if (freshness === 'stale' && status === 'up_to_date') return '上次看是最新'
   return TEXT[status]
 }
 
@@ -98,8 +109,15 @@ export function statusTitle(s: RepoStatus, freshness?: Freshness): string {
   const state = freshness ? freshnessOf(freshness) : 'fresh'
   const base = describe(s)
   if (!REMOTE_CLAIMS.has(s.status)) return base
+
+  // 有没有「本地 refs 里的 ahead/behind」这个数？有就说明它的来源，
+  // 没有（还没 fetch 出远程跟踪分支）才是真的无从谈起。
+  const hasCounts = s.upstream !== null && (s.ahead !== null || s.behind !== null)
+
   if (state === 'never') {
-    return `${base}。这个还没检查过更新——远程有没有新东西是未知的，点「检查更新」去问一次`
+    return hasCounts
+      ? `${base}。这个数字来自本地的远程跟踪分支，没联网确认——点「检查更新」去问一次`
+      : `${base}。本地还没有远程跟踪分支可比，点「检查更新」去问一次`
   }
   if (state === 'stale') {
     return `${base}。这个数字来自上次检查时的 fetch，之后没再查过`

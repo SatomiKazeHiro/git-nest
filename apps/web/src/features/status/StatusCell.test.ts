@@ -34,10 +34,19 @@ describe('措辞与颜色：远程相关的结论必须看新鲜度', () => {
     { status: 'diverged', label: '已分叉' },
   ]
 
-  it('从没查过远程：不说「已是最新」', () => {
-    for (const c of cases) {
-      expect(textFor(c.status, 'never')).not.toBe(c.label)
-      expect(textFor(c.status, 'never')).toBe('没查过远程')
+  it('从没查过远程：不说「已是最新」，但也不能把方向丢掉', () => {
+    // up_to_date 没有依据，只能退成「没查过远程」
+    expect(textFor('up_to_date', 'never')).toBe('没查过远程')
+
+    // 但 behind / ahead / diverged 的**方向和数字是本地 refs 的事实**，
+    // 该显示出来，只在后面标注「没联网确认」。
+    // 以前这里一律返回「没查过远程」，导致同一个面板上
+    // 提示行说「落后远程 2411 个提交」而状态格说「没查过远程」，自相矛盾。
+    expect(textFor('behind', 'never')).toContain('落后远程')
+    expect(textFor('ahead', 'never')).toContain('领先远程')
+    expect(textFor('diverged', 'never')).toContain('已分叉')
+    for (const s of ['behind', 'ahead', 'diverged'] as const) {
+      expect(textFor(s, 'never')).toContain('没联网确认')
     }
   })
 

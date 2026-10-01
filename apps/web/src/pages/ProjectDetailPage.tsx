@@ -197,7 +197,7 @@ export function ProjectDetailPage() {
 }
 
 /** git 状态面板：分支、上下游、最后提交。「重新读取」强制绕开短缓存并绕开服务端缓存。 */
-function StatusPanel({
+export function StatusPanel({
   status,
   isFetching,
   onRefresh,
