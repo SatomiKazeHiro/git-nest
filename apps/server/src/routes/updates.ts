@@ -230,9 +230,18 @@ async function streamEvents(reply: FastifyReply, task: Task, startCursor: number
 
   let cursor = startCursor
   let lastBeat = Date.now()
+  // 客户端断开（关标签页 / 断网 / 代理掐断）时把这个置上，循环立刻退出。
+  // 没有它的话，这个 150ms 的轮询会一直空转到任务结束——白烧 CPU，
+  // 而且 Ctrl-C 关服务时 Fastify 要等这条永不结束的「活跃请求」，
+  // 进程迟迟退不掉。
+  let clientGone = false
+  const onClose = () => {
+    clientGone = true
+  }
+  reply.raw.on('close', onClose)
 
   try {
-    while (true) {
+    while (!clientGone) {
       const { events, cursor: next } = eventsSince(task, cursor)
       cursor = next
       for (const payload of events) reply.raw.write(`data: ${payload}\n\n`)
@@ -256,6 +265,7 @@ async function streamEvents(reply: FastifyReply, task: Task, startCursor: number
   } catch {
     // 客户端断开：正常路径，不是错误
   } finally {
+    reply.raw.off('close', onClose)
     if (!reply.raw.writableEnded) reply.raw.end()
   }
 }

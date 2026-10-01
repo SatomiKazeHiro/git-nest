@@ -39,6 +39,22 @@ describe('GET /api/health', () => {
     expect(res.statusCode).toBe(200)
     expect(res.json()).toMatchObject({ ok: true })
   })
+
+  it('不把数据库绝对路径回给客户端', async () => {
+    // 本机绝对路径是这个工具的隐私约定（只进本地 SQLite，不进任何会被分享的东西），
+    // 而 /api/health 是个可以被随手打开的接口。
+    const res = await app.inject({ method: 'GET', url: '/api/health' })
+    const body = res.json() as Record<string, unknown>
+    // `db` 这个键原来装的就是数据库文件路径，现在不再回它
+    expect(body.db).toBeUndefined()
+    expect(JSON.stringify(body)).not.toContain('git-nest.db')
+    expect(JSON.stringify(body)).not.toMatch(/[A-Za-z]:[\\/]/)
+  })
+
+  it('真的探一下数据库（不是恒真）', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/health' })
+    expect(res.json()).toMatchObject({ ok: true, database: 'ok' })
+  })
 })
 
 describe('POST /api/projects', () => {

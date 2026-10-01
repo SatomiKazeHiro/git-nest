@@ -24,11 +24,23 @@ export function buildApp(options: AppOptions = {}) {
   bindSettings(db)
   // 必须在 bindSettings 之后：注入的实例要接上设置里的并发上限
   if (options.scheduler) useScheduler(options.scheduler)
-  const app = Fastify({ logger: options.logger ?? true })
+  // forceCloseConnections：SSE 是永不主动结束的「活跃请求」，默认设置下
+  // `app.close()` 会一直等它结束（实测等了 9 秒 = 任务自己跑完的时间），
+  // Ctrl-C 之后进程退不掉。关服务时直接断开连接。
+  const app = Fastify({ logger: options.logger ?? true, forceCloseConnections: true })
 
   app.register(cors, { origin: config.corsOrigin })
 
-  app.get('/api/health', async () => ({ ok: true, db: config.dbFile }))
+  // 健康检查：真的探一下数据库（`SELECT 1`），而不是恒真。
+  // 不回数据库绝对路径 —— 本机路径只进本地 SQLite，不该顺着 HTTP 出去。
+  app.get('/api/health', async () => {
+    try {
+      db.prepare('SELECT 1').get()
+      return { ok: true, database: 'ok' }
+    } catch {
+      return { ok: false, database: 'unreadable' }
+    }
+  })
 
   app.register(projectRoutes(db), { prefix: '/api' })
   app.register(noteRoutes(db), { prefix: '/api' })
