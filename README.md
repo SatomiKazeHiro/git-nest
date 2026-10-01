@@ -60,6 +60,7 @@ git-nest/
 | es-toolkit | `groupBy` 按分类分组、`orderBy` 分类/标签/备注排序 |
 | React Router | 三个视图：清单 `/`、详情 `/projects/:id`、设置 `/settings` |
 | Tailwind v4 | 设计 token 定义在 `apps/web/src/index.css` 的 `@theme` 里 |
+| msw + testing-library | 勾选更新流程的组件级测试（设计文档第 9 节要求） |
 
 ## git 执行层的硬规则
 
@@ -77,6 +78,11 @@ git-nest/
 
 状态机覆盖的常态分支（不是异常）：`up_to_date` `behind` `ahead` `diverged` `dirty`
 `no_upstream` `detached` `no_remote` `no_commits` `missing` `not_a_repo`。
+
+**状态措辞按新鲜度降级。** 状态接口只读本地 refs、从不联网，所以「已是最新」在
+没有依据时是失真的：远程相关的结论（最新/落后/领先/分叉）要看「什么时候查过」——
+从没查过显示「没查过远程」且不给颜色，超过 12 小时把「已是最新」降级成「上次看是最新」。
+纯本地状态（脏 / 游离 / 没有远程）任何时候都可信，不受影响。
 
 ## API
 
@@ -128,13 +134,17 @@ git 超时、并发上限、确认阈值。**核心原则：绝不自动更新**
 而是置灰 + 引导改路径（`PATCH` 支持改 path，校验存在与撞车）；详情页 / 提交图把
 「目录不在了」和「不是仓库」区分开说。
 
-测试 128 个用例：git 层全部用临时目录里**真实 git 仓库**跑（init → commit → clone →
+测试 141 个用例：git 层全部用临时目录里**真实 git 仓库**跑（init → commit → clone →
 构造 behind / ahead / diverged / dirty / detached 各状态），不 mock git；
-M5 另有一个只回 401 的本地假远程，用来验证凭证场景既不弹窗也不挂死。
+M5 另有一个只回 401 的本地假远程，用来验证凭证场景既不弹窗也不挂死；
+web 层按设计文档第 9 节用 MSW 测了勾选更新流程的组件级 happy path。
 
 ## 还没做
 
-五个里程碑都完成了。剩下的方向：
+五个里程碑都完成了。设计文档第 13 节列了实现与文档的全部差异（10 条），
+包括为什么 `credential.helper=` 不能少、为什么用 `-C` 而不是 cwd。
+
+往后的方向：
 
 - **Agent 接入**（设计文档第 10 节）：`packages/core` 无 UI/HTTP 依赖、API 覆盖全部用户操作，
   Agent 的能力上限 = 用户的能力上限，没有特权后门。可以先做「哪些项目值得关注」这类分析。

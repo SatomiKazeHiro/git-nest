@@ -240,3 +240,50 @@ POST   /api/updates/apply                  { ids: [...] } → 勾选仓库 pull 
 - github-kb 安全规则与 git 命令惯例：`.reference/github-kb/SKILL.md`（本设计第 4 节全部沿用）
 - react-git-log：https://github.com/TomPlum/react-git-log（npm 包名 `@tomplum/react-git-log`，要求 React 19，用 HTML Grid 渲染器）
 - 同类产品交互参考：RepoZ（分组大列表 + 状态符号列）、gita（状态机颜色编码）、mani（清单即代码）
+
+## 13. 实现与本文档的差异
+
+本文档写于 M1 之前，实现过程中有若干处偏离。逐条记在这里，附原因，
+免得下次核对时又要重新考古。
+
+**接口与流程**
+
+1. 更新用的是 `POST /api/updates/apply`，不是第 6 节的 `POST /api/projects/update`。
+   理由：check 与 apply 归到同一个前缀下更清楚，也避免 `/api/projects/update` 被
+   误读成「更新项目记录」。
+2. 批量任务用「POST 启动拿 taskId + GET `/api/updates/:taskId/events` 订阅 SSE」，
+   而不是第 6 节的「POST 直接开 SSE」。理由：**EventSource 只能发 GET**，
+   POST + SSE 在浏览器里做不到。第 5 节的流程本身没变。
+3. 额外加了几个文档没写的接口：`GET /api/status?ids=`（列表页一次拿全状态）、
+   `GET/PATCH /api/settings`、以及 `PATCH /api/projects/:id` 支持改 `path`
+   （仓库被移走后重新指路；`path` 仍然是唯一的）。
+
+**git 执行层**
+
+4. 用 `execFile` + argv 传参，而不是第 4 节写的「路径一律加引号拼命令」——
+   目的相同（防注入）但更彻底：不经过 shell 就没有引号绕过这回事。
+5. 仓库目录用 `git -C <dir>`，而不是把目录设成子进程的 `cwd`。
+   理由：cwd 走的是 OS 的 `SetCurrentDirectory`，Windows 上路径超过约 260 字符时
+   会直接 spawn 失败。实测踩过。
+6. 每条 git 命令额外带 `-c credential.helper=`。只设 `GIT_TERMINAL_PROMPT=0`
+   **挡不住** git 卡在凭证链上（实测挂 8 秒以上无输出），一个私有仓库就能把
+   整批检查拖到超时。
+
+**界面**
+
+7. 提交图没有用 react-git-log，是自研的泳道图（第 4 节允许「可插拔弱依赖，
+   不可用则自研替换」）。接口隔离在 `apps/web/src/features/gitgraph/`，
+   将来换库只改那一个组件。
+8. 第 7.2 节的「更新分析报告区」做成了按需展开（点「检查更新」才出现），
+   而不是常驻区域。理由：不检查就没有「最新一次报告」可言，常驻一个空区块
+   反而在骗人。
+9. 更新结果汇总是一行文字，不是第 5 节说的「表」。逐仓库的结论在上面的行里
+   已经逐条列出了，汇总只做计数。
+
+**文档没考虑到、后来发现必须处理的**
+
+10. **状态措辞要按新鲜度降级。** 状态接口只读本地 refs（上次 fetch 之后的事实），
+    从不联网，所以「已是最新」在没有依据时是失真的。实测用户报过：远程更新了
+    上千个提交，页面上还是「已是最新」。现在远程相关的结论要看新鲜度：
+    从没查过显示「没查过远程」且不给颜色，查过但超过 12 小时把「已是最新」
+    降级成「上次看是最新」；纯本地状态（脏 / 游离 / 没有远程）不受影响。
