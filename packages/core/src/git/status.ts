@@ -59,69 +59,61 @@ async function readStatus(path: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise
   const cwd = { cwd: path, timeoutMs }
   const base = EMPTY(path, 'error')
 
-  // 1. 是不是仓库
-  const inside = await probe(['rev-parse', '--is-inside-work-tree'], cwd)
-  if (!inside.ok || inside.stdout.trim() !== 'true') {
-    // 这条失败有多种可能：真的不是仓库，也可能是路径太长 / 进不去。
-    // 直接说「不是仓库」会把用户引向错误的方向，所以把真实原因归因后透出。
-    const err = toGitError(inside.ok ? { code: 1, stdout: '', stderr: '', timedOut: false } : inside.result, '这个目录不是 git 仓库')
+  // 1. 一次拿到「是不是仓库 + 脏标记 + 分支 + 上游 + 领先/落后」。
+  //
+  // 以前这里要跑 5–6 条独立命令：先 `rev-parse --is-inside-work-tree` 判是不是仓库，
+  // 再 `status --porcelain` / `rev-parse --verify HEAD` / `symbolic-ref` /
+  // 上游的 `for-each-ref` / `rev-list --left-right`。Windows 上每条 git 命令几百
+  // 毫秒，一个仓库七八条就是几秒钟 —— 100 个仓库约 800 次进程启动。
+  //
+  // `--porcelain=v2 --branch` 一次就够：失败时的报错本身也能区分「不是仓库」
+  // （`fatal: not a git repository`）与「路径进不去」（`cannot change to`），
+  // 所以连那句预检都不必单独跑。头几行的含义：
+  //
+  //   # branch.oid <sha> | (initial)          → 有没有提交
+  //   # branch.head <名字> | (detached)       → 分支 / detached
+  //   # branch.upstream <上游>                → 有上游才有这一行
+  //   # branch.ab +<领先> -<落后>              → 上游还能解析出来才有这一行
+  //   其余行                                   → 工作区改动（脏）
+  //
+  // 注意「有 upstream 行但没有 ab 行」＝ 上游被远程删了（prune 之后就是这形态），
+  // 这正是 gone 的判据；实测确认过，比再跑一次 for-each-ref 省一条命令。
+  const porcelain = await probe(['status', '--porcelain=v2', '--branch'], cwd)
+  if (!porcelain.ok) {
+    // 失败有多种可能：不是仓库、路径太长进不去、或者仓库坏了。
+    // 直接说「不是仓库」会把人引向错误的方向，所以按 git 的真实报错归因。
+    const err = toGitError(porcelain.result, '这个目录不是 git 仓库')
     if (err.kind === 'not_a_repo') {
       return { ...base, status: 'not_a_repo', error: err }
     }
     return { ...base, status: 'error', error: err }
   }
 
-  // 2. 脏标记（porcelain 稳定，不受 locale 影响）
-  const porcelain = await probe(['status', '--porcelain'], cwd)
-  const dirtyLines = porcelain.ok ? porcelain.stdout.split('\n').filter((l) => l.trim()) : []
+  const parsed = parsePorcelainV2(porcelain.stdout)
+  const hasCommits = parsed.oid !== null
+  const branch = parsed.branch
+  const detached = parsed.detached
+  const dirtyLines = parsed.changes
   const dirty = dirtyLines.length > 0
 
-  // 3. 有没有提交（空仓库没有 HEAD，后面所有比较都没意义）
-  const hasCommits = (await probe(['rev-parse', '--verify', '-q', 'HEAD'], cwd)).ok
+  // 上游：行在但 ab 不在 = 已被远程删掉
+  const upstreamName = parsed.upstreamGone ? null : parsed.upstream
+  const upstreamGone = parsed.upstreamGone
+  const ahead = parsed.ahead
+  const behind = parsed.behind
 
-  // 4. 分支 / detached HEAD —— 退出码非零是预期结果，不是失败
-  const head = await probe(['symbolic-ref', '-q', '--short', 'HEAD'], cwd)
-  const branch = head.ok ? head.stdout.trim() : null
-  const detached = !head.ok && hasCommits
-
-  // 5. 上游 —— 用 for-each-ref 一次问出「上游是谁」和「它是不是已经被删了」。
-  //
-  // 以前是解析 `rev-parse @{u}` 的退出码 + 失败后再猜 stderr 正则。实测那样判不出来：
-  // remote-tracking ref 被 prune 之后 `@{u}` 直接 exit 128，于是 upstream 先变成 null、
-  // 后面那段判定 upstreamGone 的分支根本不会执行，字段恒为 false。
-  // `%(upstream:track)` 是 git 自己给的权威结论：上游被删时输出 `[gone]`。
-  const upstream = await readUpstream(cwd, branch)
-  let upstreamName = upstream?.name ?? null
-  const upstreamGone = upstream?.gone ?? false
-  if (upstreamGone) upstreamName = null
-
-  // 6. ahead / behind，依赖上游
-  let ahead: number | null = null
-  let behind: number | null = null
-  if (upstreamName && hasCommits) {
-    const counts = await probe(
-      ['rev-list', '--left-right', '--count', `HEAD...${upstreamName}`],
-      cwd,
-    )
-    if (counts.ok) {
-      const [left, right] = counts.stdout.trim().split(/\s+/).map((n) => Number(n))
-      ahead = left ?? null
-      behind = right ?? null
-    }
-  }
-
-  // 7. 远程地址
+  // 3. 远程地址
   const remote = await probe(['remote', 'get-url', 'origin'], cwd)
   const remoteUrl = remote.ok ? remote.stdout.trim() : null
 
-  // 8. 最后一次提交
+  // 4. 最后一次提交
   const lastCommit = hasCommits ? await readLastCommit(cwd) : null
 
   const status = deriveStatus({
     isRepo: true,
     dirty,
     detached,
-    hasCommits: lastCommit !== null,
+    hasCommits: hasCommits && lastCommit !== null,
     upstream: upstreamName !== null,
     ahead,
     behind,
@@ -147,27 +139,74 @@ async function readStatus(path: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise
   }
 }
 
-/**
- * 一次问出当前分支的上游与它是否已被远程删掉。
- *
- * `%(upstream:track)` 是 git 的权威判据：上游还在时形如 `[ahead 1]` / `[behind 2]`
- * 或空，上游被删时是 `[gone]`。比「解析 @{u} 的报错再猜正则」稳得多 ——
- * 后者在 prune 之后根本走不到。
- */
-async function readUpstream(
-  cwd: { cwd: string; timeoutMs?: number },
-  branch: string | null,
-): Promise<{ name: string; gone: boolean } | null> {
-  if (!branch) return null
-  const result = await probe(
-    ['for-each-ref', '--format=%(upstream:short)%00%(upstream:track)', `refs/heads/${branch}`],
-    cwd,
-  )
-  if (!result.ok) return null
+interface PorcelainV2 {
+  /** 提交存在时是 sha，空仓库是 null */
+  oid: string | null
+  branch: string | null
+  detached: boolean
+  upstream: string | null
+  /** 有 upstream 行、但没有 ab 行 = 上游被远程删了 */
+  upstreamGone: boolean
+  ahead: number | null
+  behind: number | null
+  /** 非头部的行（工作区改动） */
+  changes: string[]
+}
 
-  const [name = '', track = ''] = result.stdout.trim().split('\0')
-  if (!name.trim()) return null
-  return { name: name.trim(), gone: /\[gone\]/.test(track) }
+/** 解析 `git status --porcelain=v2 --branch`。头部的 `#` 行给元信息，其余行是改动。 */
+export function parsePorcelainV2(raw: string): PorcelainV2 {
+  const out: PorcelainV2 = {
+    oid: null,
+    branch: null,
+    detached: false,
+    upstream: null,
+    upstreamGone: false,
+    ahead: null,
+    behind: null,
+    changes: [],
+  }
+
+  const lines = raw.split('\n').filter((l) => l.trim().length > 0)
+  let hasAb = false
+
+  for (const line of lines) {
+    if (line.startsWith('# branch.oid ')) {
+      const value = line.slice('# branch.oid '.length).trim()
+      // 空仓库是 `(initial)`
+      out.oid = value === '(initial)' ? null : value
+      continue
+    }
+    if (line.startsWith('# branch.head ')) {
+      const value = line.slice('# branch.head '.length).trim()
+      if (value === '(detached)') {
+        out.detached = true
+        out.branch = null
+      } else {
+        out.branch = value
+      }
+      continue
+    }
+    if (line.startsWith('# branch.upstream ')) {
+      out.upstream = line.slice('# branch.upstream '.length).trim()
+      continue
+    }
+    if (line.startsWith('# branch.ab ')) {
+      const m = line.slice('# branch.ab '.length).trim().match(/^\+(\d+)\s+-(\d+)$/)
+      if (m) {
+        out.ahead = Number(m[1])
+        out.behind = Number(m[2])
+        hasAb = true
+      }
+      continue
+    }
+    if (line.startsWith('#')) continue // 其它头部（branch.ab 之外）
+    out.changes.push(line)
+  }
+
+  // 有上游、但 git 没能给出领先/落后 → 上游引用已经不在了
+  if (out.upstream !== null && !hasAb) out.upstreamGone = true
+
+  return out
 }
 
 export interface DeriveInput {

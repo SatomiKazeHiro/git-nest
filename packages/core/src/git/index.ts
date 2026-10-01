@@ -17,6 +17,8 @@ export {
   runGit,
   probe,
   toGitError,
+  gitSpawnCount,
+  resetGitSpawnCount,
   DEFAULT_TIMEOUT_MS,
   type GitResult,
   type RunOptions,

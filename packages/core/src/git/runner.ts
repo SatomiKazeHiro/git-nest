@@ -49,7 +49,25 @@ const CONFIG_ARGS = [
   'core.longpaths=true',
 ]
 
+/**
+ * 起了多少次 git 子进程。
+ *
+ * Windows 上每条 git 命令要几百毫秒，所以「一个仓库要跑几条命令」直接决定
+ * 批量操作的耗时。状态读取一度是每个仓库 6–7 条，这里留个计数器给测试用，
+ * 免得以后又悄悄涨回去。
+ */
+let spawnCount = 0
+
+export function gitSpawnCount(): number {
+  return spawnCount
+}
+
+export function resetGitSpawnCount(): void {
+  spawnCount = 0
+}
+
 export function runGit(args: string[], options: RunOptions): Promise<GitResult> {
+  spawnCount += 1
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   // 用 -C 而不是 spawn 的 cwd：cwd 走的是 OS 的 SetCurrentDirectory，
   // 路径超过 MAX_PATH 时会直接 spawn 失败（ENOENT），而 -C 是把路径交给 git 自己处理。
