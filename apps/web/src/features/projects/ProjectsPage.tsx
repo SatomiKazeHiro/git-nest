@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router'
 import { groupBy, orderBy } from 'es-toolkit'
 import { useDebounce } from 'ahooks'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
-import { Button, Dialog, EmptyState, ErrorNote, Input } from '@/components/ui'
+import { Button, Dialog, EmptyState, ErrorNote, Input, Meta } from '@/components/ui'
 import { formatDate, formatRelative, hostOf, shortenPath } from '@/lib/format'
 import { UNCATEGORIZED, useUiStore } from '@/store/ui'
 import { ProjectFormDialog } from './ProjectFormDialog'
@@ -297,10 +297,14 @@ function ProjectRow({
         {p.notesCount > 0 ? `${p.notesCount} 条` : ''}
       </span>
       <span
-        className="hidden w-20 shrink-0 text-right font-mono text-[12px] text-ink-3 lg:block"
-        title={p.latestCheck ? `上次检查：${p.latestCheck.status}` : '还没检查过更新'}
+        className="hidden w-20 shrink-0 justify-end lg:flex"
+        title={p.latestCheck ? `上次检查：${p.latestCheck.status}` : '还没点过「检查更新」'}
       >
-        {p.latestCheck ? formatRelative(p.latestCheck.checkedAt) : '—'}
+        {p.latestCheck ? (
+          <Meta label="检查" value={formatRelative(p.latestCheck.checkedAt)} />
+        ) : (
+          <Meta label="检查" value="没查过" placeholder />
+        )}
       </span>
       <span className="hidden w-20 shrink-0 text-right font-mono text-[12px] text-ink-3 md:block">
         {formatDate(p.addedAt)}

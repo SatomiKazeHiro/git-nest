@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import type { UpdateReport } from '@git-nest/core'
-import { Button, ErrorNote } from '@/components/ui'
+import { Button, ErrorNote, Meta } from '@/components/ui'
 import { statusText, statusTone } from '@/features/status/StatusCell'
 import { isPull, isReport, useUpdateTask, type TaskSnapshot } from './taskStream'
 import { useSettings } from '@/features/settings/queries'
@@ -76,9 +76,9 @@ export function UpdatePanel({
         </p>
         <div className="ml-auto flex items-center gap-2">
           {busy ? (
-            <span className="font-mono text-[12px] text-ink-3">
-              {task ? `${task.done}/${task.total}` : '启动中'}
-              {connected ? '' : ' · 连接中'}
+            <span className="flex items-center gap-2">
+              <Meta label="进度" value={task ? `${task.done}/${task.total}` : '启动中'} />
+              {connected ? null : <Meta label="连接" value="重连中" placeholder />}
             </span>
           ) : null}
           <Button onClick={startCheckNow} disabled={busy}>

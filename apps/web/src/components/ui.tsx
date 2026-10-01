@@ -145,3 +145,41 @@ export function ErrorNote({ message }: { message: string }) {
     </p>
   )
 }
+
+/**
+ * 小标签：**标签 + 值** 的一对元信息。
+ *
+ * 以前这类信息（「本地状态 · 刚刚读取」「远程上次检查 · 从没查过」）是用
+ * `标签 · 值` 拼出来的散装文本，和页面里其它行内点缀（`已选 3`、`已在清单 · tools`）
+ * 混在一起，看着没有统一格式；而且值缺失时那个 `·` 会孤零零挂在中间。
+ *
+ * 用标签组件之后：值缺失就换成一枚安静的「占位」样式（extra 的虚线变体），
+ * 不再靠分隔符撑句子；同一处的多个标签视觉权重一致。
+ */
+export function Meta({
+  label,
+  value,
+  title,
+  placeholder = false,
+}: {
+  label: string
+  value: string
+  /** 悬停说明，解释这个值的来源/新鲜度 */
+  title?: string
+  /** 值其实是「还没有/没查过」这类缺省状态：弱化显示 */
+  placeholder?: boolean
+}) {
+  return (
+    <span
+      title={title}
+      className={`inline-flex items-center gap-1.5 rounded-[3px] border px-1.5 py-0.5 ${
+        placeholder ? 'border-dashed border-line' : 'border-line-soft bg-panel'
+      }`}
+    >
+      <span className="text-[11px] text-ink-3">{label}</span>
+      <span className={`font-mono text-[11.5px] ${placeholder ? 'text-ink-3' : 'text-ink-2'}`}>
+        {value}
+      </span>
+    </span>
+  )
+}

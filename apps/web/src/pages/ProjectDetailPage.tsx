@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { orderBy } from 'es-toolkit'
 import { isRemoteCheckStatus, type RepoStatus, type UpdateStatus } from '@git-nest/core'
-import { Button, ErrorNote, Textarea } from '@/components/ui'
+import { Button, ErrorNote, Meta, Textarea } from '@/components/ui'
 import { formatRelative } from '@/lib/format'
 import { useUiStore } from '@/store/ui'
 import { ProjectFormDialog } from '@/features/projects/ProjectFormDialog'
@@ -237,12 +237,25 @@ export function StatusPanel({
     <section>
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <h2 className="text-[15px] font-semibold text-ink">git 状态</h2>
-        <span className="font-mono text-[11.5px] text-ink-3">
-          本地状态 · {formatRelative(status.checkedAt)}读取
-        </span>
-        <span className="font-mono text-[11.5px] text-ink-3">
-          远程上次检查 · {lastCheckAt ? `${formatRelative(lastCheckAt)}查的` : '从没查过'}
-        </span>
+        <Meta
+          label="本地状态"
+          value={`${formatRelative(status.checkedAt)}读取`}
+          title="刚刚只读本地跑了一遍 git，没有联网"
+        />
+        {hasRemoteCheck ? (
+          <Meta
+            label="远程检查"
+            value={`${formatRelative(lastCheckAt!)}查的`}
+            title="最近一次联网 fetch 远程的时间"
+          />
+        ) : (
+          <Meta
+            label="远程检查"
+            value="没查过"
+            placeholder
+            title="还没点过「检查更新」，所以下面的远程数字没有联网核实过"
+          />
+        )}
         <Button className="ml-auto" disabled={isFetching} onClick={onRefresh}>
           {isFetching ? '读取中…' : '重新读取'}
         </Button>
