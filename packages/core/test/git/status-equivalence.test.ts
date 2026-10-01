@@ -2,18 +2,21 @@ import { afterAll, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { getRepoStatus } from '../../src/git/status.ts'
+import { readRepoStatus } from '../../src/git/inspect/index.ts'
 import { cleanup, commit, git, initClone, initRepo, tempDir } from '../helpers/repo.ts'
 
 /**
  * `getRepoStatus` 的**行为等价表**。
  *
- * 这一组是性能重构（把 6–7 条 git 命令合并成 2 条）的安全网：它不关心实现怎么
- * 取数，只钉住「每个场景下，状态机给出什么结论」。重构前必须先全绿，
- * 重构后必须一字不变。
+ * 这一组是性能重构的安全网：它不关心实现怎么取数，只钉住「每个场景下，
+ * 状态机给出什么结论」。重构前必须先全绿，重构后必须一字不变。
  *
  * 每个场景断言完整的 RepoStatus 关键字段，而不是只看 status 一个枚举 ——
- * 因为合并命令最容易悄悄改掉的是 branch / upstream / ahead / behind / dirtyCount
+ * 因为换实现最容易悄悄改掉的是 branch / upstream / ahead / behind / dirtyCount
  * 这些「顺带得到」的字段。
+ *
+ * 下面这一整张表跑的都是 **full 档**（详情页与 pull 前置检查用的那一档）。
+ * lean 档（列表页）在表末尾单独钉：它**有意**不读工作区与最后提交。
  */
 
 const dirs: string[] = []
@@ -196,5 +199,78 @@ describe('状态行为等价表', () => {
     fs.writeFileSync(path.join(dir, 'untracked.txt'), 'x')
     const status = await getRepoStatus(dir)
     expect(shape(status)).toMatchObject({ dirty: true, dirtyCount: 1, status: 'dirty' })
+  })
+
+  it('最后提交：full 档读得到 hash / subject / author', async () => {
+    const dir = track(initRepo('第一条提交'))
+    const status = await getRepoStatus(dir)
+    expect(status.lastCommit).toMatchObject({ subject: '第一条提交', author: 'git-nest test' })
+    expect(status.lastCommit?.hash).toMatch(/^[0-9a-f]{7,}$/)
+  })
+})
+
+/**
+ * lean 档（列表页）的表。
+ *
+ * 它**有意**少读两条事实：工作区（dirty/dirtyCount）与最后提交（lastCommit）。
+ * 列表页那一列只画分支、↑↓ 和一句话状态，这两条根本没人看，
+ * 却要为每个仓库各起一次 git.exe —— 100 个仓库就是 7.8 秒里的大半。
+ *
+ * 所以这里钉的不是「和 full 一样」，而是「**只差这两条**」：
+ * 下面每个用例都同时跑 full 和 lean，逐字段比对，把差异限制在预期之内。
+ */
+describe('lean 档只少读工作区与最后提交', () => {
+  /** 同一场景跑两档，返回两边的 shape */
+  async function both(dir: string) {
+    const [full, lean] = [await readRepoStatus(dir, { profile: 'full' }), await readRepoStatus(dir, { profile: 'lean' })]
+    return { full, lean, sf: shape(full), sl: shape(lean) }
+  }
+
+  it('分支 / 上游 / 领先落后 / 结论：两档完全一致（干净仓库）', async () => {
+    const { origin, clone } = initClone(0)
+    track(origin)
+    track(clone)
+    commit(origin, '远程提交')
+    git(clone, 'fetch')
+    const { sf, sl } = await both(clone)
+    expect(sl).toEqual(sf)
+    expect(sl).toMatchObject({ branch: 'main', upstream: 'origin/main', behind: 1, status: 'behind' })
+  })
+
+  it('唯一的差异：lean 的 dirty/dirtyCount 归零、lastCommit 为 null，结论让位给远程状态', async () => {
+    const { origin, clone } = initClone(0)
+    track(origin)
+    track(clone)
+    commit(origin, '远程提交')
+    git(clone, 'fetch')
+    fs.writeFileSync(path.join(clone, 'dirty.txt'), 'x')
+
+    const { full, lean, sf, sl } = await both(clone)
+    // 两档都知道自己落后，都知道身后有 1 个提交
+    expect(sf).toMatchObject({ behind: 1, dirty: true, dirtyCount: 1, status: 'dirty' })
+    expect(sl).toMatchObject({ behind: 1, dirty: false, dirtyCount: 0, status: 'behind' })
+    expect(full.lastCommit).not.toBeNull()
+    expect(lean.lastCommit).toBeNull()
+    // 除了这三条，其余字段逐字节相同
+    const { dirty: _fd, dirtyCount: _fc, status: _fs, ...restFull } = sf
+    const { dirty: _ld, dirtyCount: _lc, status: _ls, ...restLean } = sl
+    expect(restLean).toEqual(restFull)
+  })
+
+  it('仓库坏了、非仓库、目录不在：两档结论一致（这些不靠工作区判）', async () => {
+    const notRepo = track(tempDir())
+    const missing = track(path.join(tempDir(), 'nope'))
+    for (const dir of [notRepo, missing]) {
+      const { sf, sl } = await both(dir)
+      expect(sl).toEqual(sf)
+    }
+  })
+
+  it('空仓库：两档同为 no_commits（库在 resolveRef 上就否掉了）', async () => {
+    const dir = track(tempDir())
+    git(dir, 'init', '-b', 'main')
+    const { sf, sl } = await both(dir)
+    expect(sl).toEqual(sf)
+    expect(sl).toMatchObject({ branch: 'main', status: 'no_commits' })
   })
 })

@@ -44,7 +44,7 @@ git-nest/
 
 - **Fastify 而非 Next.js**：长时 git 子进程 + SSE 进度推送在独立后端里更干净；REST API 是未来 Agent 接入的天然接口
 - **better-sqlite3**：同步 API、零配置、单文件库，适合几十到几百项目的量级
-- **git CLI（child_process）而非 isomorphic-git**：行为与用户在终端里完全一致，github-kb 的安全规则可直接复用
+- **git CLI 与 isomorphic-git 分工，而不是二选一**：一开始是「只用 git CLI」，理由是行为与终端逐字节一致、安全规则可直接复用——这条对**工作区与写操作**仍然成立，所以 `status --porcelain`（脏标记）、`rev-list`（ahead/behind）、`fetch` / `pull --ff-only` 继续走 CLI。但**只读 ref/config**（分支名、HEAD、上游配置、origin 地址）不需要 git 的语义，只是读 `.git` 下几个小文件；在 Windows 上为此起一次 git.exe 要约 70ms（20ms 是 CreateProcess 的地板），列表页十几个仓库就是好几秒。这部分交给 isomorphic-git（纯 JS，MIT），每仓库省 2 次进程启动，实测列表页 612ms → 198ms。**分界线的判据是「需不需要与 git 逐字节一致」，不是「谁快」**——脏标记是 `pull` 的安全闸，就必须与 git 一致；分支名没有这种要求。
 - **react-git-log（`@tomplum/react-git-log`）作为可插拔弱依赖**：要求 React 19，单人小项目，若不可用则自研简单泳道图组件替换，接口隔离在详情页单个组件内
 
 ## 3. 数据模型（SQLite）

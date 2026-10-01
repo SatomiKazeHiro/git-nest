@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { idParamSchema, type RepoStatus } from '@git-nest/core'
 import type { DB } from '../db/index.ts'
-import { repoLog, repoStatus, repoStatuses } from '../lib/git.ts'
+import { repoLog, repoStatus, repoStatusesLean } from '../lib/git.ts'
 import { badRequest, notFound } from '../lib/errors.ts'
 
 /**
@@ -9,7 +9,14 @@ import { badRequest, notFound } from '../lib/errors.ts'
  * 落库的下次打开就是旧数据，反而更危险。
  */
 export const gitRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
-  /** 批量状态：列表页一次拿全部，省得十几个请求。 */
+  /**
+   * 批量状态：列表页一次拿全部，省得十几个请求。
+   *
+   * 走 **lean 档**：列表页不显示未提交改动、也不显示最后提交（`StatusCell` 那两处
+   * 只有详情页用），而这两条恰好是最贵的（一个要遍历工作区，一个要读对象）。
+   * 返回的 `dirty` 恒为 false、`lastCommit` 恒为 null，**不要**据此判安全性——
+   * 单仓库接口 `/projects/:id/status` 是 full 档，那才是可信的。
+   */
   fastify.get('/status', async (req) => {
     const query = (req.query ?? {}) as { ids?: string }
     const ids = (query.ids ?? '')
@@ -24,7 +31,7 @@ export const gitRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
     if (ids.length > 200) throw badRequest('一次最多查 200 个仓库')
 
     const paths = loadPaths(db, ids)
-    const statuses = await repoStatuses(paths)
+    const statuses = await repoStatusesLean(paths)
     return { statuses: byId(ids, paths, statuses) }
   })
 
@@ -74,7 +81,7 @@ function loadPaths(db: DB, ids: number[]): string[] {
 function byId(
   ids: number[],
   paths: string[],
-  statuses: Awaited<ReturnType<typeof repoStatuses>>,
+  statuses: Awaited<ReturnType<typeof repoStatusesLean>>,
 ) {
   const statusByPath = new Map(statuses.map((s) => [s.path, s]))
   return ids.map((id, index) => {

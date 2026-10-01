@@ -29,9 +29,22 @@ export {
   getRepoStatuses,
   getRemoteUrl,
   deriveStatus,
+  parseDirtyCount,
   type StatusOptions,
+  type StatusProfile,
   type DeriveInput,
 } from './status.ts'
+export {
+  readRepoStatus,
+  readRepoStatuses,
+  type ReadStatusOptions,
+  type RepoFacts,
+  type WorktreeFacts,
+  type DivergenceFacts,
+  type CommitFacts,
+} from './inspect/index.ts'
+export { readRepoFacts } from './inspect/via-lib.ts'
+export { readWorktree, readDivergence, readLastCommit } from './inspect/via-cli.ts'
 export {
   getLog,
   parseGitLog,

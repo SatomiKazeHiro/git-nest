@@ -3,7 +3,7 @@
 > 新会话先读这个，再读 `README.md`（怎么跑、API、技术栈），最后读
 > `docs/superpowers/specs/2026-06-20-git-nest-design.md`（设计 + 第 13 节的实现差异）。
 >
-> 最后更新：2026-10-01，代码状态 `e90fce1`，工作区干净。
+> 最后更新：2026-10-01，代码状态见 `git log`，工作区干净。
 
 ## 一句话现状
 
@@ -38,6 +38,7 @@ pnpm dev              # server :5174 + web :5173
 pnpm typecheck        # 三个包一起 tsc --noEmit
 pnpm test             # vitest（core / server / web 三个 project）
 pnpm build            # 只构建 web
+pnpm bench:status     # lean/full 两档的墙钟时间与进程数（需要本机有真仓库）
 pnpm check:encoding   # 扫 U+FFFD 坏字符（提交前跑）
 ```
 
@@ -55,11 +56,17 @@ pnpm check:encoding   # 扫 U+FFFD 坏字符（提交前跑）
 packages/core/                 纯能力层，浏览器打不到（无 UI / 无 HTTP 依赖）
 ├── src/git/runner.ts          ★ 所有 git 调用的唯一出口（-C、超时、凭证、longpaths）
 ├── src/git/scheduler.ts       同仓库串行 + 跨仓库并发上限 4（不可重入！）
-├── src/git/status.ts          12 种状态分支 + 状态机优先级
+├── src/git/inspect/           ★ 读状态的两档与两条路（列表页 vs 详情页）
+│   ├── types.ts               事实的形状 + 「每条事实只有一个提供方」的约定
+│   ├── via-lib.ts             ref/config 走 isomorphic-git（不 spawn 进程）
+│   ├── via-cli.ts             工作区 / ahead-behind / 最后提交走真 git
+│   └── index.ts               lean（列表页，每仓库 1 进程）/ full（详情页，3 进程）
+├── src/git/status.ts          12 种状态分支 + 状态机优先级（对外那层壳）
 ├── src/git/log.ts             提交图数据 + analyzeUpdates（fetch 后比差异）
 ├── src/git/pull.ts            只允许 --ff-only；前置检查 + 失败后归因
 ├── src/git/scan.ts            扫一层子目录找仓库
 ├── src/git/errors.ts          错误分类（网络/认证/锁/路径过长/找不到远程…）
+├── bench-status.mjs           量 lean/full 两档的墙钟时间与进程数（真仓库）
 ├── src/schemas.ts             zod：前后端共用同一份校验
 └── test/git/*.test.ts         全部用临时目录里真实 git 仓库，不 mock git
 
@@ -97,6 +104,12 @@ apps/web/src/
 7. **core 有两个入口**：`@git-nest/core`（类型+zod，浏览器安全）、
    `@git-nest/core/git`（依赖 node:child_process，只能 node 侧引）。
    在 barrel 里 `export *` git 层会让浏览器包直接白屏。
+   同理，`isomorphic-git` 只允许在 `src/git/inspect/via-lib.ts` 里引——
+   那个文件挂在 `/git` 入口下，浏览器侧碰不到。
+8. **列表页与详情页不共用状态缓存**。列表页走 lean 档，`dirty` 恒为 false、
+   `lastCommit` 恒为 null（列表列不显示这两条）；详情页走 full 档，两者都真读。
+   混用缓存会让详情页在几秒内谎报「干净」——而脏标记是第 1 条那个安全闸的判据。
+   同理，`pull` 的前置检查只认 full 档。
 
 ## 待用户决定的事
 

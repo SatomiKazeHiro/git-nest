@@ -13,7 +13,7 @@ import {
 import type { DB } from '../db/index.ts'
 import { readSettings } from './settings.ts'
 
-export { analyzeUpdates, getLog, getRepoStatus, getRepoStatuses, pullRepo }
+export { analyzeUpdates, getLog, getRepoStatus, pullRepo }
 export type { UpdateReport } from '@git-nest/core/git'
 
 /**
@@ -47,7 +47,20 @@ export function currentScheduler(): Scheduler {
 
 /** 状态短缓存：列表页一次要问十几个仓库，同一次渲染不该重复跑 git */
 const STATUS_TTL_MS = 3_000
+
+/**
+ * 列表页的缓存单独一份，**不能**和详情页共用。
+ *
+ * 两档读的东西不一样：lean 档的 `dirty` 恒为 false、`lastCommit` 恒为 null
+ * （列表页根本不显示它们）。要是混进同一个 Map，详情页在 3 秒窗口内就会拿到
+ * 一份「没有脏标记」的状态——而脏标记正是 `pull` 的安全闸。宁可多存一份，
+ * 也不要一个会骗人的缓存。
+ *
+ * lean 档本身足够便宜，TTL 给短一点，列表数字更新得更快。
+ */
+const LEAN_TTL_MS = 1_500
 const statusCache = new Map<string, { at: number; value: RepoStatus }>()
+const leanCache = new Map<string, { at: number; value: RepoStatus }>()
 
 let db: DB | null = null
 
@@ -61,6 +74,7 @@ function current() {
   return readSettings(db)
 }
 
+/** 单仓库的完整状态（详情页、pull 前置检查用）。带脏标记与最后提交，**不便宜**。 */
 export async function repoStatus(
   path: string,
   options: { fresh?: boolean } = {},
@@ -70,33 +84,45 @@ export async function repoStatus(
 
   if (options.fresh) {
     statusCache.delete(path)
-    return getRepoStatus(path, { timeoutMs: gitTimeoutMs, scheduler })
+    return getRepoStatus(path, { timeoutMs: gitTimeoutMs, scheduler, profile: 'full' })
   }
   const hit = statusCache.get(path)
   if (hit && Date.now() - hit.at < STATUS_TTL_MS) return hit.value
 
-  const value = await getRepoStatus(path, { timeoutMs: gitTimeoutMs, scheduler })
+  const value = await getRepoStatus(path, { timeoutMs: gitTimeoutMs, scheduler, profile: 'full' })
   statusCache.set(path, { at: Date.now(), value })
   return value
 }
 
-export async function repoStatuses(paths: string[]): Promise<RepoStatus[]> {
+/**
+ * 列表页的批量状态：**lean 档**。
+ *
+ * 列表那一列只画分支、↑↓ 和一句话状态，不显示未提交改动、也不显示最后提交
+ * （`StatusCell` 里那两处都是详情页才用）。所以这里不读工作区、不读对象，
+ * 每仓库只剩 1 条 git 命令（算 ahead/behind），其余走 pure-JS 的 isomorphic-git。
+ *
+ * 返回的 `dirty` / `dirtyCount` / `lastCommit` **没有意义**，别拿去判安全性——
+ * 要那个就调 `repoStatus`（full 档）。
+ */
+export async function repoStatusesLean(paths: string[]): Promise<RepoStatus[]> {
   const { gitTimeoutMs, concurrency } = current()
   scheduler.setLimit(concurrency)
 
   const now = Date.now()
   const fresh = paths.filter((p) => {
-    const hit = statusCache.get(p)
-    return !(hit && now - hit.at < STATUS_TTL_MS)
+    const hit = leanCache.get(p)
+    return !(hit && now - hit.at < LEAN_TTL_MS)
   })
   if (fresh.length > 0) {
-    // 注意：这里 await 期间缓存可能被 clearStatusCache() 清掉（改设置、改/删项目、
-    // 批量任务收尾都会清），所以下面回填时不能再假设「刚才命中的那些还在」。
-    const results = await getRepoStatuses(fresh, { timeoutMs: gitTimeoutMs, scheduler })
-    for (const status of results) statusCache.set(status.path, { at: Date.now(), value: status })
+    const results = await getRepoStatuses(fresh, {
+      timeoutMs: gitTimeoutMs,
+      scheduler,
+      profile: 'lean',
+    })
+    for (const status of results) leanCache.set(status.path, { at: Date.now(), value: status })
   }
 
-  return paths.map((p) => statusCache.get(p)?.value ?? unreadableStatus(p))
+  return paths.map((p) => leanCache.get(p)?.value ?? unreadableStatus(p))
 }
 
 /** 缓存被清掉、又来不及重查时的兜底状态：说清「没读出来」，而不是崩掉。 */
@@ -158,4 +184,5 @@ export function getRemoteUrl(path: string): Promise<string | null> {
 
 export function clearStatusCache(): void {
   statusCache.clear()
+  leanCache.clear()
 }

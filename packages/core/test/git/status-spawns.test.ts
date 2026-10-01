@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { getRepoStatus } from '../../src/git/status.ts'
+import { readRepoStatus, type StatusProfile } from '../../src/git/inspect/index.ts'
 import { analyzeUpdates } from '../../src/git/log.ts'
 import { gitSpawnCount, resetGitSpawnCount } from '../../src/git/runner.ts'
 import { cleanup, commit, git, initClone, initRepo } from '../helpers/repo.ts'
@@ -10,12 +10,14 @@ import { cleanup, commit, git, initClone, initRepo } from '../helpers/repo.ts'
 /**
  * 每个仓库读一次状态要起几个 git 子进程。
  *
- * Windows 上每条 git 命令几百毫秒，所以这个数字直接决定批量操作的耗时：
- * 100 个仓库 × 7 条 = 约 700 次进程启动。原来读状态要跑 7–8 条
- * （porcelain、rev-parse HEAD、symbolic-ref、上游、rev-list、remote、log），
- * 现在合并成「`status --porcelain=v2 --branch` + remote + log」3 条。
+ * Windows 上每条 git 命令约 70ms（20ms 是 CreateProcess 的地板），所以这个数字
+ * 直接决定批量操作的耗时。历史上这里跑过 7–8 条命令，后来合并成 3 条，
+ * 现在又按「列表页到底要看什么」分了两档：
  *
- * 这条测试是**防回归**用的：以后谁往 readStatus 里加探针，数字涨上去就会红。
+ * - `full`：ref/config 走库（0 进程）+ rev-list + status + log = **最多 3 条**
+ * - `lean`：ref/config 走库（0 进程）+ rev-list = **最多 1 条**
+ *
+ * 这条测试是**防回归**用的：以后谁往读取路径里加探针，数字涨上去就会红。
  * 上限给得比实际松一点，只拦住「又变回七八条」这种量级的变化。
  */
 
@@ -23,23 +25,23 @@ const dirs: string[] = []
 const track = <T>(d: T): T => (dirs.push(d as unknown as string), d)
 afterAll(() => cleanup(...dirs))
 
-async function spawnsFor(dir: string): Promise<number> {
+async function spawnsFor(dir: string, profile: StatusProfile): Promise<number> {
   resetGitSpawnCount()
-  await getRepoStatus(dir)
+  await readRepoStatus(dir, { profile })
   return gitSpawnCount()
 }
 
-describe('读状态的 git 子进程数', () => {
+describe('读状态的 git 子进程数（full 档：详情页 / pull 前置检查）', () => {
   it('干净、无远程：不超过 3 条', async () => {
     const dir = track(initRepo())
-    expect(await spawnsFor(dir)).toBeLessThanOrEqual(3)
+    expect(await spawnsFor(dir, 'full')).toBeLessThanOrEqual(3)
   })
 
-  it('有远程、有上游：不超过 3 条（上游与领先/落后不额外起进程）', async () => {
+  it('有远程、有上游：不超过 3 条（分支/上游/地址都不起进程）', async () => {
     const { origin, clone } = initClone(0)
     track(origin)
     track(clone)
-    expect(await spawnsFor(clone)).toBeLessThanOrEqual(3)
+    expect(await spawnsFor(clone, 'full')).toBeLessThanOrEqual(3)
   })
 
   it('落后（已 fetch）：同样不超过 3 条', async () => {
@@ -48,25 +50,53 @@ describe('读状态的 git 子进程数', () => {
     track(clone)
     commit(origin, '远程提交')
     git(clone, 'fetch')
-    expect(await spawnsFor(clone)).toBeLessThanOrEqual(3)
+    expect(await spawnsFor(clone, 'full')).toBeLessThanOrEqual(3)
   })
 
   it('脏工作区：不超过 3 条', async () => {
     const dir = track(initRepo())
     fs.writeFileSync(path.join(dir, 'x.txt'), 'x')
-    expect(await spawnsFor(dir)).toBeLessThanOrEqual(3)
+    expect(await spawnsFor(dir, 'full')).toBeLessThanOrEqual(3)
   })
 
-  it('不是仓库的目录：一条就够（预检已去掉）', async () => {
+  it('不是仓库的目录：一条都不用起（库读 .git 就否掉了）', async () => {
     const dir = track(fs.mkdtempSync(path.join(os.tmpdir(), 'not-a-repo-')))
-    expect(await spawnsFor(dir)).toBeLessThanOrEqual(1)
+    expect(await spawnsFor(dir, 'full')).toBe(0)
   })
 
   it('批量 5 个仓库的总进程数随之线性', async () => {
     const dirsToCheck = Array.from({ length: 5 }, (_, i) => track(initRepo(`c${i}`)))
     resetGitSpawnCount()
-    for (const d of dirsToCheck) await getRepoStatus(d)
+    for (const d of dirsToCheck) await readRepoStatus(d, { profile: 'full' })
     expect(gitSpawnCount()).toBeLessThanOrEqual(15)
+  })
+})
+
+describe('读状态的 git 子进程数（lean 档：列表页）', () => {
+  it('有远程、有上游：只有 rev-list 一条', async () => {
+    const { origin, clone } = initClone(0)
+    track(origin)
+    track(clone)
+    expect(await spawnsFor(clone, 'lean')).toBeLessThanOrEqual(1)
+  })
+
+  it('脏工作区：lean 档不看工作区，所以还是只有 rev-list 一条', async () => {
+    const { origin, clone } = initClone(0)
+    track(origin)
+    track(clone)
+    fs.writeFileSync(path.join(clone, 'x.txt'), 'x')
+    expect(await spawnsFor(clone, 'lean')).toBeLessThanOrEqual(1)
+  })
+
+  it('空仓库：一条都不用起（没提交就不必算领先/落后）', async () => {
+    const dir = track(fs.mkdtempSync(path.join(os.tmpdir(), 'lean-empty-')))
+    git(dir, 'init', '-b', 'main')
+    expect(await spawnsFor(dir, 'lean')).toBe(0)
+  })
+
+  it('不是仓库的目录：一条都不用起', async () => {
+    const dir = track(fs.mkdtempSync(path.join(os.tmpdir(), 'lean-not-a-repo-')))
+    expect(await spawnsFor(dir, 'lean')).toBe(0)
   })
 })
 
