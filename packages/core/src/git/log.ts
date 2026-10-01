@@ -1,6 +1,6 @@
 import { probe, runGit, toGitError, type RunOptions } from './runner.ts'
 import { defaultScheduler, type Scheduler } from './scheduler.ts'
-import type { GitLogEntry, UpdateReport, UpdateReportEntry } from './types.ts'
+import type { GitLogEntry, UpdateReport, UpdateReportEntry, UpdateStatus } from './types.ts'
 
 /**
  * 提交图数据。字段用 0x1F（单元分隔）隔开、记录用 0x1E（记录分隔），
@@ -110,9 +110,26 @@ export async function analyzeUpdates(path: string, options: LogOptions = {}): Pr
     const ref = upstream.stdout.trim()
 
     const counts = await probe(['rev-list', '--left-right', '--count', `HEAD...${ref}`], cwd)
-    const [ahead, behind] = counts.ok
-      ? counts.stdout.trim().split(/\s+/).map((n) => Number(n))
-      : [null, null]
+    if (!counts.ok) {
+      // 探测失败 ≠ 「没有差异」。以前这里把失败当成 ahead/behind 双 null，
+      // 三元链一路落到 'up_to_date'，于是把一个**根本没读成功**的仓库
+      // 报成「已是最新」且 error 为 null —— 最危险的假绿方向。
+      const error = toGitError(counts.result, '读不到本地与远程的差异')
+      return { ...emptyReport('error'), error }
+    }
+
+    const parts = counts.stdout.trim().split(/\s+/)
+    const ahead = Number(parts[0])
+    const behind = Number(parts[1])
+    if (!Number.isFinite(ahead) || !Number.isFinite(behind)) {
+      return {
+        ...emptyReport('error'),
+        error: {
+          kind: 'unknown',
+          message: `rev-list 的输出读不懂：${counts.stdout.trim().slice(0, 80)}`,
+        },
+      }
+    }
 
     // incoming = 远程有本地没有（要拉进来的）；outgoing = 本地有远程没有（还没推的）
     const incoming = await readRange(cwd, `HEAD..${ref}`, 50)
@@ -123,22 +140,26 @@ export async function analyzeUpdates(path: string, options: LogOptions = {}): Pr
     const newTags = [...localTagsAfter].filter((t) => !localTagsBefore.has(t))
 
     return {
-      status:
-        ahead && behind
-          ? 'diverged'
-          : behind
-            ? 'behind'
-            : ahead
-              ? 'ahead'
-              : 'up_to_date',
-      ahead: ahead ?? null,
-      behind: behind ?? null,
+      status: statusFromCounts(ahead, behind),
+      ahead,
+      behind,
       incoming,
       outgoing,
       tags: newTags,
       error: null,
     }
   })
+}
+
+/**
+ * ahead/behind 两个数字 → 状态。显式比较，不再依赖 null 的假值语义
+ * （与 `deriveStatus` 保持一致）。
+ */
+export function statusFromCounts(ahead: number, behind: number): UpdateStatus {
+  if (ahead > 0 && behind > 0) return 'diverged'
+  if (behind > 0) return 'behind'
+  if (ahead > 0) return 'ahead'
+  return 'up_to_date'
 }
 
 async function readRange(

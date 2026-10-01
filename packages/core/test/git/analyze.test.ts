@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { analyzeUpdates } from '../../src/git/log.ts'
+import { analyzeUpdates, statusFromCounts } from '../../src/git/log.ts'
 import { cleanup, commit, git, initClone, initRepo } from '../helpers/repo.ts'
 
 const dirs: string[] = []
@@ -101,5 +101,33 @@ describe('analyzeUpdates', () => {
 
     const second = await analyzeUpdates(clone)
     expect(second.tags).toEqual([])
+  })
+})
+
+/**
+ * `rev-list` 读不出来时（对象库损坏、超时、ref 冲突）**不能**报成「已是最新」。
+ *
+ * 原来的实现把探测失败当成 ahead=behind=null，三元链一路落到 'up_to_date'，
+ * 而且 error 是 null —— 一个根本没读成功的仓库被说成最新，用户没有任何线索。
+ * 这是最危险的假绿方向，所以把判定抽成纯函数，直接钉住语义。
+ *
+ * 注：特意不去造「损坏对象库 + fetch 成功」这种病态仓库来端到端触发 ——
+ * 实测损坏对象会让 `git fetch` 自己先失败，走的是另一条分支，测试会假绿。
+ */
+describe('statusFromCounts', () => {
+  it('两边都有 → diverged', () => {
+    expect(statusFromCounts(2, 3)).toBe('diverged')
+  })
+
+  it('只有远程有 → behind', () => {
+    expect(statusFromCounts(0, 3)).toBe('behind')
+  })
+
+  it('只有本地有 → ahead', () => {
+    expect(statusFromCounts(2, 0)).toBe('ahead')
+  })
+
+  it('都没有 → up_to_date', () => {
+    expect(statusFromCounts(0, 0)).toBe('up_to_date')
   })
 })
