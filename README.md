@@ -3,7 +3,9 @@
 本地 git 项目管理工具：管理自己的项目 + 追踪网上开源项目的本地克隆。
 替代手写 README 项目清单——项目表、备注/tag 元数据、批量更新检测与勾选式更新。
 
-设计与里程碑规划见 [`docs/superpowers/specs/2026-06-20-git-nest-design.md`](docs/superpowers/specs/2026-06-20-git-nest-design.md)。
+> **接手先看 [`docs/STATUS.md`](docs/STATUS.md)**：当前进度、代码地图、核心不变量、
+> 待决定的事、以及这个环境踩过的坑。
+> 设计与实现差异见 [`docs/superpowers/specs/2026-06-20-git-nest-design.md`](docs/superpowers/specs/2026-06-20-git-nest-design.md) 第 13 节。
 
 ## 跑起来
 

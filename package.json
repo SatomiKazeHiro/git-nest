@@ -14,7 +14,8 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "check:encoding": "node scripts/check-encoding.mjs"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
