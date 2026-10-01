@@ -124,7 +124,10 @@ describe('Windows 路径', () => {
     const status = await getRepoStatus(dir, { timeoutMs: 15_000 })
     expect(status.error?.kind).toBe('path_too_long')
     expect(status.status).not.toBe('not_a_repo')
-    expect(status.error?.message).toContain('260')
+    // 文案要与**触发门槛**一致（代码里是 240，比 MAX_PATH 约 260 保守一截），
+    // 而且要给可操作的出路 —— 原来消息说「约 260」却按 240 触发，自相矛盾。
+    expect(status.error?.message).toContain('240')
+    expect(status.error?.message).toContain('LongPathsEnabled')
   })
 
   it('扫描能认出带中文与长路径的仓库', async () => {

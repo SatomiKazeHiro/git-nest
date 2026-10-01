@@ -41,14 +41,17 @@ async function readStatus(path: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise
   if (!fs.existsSync(path)) {
     return { ...EMPTY(path, 'missing'), error: { kind: 'missing', message: '目录不在了' } }
   }
+  // 早退的门槛刻意比 Windows 的 MAX_PATH（约 260）保守一截。
+  // 实测：258 字符的目录**存在**，但 `git -C <它>` 直接 exit 128
+  // （`fatal: cannot change to ...: No such file or directory`），
+  // 带上 `core.longpaths=true` 也一样 —— 那个选项救不了最初的 chdir。
+  // 与其让 git 报一句看不懂的 ENOENT，不如自己先说清怎么办。
   if (path.length > 240 && process.platform === 'win32') {
-    // Windows 的 MAX_PATH 约 260 字符；git 自己进不去，早点说清比让它报
-    // 「Filename too long」强得多
     return {
       ...EMPTY(path, 'error'),
       error: {
         kind: 'path_too_long',
-        message: `路径 ${path.length} 个字符，超过 Windows 的长度上限（约 260 字符），git 进不去`,
+        message: `路径 ${path.length} 个字符，git 进不去（Windows 上超过约 240 字符就会失败，core.longpaths 也救不了最初的目录切换）。把仓库移到浅一点的目录，或者开启系统的长路径支持（LongPathsEnabled）`,
       },
     }
   }

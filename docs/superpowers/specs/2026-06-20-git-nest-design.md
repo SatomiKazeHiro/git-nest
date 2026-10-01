@@ -86,8 +86,11 @@ CREATE TABLE update_checks (
   id           INTEGER PRIMARY KEY,
   project_id   INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   checked_at   TEXT NOT NULL,
-  status       TEXT NOT NULL,   -- up_to_date | behind | ahead | diverged |
-                                -- dirty | no_upstream | detached | no_remote | error
+  status       TEXT NOT NULL,   -- 取值是完整的 UpdateStatus（见 packages/core/src/git/types.ts）：
+                                -- up_to_date | behind | ahead | diverged | dirty |
+                                -- no_upstream | gone | detached | no_remote |
+                                -- no_commits | missing | not_a_repo | error
+                                -- 注意 recordUpdateCheck 会写入任意一种，不只是远程相关的那几个
   ahead_count  INTEGER,
   behind_count INTEGER,
   detail       TEXT             -- JSON：错误信息或附加说明

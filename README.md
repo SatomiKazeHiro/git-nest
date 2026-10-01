@@ -38,14 +38,15 @@ pnpm build        # 构建 web 产物
 ```
 git-nest/
 ├── apps/
-│   ├── server/   Fastify + better-sqlite3，REST（批量操作的 SSE 留给 M3）
+│   ├── server/   Fastify + better-sqlite3，REST + SSE（批量更新的进度就是 SSE）
 │   └── web/      Vite + React 19 + TanStack Query + React Router + Tailwind v4
 └── packages/
     └── core/     共享类型 + zod 校验 + git 执行层，前后端同一份
 ```
 
 - `packages/core` 无 UI、无 HTTP 依赖，以源码形式被引用（`exports: ./src/index.ts`），改完不用构建。
-- **core 有两个入口**：`@git-nest/core`（类型 + zod，浏览器安全）与 `@git-nest/core/git`
+- **core 有两个入口**（`package.json` 的 `exports` 里还有一个 `./types`，当前无人引用）：
+  `@git-nest/core`（类型 + zod，浏览器安全）与 `@git-nest/core/git`
   （依赖 `node:child_process`，只能 node 侧引）。别在 barrel 里 `export *` git 层，
   否则浏览器打包会报 `node:child_process has been externalized`。
 - 元数据进 SQLite；git 实时状态不落库，每次现查（server 侧 3 秒短缓存，`?fresh=true` 可绕开）。
@@ -79,12 +80,16 @@ git-nest/
    「远程仓库找不到」单独说，不当成「要认证」——那会把人引向错误的方向
 
 状态机覆盖的常态分支（不是异常）：`up_to_date` `behind` `ahead` `diverged` `dirty`
-`no_upstream` `detached` `no_remote` `no_commits` `missing` `not_a_repo`。
+`no_upstream` `gone` `detached` `no_remote` `no_commits` `missing` `not_a_repo`，
+外加一个 `error`（读不出来，比如路径过长或 git 起不来）。完整定义见
+`packages/core/src/git/types.ts` 的 `UpdateStatus`。
 
 **状态措辞按新鲜度降级。** 状态接口只读本地 refs、从不联网，所以「已是最新」在
 没有依据时是失真的：远程相关的结论（最新/落后/领先/分叉）要看「什么时候查过」——
-从没查过显示「没查过远程」且不给颜色，超过 12 小时把「已是最新」降级成「上次看是最新」。
-纯本地状态（脏 / 游离 / 没有远程）任何时候都可信，不受影响。
+从没查过时 `up_to_date` 退成「没查过远程」且不给颜色；但 `behind`/`ahead`/`diverged`
+的**方向和数字照常显示**（它们来自本地 refs，本身可靠），只标注「本地看到的，没联网确认」。
+超过 12 小时把「已是最新」降级成「上次看是最新」。纯本地状态（脏 / 游离 / 没有远程）
+任何时候都可信，不受影响。
 
 ## API
 
@@ -186,9 +191,10 @@ web 层按设计文档第 9 节用 MSW 测了勾选更新流程的组件级 happ
 - **`-c credential.helper=` 是必须的。** 只设 `GIT_TERMINAL_PROMPT=0` 不够：遇到要密码的
   远程时 git 会卡在凭证链上（实测挂 8 秒以上无任何输出），一个私有仓库就能把整个批量检查
   拖到超时。清空 helper 之后它立即报 `unable to get password from user`。
-- **长路径**：Windows 上超过约 260 字符的路径 git 根本进不去（`core.longpaths` 救不了
-  最初的 chdir）。这类仓库现在直接报 `path_too_long` 并说清怎么办，而不是含糊地说
-  「不是 git 仓库」。
+- **长路径**：实测 258 字符的目录**存在**，但 `git -C <它>` 直接 `fatal: cannot change to
+  ...: No such file or directory`（exit 128），带 `core.longpaths=true` 也一样 ——
+  那个选项救不了最初的 chdir。这类仓库现在直接报 `path_too_long`（门槛取 240 字符，
+  比 MAX_PATH 约 260 保守一截）并说清怎么办，而不是含糊地说「不是 git 仓库」。
 - `better-sqlite3` 需要跑安装脚本。pnpm 10+ 默认拦截，已在 `pnpm-workspace.yaml` 的
   `allowBuilds` 里放行（**pnpm 12 的键名是 `allowBuilds`**；pnpm 10/11 时代叫
   `onlyBuiltDependencies`，旧键在 12 里已被合并、写了不生效）；换机器后报
