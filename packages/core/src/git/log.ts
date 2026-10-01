@@ -5,6 +5,10 @@ import type { GitLogEntry, UpdateReport, UpdateReportEntry, UpdateStatus } from 
 /**
  * 提交图数据。字段用 0x1F（单元分隔）隔开、记录用 0x1E（记录分隔），
  * 这样 message 里出现任何字符都不会串行。
+ *
+ * 字段顺序与 `parseGitLog` 的解析一一对应，改动时两边一起改。
+ * `%cI` 是 committer date、`%aI` 是 author date：提交图组件两个都要
+ * （rebase/amend 之后它们会不一样）。
  */
 const PRETTY = [
   '--pretty=format:%H',
@@ -13,6 +17,7 @@ const PRETTY = [
   '%x1f%an',
   '%x1f%ae',
   '%x1f%cI',
+  '%x1f%aI',
   '%x1f%s',
   '%x1f%D',
   '%x1e',
@@ -24,26 +29,47 @@ const RECORD = '\x1e'
 export interface LogOptions extends Partial<RunOptions> {
   maxCount?: number
   scheduler?: Scheduler
-  /** 包含所有分支（--all）。默认只要 HEAD。 */
-  all?: boolean
+  /**
+   * 只取这个分支的历史（`git log <branch>`）。
+   *
+   * 默认 `HEAD`：**不取 --all**。提交图组件按 `branch` 组织图，而 `--all` 会
+   * 把别的分支的提交也拉进来，同一个提交还可能属于多个分支，归属说不清。
+   * 这个视图看的就是当前检出的那条线。
+   */
+  branch?: string
 }
 
 /** 解析 `git log --pretty` 的输出，喂给泳道图组件。 */
-export function parseGitLog(raw: string): GitLogEntry[] {
+export function parseGitLog(raw: string, branch = 'HEAD'): GitLogEntry[] {
   const entries: GitLogEntry[] = []
   for (const chunk of raw.split(RECORD)) {
     const line = chunk.replace(/^[\r\n]+/, '')
     if (!line.trim()) continue
-    const [hash, shortHash, parents, authorName, authorEmail, date, subject, refs] =
-      line.split(FIELD)
+    const [
+      hash,
+      shortHash,
+      parents,
+      authorName,
+      authorEmail,
+      committerDate,
+      authorDate,
+      subject,
+      refs,
+    ] = line.split(FIELD)
     if (!hash) continue
+    const date = committerDate ?? ''
     entries.push({
       hash,
       shortHash: shortHash || hash.slice(0, 7),
       parents: (parents ?? '').trim() ? parents!.trim().split(/\s+/) : [],
       authorName: authorName ?? '',
       authorEmail: authorEmail ?? '',
-      date: date ?? '',
+      date,
+      /** 提交图组件要的两个时间戳 */
+      committerDate: date,
+      authorDate: authorDate ?? date,
+      /** 这个提交属于哪条分支：本视图只看一条线，所以就是它 */
+      branch,
       subject: subject ?? '',
       refs: (refs ?? '')
         .split(',')
@@ -57,14 +83,15 @@ export function parseGitLog(raw: string): GitLogEntry[] {
 export async function getLog(path: string, options: LogOptions = {}): Promise<GitLogEntry[]> {
   const scheduler = options.scheduler ?? defaultScheduler
   return scheduler.schedule(path, async () => {
-    const args = ['log', options.all === false ? 'HEAD' : '--all', '-n', String(options.maxCount ?? 200)]
+    const branch = options.branch ?? 'HEAD'
+    const args = ['log', branch, '-n', String(options.maxCount ?? 200)]
     args.push('--date=iso-strict', PRETTY)
     const result = await probe(args, { cwd: path, timeoutMs: options.timeoutMs })
     if (!result.ok) {
       // 空仓库 / 不是仓库：给空列表，让 UI 显示「还没有提交」而不是报错
       return []
     }
-    return parseGitLog(result.stdout)
+    return parseGitLog(result.stdout, branch)
   })
 }
 

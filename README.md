@@ -119,8 +119,8 @@ fetch 十几个仓库，不能让一个 HTTP 请求一直挂着。任务状态�
 请求体验证统一走 zod，失败返回 422 + 逐字段说明。
 
 **M2 git 状态** — `packages/core` 的 git 执行层（status / log / pull / scan / scheduler /
-错误归因）、清单页状态列、详情页 git 状态面板与提交图（自研泳道图，接口隔离在单个组件内，
-将来可替换成 react-git-log）。
+错误归因）、清单页状态列、详情页 git 状态面板与提交图（用 `@tomplum/react-git-log`，
+封装在 `features/gitgraph/` 一个文件里）。
 
 **M3 更新模块** — 批量检查更新 → 逐仓库分析报告（新增 commit / 新 tag / ahead-behind）→
 勾选 → ff-only 更新 → 结果汇总，全程 SSE 推进度。设置页可调 personal 是否参与检查、
@@ -150,7 +150,7 @@ web 层按设计文档第 9 节用 MSW 测了勾选更新流程的组件级 happ
 
 - **Agent 接入**（设计文档第 10 节）：`packages/core` 无 UI/HTTP 依赖、API 覆盖全部用户操作，
   Agent 的能力上限 = 用户的能力上限，没有特权后门。可以先做「哪些项目值得关注」这类分析。
-- 提交图换 react-git-log（接口已隔离在 `features/gitgraph/` 一个组件里）
+- ~~提交图换 react-git-log~~ 已完成（M2 的自研泳道图有车道泄漏，已换回库）
 - `update_checks` 的历史趋势利用（现在只存不用）
 
 ## 踩过的坑

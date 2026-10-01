@@ -71,9 +71,15 @@ export interface GitLogEntry {
   parents: string[]
   authorName: string
   authorEmail: string
+  /** committer date（ISO） */
   date: string
+  /** 提交图组件要的 committer / author 时间戳 */
+  committerDate: string
+  authorDate: string
+  /** 这个提交属于哪条分支（本视图只看一条线，所以是当前分支名） */
+  branch: string
   subject: string
-  /** HEAD / main / origin/main / tag: v1.0 之类，分号分隔 */
+  /** HEAD / main / origin/main / tag: v1.0 之类，逗号分隔的来源 */
   refs: string[]
 }
 

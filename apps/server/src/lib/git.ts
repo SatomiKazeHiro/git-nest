@@ -131,9 +131,9 @@ export function pull(path: string) {
   return pullRepo(path, { timeoutMs: gitTimeoutMs, scheduler })
 }
 
-export function repoLog(path: string, max: number) {
+export function repoLog(path: string, max: number, branch = 'HEAD') {
   const { gitTimeoutMs } = current()
-  return getLog(path, { maxCount: max, timeoutMs: gitTimeoutMs, scheduler })
+  return getLog(path, { maxCount: max, branch, timeoutMs: gitTimeoutMs, scheduler })
 }
 
 /** 扫目录：同样必须走这一个 scheduler，否则扫描会绕开并发上限。 */
