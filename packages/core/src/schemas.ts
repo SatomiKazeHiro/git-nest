@@ -21,9 +21,12 @@ export const updateProjectSchema = z
     // 仓库被移动 / 改名后需要重新指路，所以允许改 path
     path: trimmed.min(1, '本地路径不能为空').max(400).optional(),
     category: trimmed.max(60).optional(),
-    remoteUrl: trimmed.max(500).nullish().transform((v) => v || null),
-    sourceUrl: trimmed.max(500).nullish().transform((v) => v || null),
-    summary: trimmed.max(2000).nullish().transform((v) => v || null),
+    // .optional() 必须在 transform **外面**：transform 挂在外层时，zod 会对
+    // 「根本没提交的键」也执行它，把 undefined 变成 null 并把键物化进输出，
+    // 于是只改 name 的 PATCH 会连带把这三列写成 NULL（下面的 refine 也会失效）。
+    remoteUrl: trimmed.max(500).nullish().transform((v) => v || null).optional(),
+    sourceUrl: trimmed.max(500).nullish().transform((v) => v || null).optional(),
+    summary: trimmed.max(2000).nullish().transform((v) => v || null).optional(),
     sortOrder: z.number().int().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: '没有要修改的字段' })

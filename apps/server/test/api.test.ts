@@ -134,6 +134,70 @@ describe('PATCH / DELETE /api/projects/:id', () => {
     expect(res.json().project).toMatchObject({ name: 'renamed', category: 'experiments' })
   })
 
+  it('只改一个字段不会清空其它字段', async () => {
+    // 这条守的是一个真实踩过的坑：zod 的 transform 挂在最外层时，
+    // 未提交的键会被物化成 null，于是「改个名字」会把远程地址/来源/摘要一起清掉。
+    const created = await makeProject('patch-me', {
+      summary: '原摘要',
+      remoteUrl: 'https://example.invalid/repo.git',
+      sourceUrl: 'https://example.invalid/video',
+    })
+    const id = created.json().project.id
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/projects/${id}`,
+      headers: json,
+      payload: { name: '改名后' },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const { project } = res.json()
+    expect(project.name).toBe('改名后')
+    expect(project.summary).toBe('原摘要')
+    expect(project.remoteUrl).toBe('https://example.invalid/repo.git')
+    expect(project.sourceUrl).toBe('https://example.invalid/video')
+
+    // 落库的也得是原值，不能只是响应好看
+    const row = db
+      .prepare('SELECT summary, remote_url, source_url FROM projects WHERE id = ?')
+      .get(id) as { summary: string | null; remote_url: string | null; source_url: string | null }
+    expect(row).toEqual({
+      summary: '原摘要',
+      remote_url: 'https://example.invalid/repo.git',
+      source_url: 'https://example.invalid/video',
+    })
+  })
+
+  it('显式提交 null 才是清空', async () => {
+    const created = await makeProject('clear-me', { summary: '要被清掉的摘要' })
+    const id = created.json().project.id
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/projects/${id}`,
+      headers: json,
+      payload: { summary: null },
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json().project.summary).toBeNull()
+  })
+
+  it('空 body 返回 422 而不是静默通过', async () => {
+    const created = await makeProject('empty-patch')
+    const id = created.json().project.id
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/projects/${id}`,
+      headers: json,
+      payload: {},
+    })
+
+    expect(res.statusCode).toBe(422)
+  })
+
   it('删除项目不会留下备注与标签关联', async () => {
     const created = await makeProject('temporary')
     const id = created.json().project.id
