@@ -1,10 +1,9 @@
 import path from 'node:path'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
-import { scanDirectory } from '@git-nest/core/git'
 import type { DB } from '../db/index.ts'
 import { badRequest } from '../lib/errors.ts'
-import { getRemoteUrl } from '../lib/git.ts'
+import { getRemoteUrl, scan } from '../lib/git.ts'
 import { dirExists, toAbsolutePath } from '../lib/paths.ts'
 import { insertProject, nextSortOrder, pathExists } from '../repos/projects.ts'
 import { readSettings, writeSettings } from '../lib/settings.ts'
@@ -45,7 +44,9 @@ export const scanRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
     if (remember) rememberScanDir(db, abs)
 
     const tracked = trackedProjects(db)
-    const result = await scanDirectory(abs, {
+    // 走 lib/git.ts 的 scan()：它会把 server 的 scheduler 与设置里的超时一起传下去，
+    // 免得扫描绕开并发上限
+    const result = await scan(abs, {
       maxDepth: depth ?? 1,
       trackedPaths: tracked.keys(),
     })

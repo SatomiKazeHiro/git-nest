@@ -3,9 +3,9 @@ import { z } from 'zod'
 import type { DB } from '../db/index.ts'
 import { badRequest, notFound } from '../lib/errors.ts'
 import {
-  analyzeUpdates,
+  analyze,
   clearStatusCache,
-  pullRepo,
+  pull,
   type UpdateReport,
 } from '../lib/git.ts'
 import { readSettings } from '../lib/settings.ts'
@@ -62,7 +62,7 @@ export const updateRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
     )
 
     // 后台跑；请求立刻返回，前端拿 id 去订阅 SSE
-    void runCheck(db, task, targets, settings.gitTimeoutMs).catch((err: unknown) => {
+    void runCheck(db, task, targets).catch((err: unknown) => {
       failTask(task, err instanceof Error ? err.message : '检查失败')
     })
 
@@ -79,7 +79,7 @@ export const updateRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
       'apply',
       found.map((t) => ({ id: t.id, name: t.name })),
     )
-    void runApply(db, task, found, readSettings(db).gitTimeoutMs).catch((err: unknown) => {
+    void runApply(db, task, found).catch((err: unknown) => {
       failTask(task, err instanceof Error ? err.message : '更新失败')
     })
 
@@ -147,16 +147,17 @@ function describeSkipped(db: DB, requested: number[] | undefined, included: numb
     .map((t) => `${t.name}（personal）`)
 }
 
-async function runCheck(db: DB, task: Task, targets: Target[], timeoutMs: number) {
+async function runCheck(db: DB, task: Task, targets: Target[]) {
   const reports: UpdateReport[] = []
 
-  // 不在这里套 scheduler.map：analyzeUpdates 内部已经按仓库排队并限流了，
-  // 再包一层会对同一个 path 自锁。
+  // 不在这里套 scheduler.map：analyze() 内部已经按仓库排队并限流了，
+  // 再包一层会对同一个 path 自锁。但它必须走 lib/git.ts 那一个 scheduler 实例，
+  // 否则会落到 core 的 defaultScheduler，「同仓库串行」就失效了（而且并发上限也不受设置控制）。
   await Promise.all(
     targets.map(async (target) => {
       markRunning(task, target.id)
       try {
-        const report = await analyzeUpdates(target.path, { timeoutMs })
+        const report = await analyze(target.path)
         reports.push(report)
         recordUpdateCheck(db, target.id, report)
         markDone(task, target.id, report)
@@ -181,14 +182,16 @@ async function runCheck(db: DB, task: Task, targets: Target[], timeoutMs: number
   clearStatusCache()
 }
 
-async function runApply(db: DB, task: Task, targets: Target[], timeoutMs: number) {
+async function runApply(db: DB, task: Task, targets: Target[]) {
   const summary = { updated: 0, upToDate: 0, skipped: 0, failed: 0, commits: 0 }
 
   // 逐个串行：pull 会写工作区，同时拉多个仓库容易互相干扰，也不好看
   for (const target of targets) {
     markRunning(task, target.id)
     try {
-      const result = await pullRepo(target.path, { timeoutMs })
+      // 走 lib/git.ts 的 pull()（它带 server 的 scheduler）而不是裸 pullRepo，
+      // 否则同一个仓库的 pull 会与状态查询并发
+      const result = await pull(target.path)
       recordUpdateCheck(db, target.id, {
         status: result.status,
         ahead: null,

@@ -1,10 +1,11 @@
 import cors from '@fastify/cors'
 import Fastify from 'fastify'
 import { ZodError } from 'zod'
+import type { Scheduler } from '@git-nest/core/git'
 import { config } from './config.ts'
 import { openDatabase, type DB } from './db/index.ts'
 import { HttpError, toErrorBody } from './lib/errors.ts'
-import { bindSettings } from './lib/git.ts'
+import { bindSettings, useScheduler } from './lib/git.ts'
 import { noteRoutes, projectRoutes, tagRoutes } from './routes/index.ts'
 import { gitRoutes } from './routes/git.ts'
 import { updateRoutes } from './routes/updates.ts'
@@ -14,11 +15,15 @@ import { scanRoutes } from './routes/scan.ts'
 export interface AppOptions {
   db?: DB
   logger?: boolean
+  /** 换掉 `lib/git.ts` 里那个全局 scheduler（测试注入用） */
+  scheduler?: Scheduler
 }
 
 export function buildApp(options: AppOptions = {}) {
   const db = options.db ?? openDatabase()
   bindSettings(db)
+  // 必须在 bindSettings 之后：注入的实例要接上设置里的并发上限
+  if (options.scheduler) useScheduler(options.scheduler)
   const app = Fastify({ logger: options.logger ?? true })
 
   app.register(cors, { origin: config.corsOrigin })

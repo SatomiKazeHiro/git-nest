@@ -194,10 +194,25 @@ async function readLastCommit(cwd: {
   }
 }
 
-/** 只读 origin 地址。清单里的 remote_url 在添加项目时用它自动填。 */
-export async function getRemoteUrl(path: string): Promise<string | null> {
-  const result = await probe(['remote', 'get-url', 'origin'], { cwd: path })
-  return result.ok ? result.stdout.trim() : null
+/**
+ * 只读 origin 地址。清单里的 remote_url 在添加项目时用它自动填。
+ *
+ * 接受 `timeoutMs` / `scheduler`：调用方（server）要让它受设置里的超时约束，
+ * 并且和同一个仓库的其它操作共用一把锁。
+ */
+export async function getRemoteUrl(
+  path: string,
+  options: { timeoutMs?: number; scheduler?: Scheduler } = {},
+): Promise<string | null> {
+  const task = async () => {
+    const result = await probe(['remote', 'get-url', 'origin'], {
+      cwd: path,
+      timeoutMs: options.timeoutMs,
+    })
+    return result.ok ? result.stdout.trim() : null
+  }
+  const scheduler = options.scheduler
+  return scheduler ? scheduler.schedule(path, task) : task()
 }
 
 /** 批量查状态：跨仓库并发受 scheduler 限制，同仓库自动串行。 */
