@@ -226,6 +226,58 @@ describe('PATCH / DELETE /api/projects/:id', () => {
   })
 })
 
+describe('latestCheck 只能由成功的远程检查提供', () => {
+  /**
+   * 新鲜度用的是 `latestCheck.checkedAt`（见 StatusCell 的 freshnessOf）。
+   * 如果 fetch 失败的检查也能刷新它，那断网之后点一次「检查更新」，
+   * 清单页反而会显示刚确认过的绿色「已是最新」—— 正好是文档第 13 节第 10 条
+   * 要消灭的「没有依据的肯定」。
+   */
+  const insertCheck = (projectId: number, status: string, checkedAt: string) =>
+    db
+      .prepare(
+        `INSERT INTO update_checks (project_id, checked_at, status, ahead_count, behind_count, detail)
+         VALUES (?, ?, ?, NULL, NULL, NULL)`,
+      )
+      .run(projectId, checkedAt, status)
+
+  it('只有失败记录时 latestCheck 为 null（等于「没查过远程」）', async () => {
+    const created = await makeProject('only-failed')
+    const id = created.json().project.id
+    insertCheck(id, 'error', new Date().toISOString())
+
+    const detail = await app.inject({ method: 'GET', url: `/api/projects/${id}` })
+    expect(detail.json().project.latestCheck).toBeNull()
+
+    const list = await app.inject({ method: 'GET', url: '/api/projects' })
+    const row = list.json().projects.find((p: { id: number }) => p.id === id)
+    expect(row.latestCheck).toBeNull()
+  })
+
+  it('「不是仓库」这类本地状态也不算问过远程', async () => {
+    const created = await makeProject('not-a-repo-check')
+    const id = created.json().project.id
+    insertCheck(id, 'not_a_repo', new Date().toISOString())
+
+    const detail = await app.inject({ method: 'GET', url: `/api/projects/${id}` })
+    expect(detail.json().project.latestCheck).toBeNull()
+  })
+
+  it('有成功记录时照常给出（失败记录不会盖掉它）', async () => {
+    const created = await makeProject('mixed-checks')
+    const id = created.json().project.id
+    const earlier = new Date(Date.now() - 60_000).toISOString()
+    insertCheck(id, 'behind', earlier)
+    insertCheck(id, 'error', new Date().toISOString())
+
+    const detail = await app.inject({ method: 'GET', url: `/api/projects/${id}` })
+    const latest = detail.json().project.latestCheck
+    expect(latest).not.toBeNull()
+    expect(latest.status).toBe('behind')
+    expect(latest.checkedAt).toBe(earlier)
+  })
+})
+
 describe('notes', () => {
   it('增删改', async () => {
     const created = await makeProject('noted')

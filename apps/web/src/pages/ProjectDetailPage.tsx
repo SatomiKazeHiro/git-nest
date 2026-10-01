@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { orderBy } from 'es-toolkit'
-import type { RepoStatus } from '@git-nest/core'
+import { isRemoteCheckStatus, type RepoStatus, type UpdateStatus } from '@git-nest/core'
 import { Button, ErrorNote, Textarea } from '@/components/ui'
 import { formatRelative } from '@/lib/format'
 import { useUiStore } from '@/store/ui'
@@ -168,6 +168,7 @@ export function ProjectDetailPage() {
         isFetching={isFetching}
         onRefresh={() => setFreshNonce((n) => n + 1)}
         lastCheckAt={project.latestCheck?.checkedAt ?? null}
+        lastCheckStatus={project.latestCheck?.status ?? null}
       />
 
       <section>
@@ -201,16 +202,21 @@ function StatusPanel({
   isFetching,
   onRefresh,
   lastCheckAt,
+  lastCheckStatus,
 }: {
   status: RepoStatus | undefined
   isFetching: boolean
   onRefresh: () => void
   lastCheckAt: string | null
+  lastCheckStatus: UpdateStatus | null
 }) {
   if (!status) {
     return <p className="font-mono text-[12px] text-ink-3">正在读 git 状态…</p>
   }
-  const freshness = freshnessOf({ checkedAt: lastCheckAt })
+  // server 侧的 latestCheck 只在「真正问到远程」时才非空；这里再用共享判定守一道。
+  // 拿不到合格状态就按「从没查过」处理——宁可说不知道，也不说没依据的肯定。
+  const hasRemoteCheck = Boolean(lastCheckStatus && isRemoteCheckStatus(lastCheckStatus))
+  const freshness = hasRemoteCheck ? freshnessOf({ checkedAt: lastCheckAt }) : 'never'
 
   const rows: [string, string][] = [
     ['状态', textFor(status.status, freshness)],
@@ -242,8 +248,11 @@ function StatusPanel({
         </Button>
       </div>
 
-      <p className="mb-2 text-[12.5px] text-ink-2" title={statusTitle(status, { checkedAt: lastCheckAt })}>
-        {statusTitle(status, { checkedAt: lastCheckAt })}
+      <p
+        className="mb-2 text-[12.5px] text-ink-2"
+        title={statusTitle(status, { checkedAt: hasRemoteCheck ? lastCheckAt : null })}
+      >
+        {statusTitle(status, { checkedAt: hasRemoteCheck ? lastCheckAt : null })}
       </p>
       <p className="mb-2 text-[12px] text-ink-3">
         「重新读取」只读本地，不会联网。想知道远程有没有新东西，点上面的「检查更新」。

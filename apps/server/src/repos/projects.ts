@@ -1,5 +1,14 @@
 import type { DB } from '../db/index.ts'
-import type { Note, Project, ProjectDetail, ProjectListItem, Tag, UpdateCheckSummary } from '@git-nest/core'
+import {
+  REMOTE_CHECK_STATUSES,
+  isRemoteCheckStatus,
+  type Note,
+  type Project,
+  type ProjectDetail,
+  type ProjectListItem,
+  type Tag,
+  type UpdateCheckSummary,
+} from '@git-nest/core'
 
 interface ProjectRow {
   id: number
@@ -203,18 +212,27 @@ export function tagsByProject(db: DB, ids: number[]): Map<number, Tag[]> {
 function latestChecksByProject(db: DB, ids: number[]): Map<number, UpdateCheckSummary> {
   const map = new Map<number, UpdateCheckSummary>()
   if (ids.length === 0) return map
+  // 只挑「最近一次真正问到远程结论」的那条：fetch 失败的检查、以及
+  // 「不是仓库 / 没有远程」这类本地状态都不算问过远程，不能拿来刷新新鲜度
+  // ——否则断网后点一次检查，界面反而显示刚确认过的绿色「已是最新」。
+  // 过滤条件用 isRemoteCheckStatus 的同一份取值，避免两处漂移。
+  const qualified = (['up_to_date', 'behind', 'ahead', 'diverged'] as const)
+    .map(() => '?')
+    .join(', ')
   const rows = db
     .prepare(
       `SELECT project_id AS projectId, checked_at AS checkedAt, status, ahead_count AS aheadCount,
               behind_count AS behindCount
        FROM update_checks WHERE id IN (
-         SELECT MAX(id) FROM update_checks WHERE project_id IN (${ids.map(() => '?').join(',')})
+         SELECT MAX(id) FROM update_checks
+         WHERE project_id IN (${ids.map(() => '?').join(',')}) AND status IN (${qualified})
          GROUP BY project_id
        )`,
     )
-    .all(...ids) as (UpdateCheckSummary & { projectId: number })[]
+    .all(...ids, ...REMOTE_CHECK_STATUSES) as (UpdateCheckSummary & { projectId: number })[]
   for (const r of rows) {
     const { projectId, ...summary } = r
+    if (!isRemoteCheckStatus(summary.status)) continue
     map.set(projectId, summary)
   }
   return map

@@ -79,6 +79,29 @@ export interface UpdateCheckSummary {
   behindCount: number | null
 }
 
+/** 能作为「问过远程」依据的状态（与 isRemoteCheckStatus 同一份定义）。 */
+export const REMOTE_CHECK_STATUSES = ['up_to_date', 'behind', 'ahead', 'diverged'] as const
+
+/**
+ * 这次检查能不能当作「最近一次成功问过远程」的依据？
+ *
+ * 只有真正问到远程结论的四种状态算数。其余都不算：
+ * - `error`：fetch 失败（断网 / 私有仓库 / 超时），本地 refs 根本没更新
+ * - `missing` / `not_a_repo`：压根不是仓库，没有远程可言
+ * - `no_remote` / `no_upstream`：没有可问的远程
+ * - `dirty` / `detached` / `no_commits`：这是**调用方状态**，不是远程结论
+ *   （`deriveStatus` 里 dirty / detached 的优先级高于 ahead/behind，所以一次
+ *   检查在脏工作区上会得到 `dirty` 而不是 `behind` —— 干净工作区仍是 `behind`，
+ *   不会因此漏报「有更新」；但这行记录不该冒充「问过远程」）
+ *
+ * 为什么较真：界面上「新鲜度」用的是 `latestCheck.checkedAt`。如果失败的检查
+ * 也能刷新它，那断网之后点一次「检查更新」，清单页反而会显示**今天刚确认过的
+ * 绿色「已是最新」** —— 正是设计文档第 13 节第 10 条要消灭的「没有依据的肯定」。
+ */
+export function isRemoteCheckStatus(status: UpdateStatus): boolean {
+  return (REMOTE_CHECK_STATUSES as readonly UpdateStatus[]).includes(status)
+}
+
 /** 列表页的一行：项目 + tag + 最近一次检查摘要 + 备注条数。 */
 export interface ProjectListItem extends Project {
   tags: Tag[]
