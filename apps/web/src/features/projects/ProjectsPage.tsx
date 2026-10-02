@@ -72,34 +72,37 @@ export function ProjectsPage() {
           <EmptyList filtering={Boolean(filters.category || filters.tag || filters.q)} />
         ) : (
           /*
-            一整张表，**不是每个分区一张**。
-            原来是 groups.map 里各塞一个 `<ul>` + 各印一份 ColumnHeader，
-            于是分区一多就是好几张表上下叠着；而且每行用 flex + 固定宽度对齐，
-            跨分区的列根本对不齐。
-            现在表头只印一次，分组是表里的一行分隔（占满整行），
-            所有行共用同一套 grid 列定义（`LIST_COLUMNS`），列必然对齐。
+            原生 `<table>`，**一张表**，不是每个分区一张。
+            原来是 groups.map 里各塞一个 `<ul>` + 各印一份表头，分区一多就是好几张表叠着。
+
+            为什么最后落到原生 table：我前面试过 flex 和 grid 自己排，
+            两次都坏在「表头与行的列宽得手工保持一致」——断点写岔一次就整体错位，
+            grid 模板还会被构建工具漏掉。table 的列宽由浏览器按 `table-fixed` 统一算，
+            **表头和数据行想不对齐都难**，构建工具也插不上手。
           */
-          <div className="list-grid pt-1">
+          <table className="list-table pt-1">
             <ColumnHeader />
-            {groups.map((group) => (
-              <Fragment key={group.name}>
-                <GroupHeader
-                  name={group.name}
-                  count={group.items.length}
-                  active={group.filterable && filters.category === group.name}
-                  onFilter={group.filterable ? () => setCategory(group.name) : undefined}
-                />
-                {group.items.map((p) => (
-                  <ProjectRow
-                    key={p.id}
-                    project={p}
-                    status={statuses?.get(p.id)}
-                    onRemove={() => setPendingRemoval(p)}
+            <tbody>
+              {groups.map((group) => (
+                <Fragment key={group.name}>
+                  <GroupHeader
+                    name={group.name}
+                    count={group.items.length}
+                    active={group.filterable && filters.category === group.name}
+                    onFilter={group.filterable ? () => setCategory(group.name) : undefined}
                   />
-                ))}
-              </Fragment>
-            ))}
-          </div>
+                  {group.items.map((p) => (
+                    <ProjectRow
+                      key={p.id}
+                      project={p}
+                      status={statuses?.get(p.id)}
+                      onRemove={() => setPendingRemoval(p)}
+                    />
+                  ))}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
 
@@ -135,32 +138,30 @@ function EmptyList({ filtering }: { filtering: boolean }) {
 }
 
 /**
- * 表头。只印一次，粘在工具栏下面。
+ * 表头。只印一次（`<thead>` 里的唯一一行），粘在工具栏下面。
  *
- * **每个格子都带 `.col-*`（列宽），和下面的行写的是同一套类**——
- * 所以表头与行的列宽在任何断点都一致。这正是上一版错位的根因：
- * 表头用 `lg:block`、行里用 `sm:block`，两边对不上，列必然错开。
- *
- * 列定义本身（`.list-grid` 与那套 `.col-*`）在 `index.css` 里，用普通 CSS 写的。
- * 曾经把它写成 JS 拼串的 `grid-cols-[...]`，Tailwind v4 扫不到完整字面量，
- * 那条规则没生成，整张表退化成单列竖着排。
+ * 列宽全在 `.col-*` 上（`index.css`），**数据行用的是同一套类**——
+ * 但真正保证对齐的是 `table-fixed`：浏览器按第一行的列宽统一分配，
+ * 表头与数据行不需要「手工保持一致」。
  */
 function ColumnHeader() {
   return (
-    <div className="sticky top-[3.25rem] z-[5] border-b border-line bg-paper/95 py-1.5 text-[11px] text-ink-3 backdrop-blur">
-      <span />
-      <span>名称</span>
-      <span className="col-summary">摘要</span>
-      <span className="col-path font-mono">本地路径</span>
-      <span>标签</span>
-      {/* 这一列只回答「跟远程差多少」——不显示分支名，也不显示脏标记 */}
-      <span className="col-behind">落后</span>
-      <span className="col-author text-right">作者更新</span>
-      <span className="col-recommend">推荐</span>
-      <span className="col-checked text-right">上次检查</span>
-      <span className="col-notes text-right">备注</span>
-      <span />
-    </div>
+    <thead className="tr-tint sticky top-[3.25rem] z-[5]">
+      <tr className="border-b border-line text-[11px] text-ink-3">
+        <th className="col-check" />
+        <th className="col-name">名称</th>
+        <th className="col-summary">摘要</th>
+        <th className="col-path font-mono">本地路径</th>
+        <th className="col-tags">标签</th>
+        {/* 这一列只回答「跟远程差多少」——不显示分支名，也不显示脏标记 */}
+        <th className="col-behind">落后</th>
+        <th className="col-author text-right">作者更新</th>
+        <th className="col-recommend">推荐</th>
+        <th className="col-checked text-right">上次检查</th>
+        <th className="col-notes text-right">备注</th>
+        <th className="col-actions" />
+      </tr>
+    </thead>
   )
 }
 
@@ -243,11 +244,10 @@ function SelectionBar() {
 }
 
 /**
- * 分区标题——**它是表里的一行，不是一张新表**。
+ * 分区标题——**它是表里的一行（`<tr>`），不是一张新表**。
  *
  * 原来每个分区有一份自己的表头，于是多分区就成了「好几张表叠着」。
- * 现在它是一个占满整行（`col-span-full`）的分隔条，分组名落在「名称」那一列上，
- * 与下面的项目名左对齐。
+ * 现在它是一行跨满全部列（`colSpan=11`）的分隔条，分组名与项目名左对齐。
  *
  * 那个 `branch-node` 小圆点去掉了：它画在 `pl-5` 的位置，与名称列的起点对不齐，
  * 在单表布局里就是纯粹的错位。
@@ -264,23 +264,27 @@ function GroupHeader({
   onFilter?: () => void
 }) {
   return (
-    <div className="col-span-full mt-4 flex items-baseline gap-2 border-b border-line-soft pb-1">
-      {/* 空一格给选择框，让分组名与项目名对齐 */}
-      <span className="w-3.5 shrink-0" />
-      {onFilter ? (
-        <button
-          onClick={onFilter}
-          className={`font-mono text-[12px] tracking-wide hover:underline ${
-            active ? 'text-accent underline' : 'text-ink-2'
-          }`}
-        >
-          {name}
-        </button>
-      ) : (
-        <span className="font-mono text-[12px] tracking-wide text-ink-3">{name}</span>
-      )}
-      <span className="font-mono text-[12px] text-ink-3">{count}</span>
-    </div>
+    <tr className="group-row">
+      <td colSpan={11} className="pt-4">
+        <div className="flex items-baseline gap-2 border-b border-line-soft pb-1">
+          {/* 空一格给选择框，让分组名与项目名对齐 */}
+          <span className="w-3.5 shrink-0" />
+          {onFilter ? (
+            <button
+              onClick={onFilter}
+              className={`font-mono text-[12px] tracking-wide hover:underline ${
+                active ? 'text-accent underline' : 'text-ink-2'
+              }`}
+            >
+              {name}
+            </button>
+          ) : (
+            <span className="font-mono text-[12px] tracking-wide text-ink-3">{name}</span>
+          )}
+          <span className="font-mono text-[12px] text-ink-3">{count}</span>
+        </div>
+      </td>
+    </tr>
   )
 }
 
@@ -300,55 +304,59 @@ function ProjectRow({
   const gone = status?.status === 'missing'
 
   return (
-    <div
-      className={`list-grid row-link group py-1.5 ${gone ? 'opacity-50' : ''}`}
+    <tr
+      className={`row-link ${gone ? 'opacity-50' : ''}`}
       title={gone ? '目录不在了。点「编辑」可以把它指到新位置。' : undefined}
     >
-      <input
-        type="checkbox"
-        checked={selected}
-        onChange={() => toggleSelected(p.id)}
-        aria-label={`选择 ${p.name}`}
-        className="size-3.5 shrink-0 accent-[#14506e]"
-      />
-      <Link
-        to={`/projects/${p.id}`}
-        className="min-w-0 truncate text-[13.5px] font-medium text-ink hover:text-accent"
-      >
-        {p.name}
-      </Link>
-      <span className="col-summary min-w-0 truncate text-[12.5px] text-ink-2">
-        {p.summary ?? ''}
-      </span>
-      <span className="col-path min-w-0 truncate font-mono text-[12px] text-ink-3">
+      <td className="col-check">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => toggleSelected(p.id)}
+          aria-label={`选择 ${p.name}`}
+          className="size-3.5 accent-[#14506e]"
+        />
+      </td>
+      <td className="col-name">
+        <Link
+          to={`/projects/${p.id}`}
+          className="block truncate text-[13.5px] font-medium text-ink hover:text-accent"
+        >
+          {p.name}
+        </Link>
+      </td>
+      <td className="col-summary truncate text-[12.5px] text-ink-2">{p.summary ?? ''}</td>
+      <td className="col-path truncate font-mono text-[12px] text-ink-3">
         {shortenPath(p.path, 2)}
-      </span>
-      <span className="flex min-w-0 flex-wrap gap-1 overflow-hidden">
-        {p.tags.map((t) => (
-          <span
-            key={t.id}
-            className="rounded-[2px] border border-line px-1 font-mono text-[11px] text-ink-2"
-          >
-            {t.name}
-          </span>
-        ))}
-      </span>
-      <span className="col-behind min-w-0">
+      </td>
+      <td className="col-tags">
+        <span className="flex flex-wrap gap-1 overflow-hidden">
+          {p.tags.map((t) => (
+            <span
+              key={t.id}
+              className="rounded-[2px] border border-line px-1 font-mono text-[11px] text-ink-2"
+            >
+              {t.name}
+            </span>
+          ))}
+        </span>
+      </td>
+      <td className="col-behind">
         <StatusCell status={status} checkedAt={p.latestCheck?.checkedAt ?? null} />
-      </span>
+      </td>
       {/* 作者上次更新：远程最后一次提交的时间。用户明确要看这一条 */}
-      <span
-        className="col-author min-w-0 truncate text-right font-mono text-[12px] text-ink-3"
+      <td
+        className="col-author truncate text-right font-mono text-[12px] text-ink-3"
         title={status?.lastCommit ? status.lastCommit.subject : undefined}
       >
         {status?.lastCommit ? formatRelative(status.lastCommit.date) : ''}
-      </span>
+      </td>
       {/* 推荐更新：用户点名要的那一列。结论来自上次检查（见 RecommendationCell 的注释） */}
-      <span className="col-recommend min-w-0">
+      <td className="col-recommend">
         <RecommendationCell recommendation={p.latestCheck?.recommendation ?? null} />
-      </span>
-      <span
-        className="col-checked flex min-w-0 justify-end"
+      </td>
+      <td
+        className="col-checked text-right"
         title={p.latestCheck ? `上次检查：${p.latestCheck.status}` : '还没点过「检查更新」'}
       >
         {p.latestCheck ? (
@@ -356,29 +364,31 @@ function ProjectRow({
         ) : (
           <Meta label="检查" value="没查过" placeholder />
         )}
-      </span>
-      <span className="col-notes min-w-0 truncate text-right font-mono text-[12px] text-ink-3">
+      </td>
+      <td className="col-notes truncate text-right font-mono text-[12px] text-ink-3">
         {p.notesCount > 0 ? `${p.notesCount} 条` : ''}
-      </span>
-      <span className="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-        <button
-          onClick={() => openEdit(p.id)}
-          title="编辑"
-          aria-label={`编辑 ${p.name}`}
-          className="rounded-[3px] p-1 text-ink-2 hover:bg-panel hover:text-ink"
-        >
-          <Pencil size={13} aria-hidden />
-        </button>
-        <button
-          onClick={onRemove}
-          title="移出清单"
-          aria-label={`移出清单 ${p.name}`}
-          className="rounded-[3px] p-1 text-ink-2 hover:bg-panel hover:text-signal-bad"
-        >
-          <Trash2 size={13} aria-hidden />
-        </button>
-      </span>
-    </div>
+      </td>
+      <td className="col-actions">
+        <span className="row-actions flex justify-end gap-1">
+          <button
+            onClick={() => openEdit(p.id)}
+            title="编辑"
+            aria-label={`编辑 ${p.name}`}
+            className="rounded-[3px] p-1 text-ink-2 hover:bg-paper hover:text-ink"
+          >
+            <Pencil size={13} aria-hidden />
+          </button>
+          <button
+            onClick={onRemove}
+            title="移出清单"
+            aria-label={`移出清单 ${p.name}`}
+            className="rounded-[3px] p-1 text-ink-2 hover:bg-paper hover:text-signal-bad"
+          >
+            <Trash2 size={13} aria-hidden />
+          </button>
+        </span>
+      </td>
+    </tr>
   )
 }
 
