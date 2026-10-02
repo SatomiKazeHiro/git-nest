@@ -8,3 +8,5 @@ data/
 .reference
 .env
 .env.local
+# playwright-cli 的截图/快照/控制台日志（本地看界面用，不是产物）
+.playwright-cli/
