@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useLocation } from 'react-router'
+import { Check, Download, Eraser, FolderSearch, Loader, Trash2, X } from 'lucide-react'
 import type { ScannedRepo } from '@git-nest/core'
 import { ApiError, api } from '@/lib/api'
 import { Button, ErrorNote, Field, Input } from '@/components/ui'
@@ -169,6 +170,11 @@ export function ScanSection() {
           onClick={() => runScan(dir, true)}
           disabled={!dir.trim() || scan.isPending}
         >
+          {scan.isPending ? (
+            <Loader size={14} aria-hidden className="animate-spin" />
+          ) : (
+            <FolderSearch size={14} aria-hidden />
+          )}
           {scan.isPending ? '扫描中…' : '扫描'}
         </Button>
       </div>
@@ -192,9 +198,9 @@ export function ScanSection() {
                   onClick={() => forgetDir(d)}
                   aria-label={`不再记住 ${d}`}
                   title="不再记住这个目录"
-                  className="border-l border-line px-1 py-0.5 font-mono text-[11.5px] text-ink-3 hover:bg-panel hover:text-signal-bad"
+                  className="inline-flex items-center border-l border-line px-1 py-0.5 text-ink-3 hover:bg-panel hover:text-signal-bad"
                 >
-                  ×
+                  <X size={11} aria-hidden />
                 </button>
               </li>
             ))}
@@ -263,6 +269,7 @@ export function ScanSection() {
                     要一次加入 {picked.size} 个，确认吗？
                   </span>
                   <Button variant="primary" onClick={doImport} disabled={importRepos.isPending}>
+                    <Check size={14} aria-hidden />
                     确认加入这 {picked.size} 个
                   </Button>
                   <Button onClick={() => setPicked(new Set())}>再想想</Button>
@@ -274,9 +281,13 @@ export function ScanSection() {
                     onClick={doImport}
                     disabled={importRepos.isPending}
                   >
+                    <Download size={14} aria-hidden />
                     把选中的 {picked.size} 个加入清单
                   </Button>
-                  <Button onClick={() => setPicked(new Set())}>清空勾选</Button>
+                  <Button onClick={() => setPicked(new Set())}>
+                    <Eraser size={14} aria-hidden />
+                    清空勾选
+                  </Button>
                 </>
               )}
             </footer>
@@ -337,6 +348,7 @@ function RemoveDialog({
         <div className="mt-4 flex justify-end gap-2">
           <Button onClick={onClose}>留下</Button>
           <Button variant="danger" disabled={busy} onClick={onConfirm}>
+            <Trash2 size={14} aria-hidden />
             移出清单
           </Button>
         </div>
@@ -403,9 +415,10 @@ function ScanRow({
           {repo.projectId ? (
             <button
               onClick={onRemove}
-              className="text-[11.5px] text-ink-2 underline decoration-dotted hover:text-signal-bad"
+              className="inline-flex items-center gap-1 text-[11.5px] text-ink-2 underline decoration-dotted hover:text-signal-bad"
               title="只从清单里移除这一条记录，磁盘上的仓库不动"
             >
+              <Trash2 size={11} aria-hidden />
               移出清单
             </button>
           ) : null}

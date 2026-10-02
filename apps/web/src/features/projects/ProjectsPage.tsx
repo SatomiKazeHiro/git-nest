@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { groupBy, orderBy } from 'es-toolkit'
 import { useDebounce } from 'ahooks'
+import { Eraser, FolderSearch, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
 import { Button, Dialog, EmptyState, ErrorNote, Input, Meta } from '@/components/ui'
 import { formatRelative, shortenPath } from '@/lib/format'
@@ -176,19 +177,27 @@ function Toolbar({
           aria-label="搜索项目"
         />
       </div>
-      {filtering ? <Button onClick={clearFilters}>清掉筛选</Button> : null}
+      {filtering ? (
+        <Button onClick={clearFilters}>
+          <Eraser size={14} aria-hidden />
+          清掉筛选
+        </Button>
+      ) : null}
       <span className="font-mono text-[12px] text-ink-3">
         {total} 个项目
         {selectedCount > 0 ? ` · 已选 ${selectedCount}` : ''}
       </span>
       <div className="ml-auto flex items-center gap-2">
         <Button onClick={onCheckUpdates} className={checking ? 'border-accent text-accent' : ''}>
-          检查更新
+          <RefreshCw size={14} aria-hidden className={checking ? 'animate-spin' : ''} />
+          {checking ? '检查中…' : '检查更新'}
         </Button>
         <Button onClick={onScan} title="去设置里扫描一个目录，把本机仓库批量加进清单">
+          <FolderSearch size={14} aria-hidden />
           扫描目录
         </Button>
         <Button variant="primary" onClick={openCreate}>
+          <Plus size={14} aria-hidden />
           添加项目
         </Button>
       </div>
@@ -204,7 +213,10 @@ function SelectionBar() {
     <div className="fixed inset-x-0 bottom-0 border-t border-line bg-panel/95 px-6 py-2.5 backdrop-blur">
       <div className="flex items-center gap-3">
         <span className="font-mono text-[13px] text-ink-2">已选 {selectedIds.length} 个项目</span>
-        <Button onClick={clearSelection}>取消选择</Button>
+        <Button onClick={clearSelection}>
+          <X size={14} aria-hidden />
+          取消选择
+        </Button>
         <span className="text-[12px] text-ink-3">
           勾选后点「检查更新」，只会检查这几个
         </span>
@@ -323,15 +335,19 @@ function ProjectRow({
       <span className="flex w-16 shrink-0 justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
         <button
           onClick={() => openEdit(p.id)}
-          className="rounded-[3px] px-1.5 py-0.5 text-[12px] text-ink-2 hover:bg-panel hover:text-ink"
+          title="编辑"
+          aria-label={`编辑 ${p.name}`}
+          className="rounded-[3px] p-1 text-ink-2 hover:bg-panel hover:text-ink"
         >
-          编辑
+          <Pencil size={13} aria-hidden />
         </button>
         <button
           onClick={onRemove}
-          className="rounded-[3px] px-1.5 py-0.5 text-[12px] text-ink-2 hover:bg-panel hover:text-signal-bad"
+          title="移出清单"
+          aria-label={`移出清单 ${p.name}`}
+          className="rounded-[3px] p-1 text-ink-2 hover:bg-panel hover:text-signal-bad"
         >
-          移除
+          <Trash2 size={13} aria-hidden />
         </button>
       </span>
     </li>
@@ -354,6 +370,7 @@ function RemoveDialog({ project, onClose }: { project: ProjectListItem; onClose:
           disabled={remove.isPending}
           onClick={() => remove.mutate(project.id, { onSuccess: onClose, onError: onClose })}
         >
+          <Trash2 size={14} aria-hidden />
           移出清单
         </Button>
       </div>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ChevronDown, ChevronRight, Eraser, RefreshCw, Terminal } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { api } from '@/lib/api'
 
@@ -76,11 +77,17 @@ export function CommandsSection() {
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button onClick={() => runNow.mutate()} disabled={runNow.isPending}>
+          <RefreshCw size={14} aria-hidden className={runNow.isPending ? 'animate-spin' : ''} />
           {runNow.isPending ? '正在跑…' : '现在跑一轮'}
         </Button>
-        <Button onClick={() => setOpen((v) => !v)}>{open ? '收起命令日志' : '看命令日志'}</Button>
+        <Button onClick={() => setOpen((v) => !v)}>
+          {open ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
+          <Terminal size={14} aria-hidden />
+          {open ? '收起命令日志' : '看命令日志'}
+        </Button>
         {open ? (
           <Button onClick={() => clear.mutate()} disabled={clear.isPending}>
+            <Eraser size={14} aria-hidden />
             清空
           </Button>
         ) : null}

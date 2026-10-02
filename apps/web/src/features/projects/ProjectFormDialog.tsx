@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Check, Plus, X } from 'lucide-react'
 import { createProjectSchema, categorySuggestions } from '@git-nest/core'
 import { ApiError } from '@/lib/api'
 import { Button, Dialog, ErrorNote, Field, Input, Textarea } from '@/components/ui'
@@ -218,9 +219,11 @@ export function ProjectFormDialog() {
 
         <div className="mt-1 flex justify-end gap-2 border-t border-line-soft pt-3">
           <Button type="button" onClick={closeForm}>
+            <X size={14} aria-hidden />
             取消
           </Button>
           <Button type="submit" variant="primary" disabled={busy}>
+            {editingId ? <Check size={14} aria-hidden /> : <Plus size={14} aria-hidden />}
             {editingId ? '保存改动' : '加入清单'}
           </Button>
         </div>

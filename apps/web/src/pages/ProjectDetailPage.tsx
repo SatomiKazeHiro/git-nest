@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { orderBy } from 'es-toolkit'
+import { ArrowLeft, Check, Pencil, Plus, RefreshCw, Tag as TagIcon, Trash2, X } from 'lucide-react'
 import { isRemoteCheckStatus, deriveStatus, VERDICT_LABEL, type RepoStatus, type UpdateRecommendation, type UpdateStatus } from '@git-nest/core'
 import { Button, ErrorNote, Meta, Textarea } from '@/components/ui'
 import { formatRelative } from '@/lib/format'
@@ -66,13 +67,21 @@ export function ProjectDetailPage() {
       ) : null}
 
       <div>
-        <Link to="/" className="font-mono text-[12px] text-ink-3 hover:text-accent hover:underline">
-          ← 清单
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1 font-mono text-[12px] text-ink-3 hover:text-accent hover:underline"
+        >
+          <ArrowLeft size={13} aria-hidden />
+          清单
         </Link>
         <div className="mt-1.5 flex items-start gap-2">
           <h1 className="text-[22px] font-semibold leading-tight text-ink">{project.name}</h1>
-          <Button onClick={() => openEdit(project.id)}>编辑</Button>
+          <Button onClick={() => openEdit(project.id)}>
+            <Pencil size={14} aria-hidden />
+            编辑
+          </Button>
           <Button onClick={() => setUpdating((v) => !v)}>
+            {updating ? <X size={14} aria-hidden /> : <RefreshCw size={14} aria-hidden />}
             {updating ? '收起更新' : '检查更新'}
           </Button>
         </div>
@@ -132,8 +141,9 @@ export function ProjectDetailPage() {
                 setTagNames(project.tags.map((t) => t.name))
                 setEditingTags(true)
               }}
-              className="ml-1 text-[12px] text-ink-2 hover:text-accent hover:underline"
+              className="ml-1 inline-flex items-center gap-1 text-[12px] text-ink-2 hover:text-accent hover:underline"
             >
+              <TagIcon size={12} aria-hidden />
               编辑
             </button>
           )}
@@ -307,6 +317,7 @@ export function StatusPanel({
           />
         )}
         <Button className="ml-auto" disabled={isFetching} onClick={onRefresh}>
+          <RefreshCw size={14} aria-hidden className={isFetching ? 'animate-spin' : ''} />
           {isFetching ? '读取中…' : '重新读取'}
         </Button>
       </div>
@@ -389,6 +400,7 @@ function Notes({
         />
         <div className="flex items-center gap-2">
           <Button variant="primary" onClick={submit} disabled={!draft.trim() || add.isPending}>
+            <Plus size={14} aria-hidden />
             加备注
           </Button>
           <span className="text-[12px] text-ink-3">Ctrl + Enter 也可以</span>
@@ -430,6 +442,7 @@ function NoteItem({ note }: { note: { id: number; content: string; createdAt: st
                 )
               }
             >
+              <Check size={14} aria-hidden />
               保存
             </Button>
             <Button onClick={() => setEditing(false)}>取消</Button>
@@ -442,14 +455,18 @@ function NoteItem({ note }: { note: { id: number; content: string; createdAt: st
             <span className="font-mono text-[11.5px] text-ink-3">{formatRelative(note.createdAt)}</span>
             <button
               onClick={() => setEditing(true)}
-              className="text-[12px] text-ink-2 hover:text-ink"
+              title="改这条备注"
+              className="inline-flex items-center gap-1 text-[12px] text-ink-2 hover:text-ink"
             >
+              <Pencil size={12} aria-hidden />
               改
             </button>
             <button
               onClick={() => remove.mutate(note.id)}
-              className="text-[12px] text-ink-2 hover:text-signal-bad"
+              title="删这条备注"
+              className="inline-flex items-center gap-1 text-[12px] text-ink-2 hover:text-signal-bad"
             >
+              <Trash2 size={12} aria-hidden />
               删
             </button>
           </div>
