@@ -84,7 +84,7 @@ apps/server/
 apps/web/src/
 ├── features/status/           状态列。★ freshness 逻辑在这里（措辞按新鲜度降级）
 ├── features/updates/          更新面板：check → 报告 → 勾选 → apply → 汇总
-├── features/gitgraph/         自研泳道提交图（layout.ts 是纯函数，layout.test.ts 覆盖）
+├── features/gitgraph/         （已删）一阶段界面不再有提交图，见下方「待决定的事」
 ├── features/settings/         扫描目录 + 标签 + 参数
 ├── features/projects/         清单页、项目表单、tag 选择器
 ├── store/ui.ts                zustand：筛选 / 选中 / 弹窗
@@ -124,13 +124,17 @@ apps/web/src/
 ## 待用户决定的事
 
 - **要不要后台自动 fetch？** 现在是「点检查才联网」，符合「绝不自动」的底线，
-  代价是新克隆的仓库在你手动检查前一直显示「没查过远程」。
-  另一个选项是打开页面空闲 30 秒后静默 fetch（不改工作区），
-  权衡是「不意外联网」vs「数字总是新鲜」。**目前没做，等用户拍板。**
+  代价是新克隆的仓库在你手动检查前一直显示「没查过远程」，清单页的「推荐」列也是空的
+  （结论必须先问过远程才算得出来）。另一个选项是打开页面空闲 30 秒后静默 fetch
+  （不改工作区），权衡是「不意外联网」vs「数字总是新鲜」。**目前没做，等用户拍板。**
+- **提交图要不要回来？** 一阶段从界面撤掉了（`@tomplum/react-git-log` 是个不虚拟化的
+  HTML 网格，为 120 条提交就渲染出成百上千个节点；依赖也已移除）。
+  后端接口 `GET /api/projects/:id/log` 与 core 的 `getLog` **保留着**，留给二阶段 Agent
+  解析提交历史。要在界面上重新显示，得先解决虚拟化，别再直接塞回详情页。
 - **Agent 接入**（设计文档第 10 节）：`core` 无 UI/HTTP 依赖、API 覆盖全部用户操作，
   Agent 的能力上限 = 用户的能力上限，没有特权后门。可先做「哪些项目值得关注」的分析。
-- 提交图换 react-git-log（接口已隔离在 `features/gitgraph/` 一个组件里）。
 - `update_checks` 的历史趋势利用（数据存了三个月，一直只存不用）。
+  现在多了一个用途——存每次检查的 `verdict` 与上游 SHA（判「作者改写历史」的基线）。
 
 ## 这个环境踩过的坑（省新会话的时间）
 
