@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { groupBy, orderBy } from 'es-toolkit'
 import { useDebounce } from 'ahooks'
@@ -16,7 +16,6 @@ import { UpdatePanel } from '@/features/updates/UpdatePanel'
 export function ProjectsPage() {
   const navigate = useNavigate()
   const filters = useUiStore((s) => s.filters)
-  const setCategory = useUiStore((s) => s.setCategory)
   // 用内容稳定的 id 列表，而不是 `s.selected` 那个每次都换引用的 Set
   const selectedIds = useSelectedIds()
   const [pendingRemoval, setPendingRemoval] = useState<ProjectListItem | null>(null)
@@ -31,6 +30,12 @@ export function ProjectsPage() {
 
   const { data: statuses } = useStatuses((projects ?? []).map((p) => p.id))
 
+  /**
+   * 行按分类排序——**但分类只是排序依据，不是表里的结构**。
+   *
+   * 表里没有分区行：分类是侧栏的事（点一下筛那一类）。
+   * 这里保留分组只是因为「同类连在一起」好读，同类之间按名称排。
+   */
   const groups = useMemo(() => {
     const byCategory = groupBy(projects ?? [], (p) => p.category || UNCATEGORIZED)
     return orderBy(
@@ -72,35 +77,29 @@ export function ProjectsPage() {
           <EmptyList filtering={Boolean(filters.category || filters.tag || filters.q)} />
         ) : (
           /*
-            原生 `<table>`，**一张表**，不是每个分区一张。
-            原来是 groups.map 里各塞一个 `<ul>` + 各印一份表头，分区一多就是好几张表叠着。
+            一张平表：**一个表头 + 平铺的行**。
 
-            为什么最后落到原生 table：我前面试过 flex 和 grid 自己排，
-            两次都坏在「表头与行的列宽得手工保持一致」——断点写岔一次就整体错位，
-            grid 模板还会被构建工具漏掉。table 的列宽由浏览器按 `table-fixed` 统一算，
-            **表头和数据行想不对齐都难**，构建工具也插不上手。
+            这里踩过两个坑，都是「把分组塞进表里」造成的：
+            1. 最早是每个分区一个 `<ul>` + 各印一份表头 → 好几张表叠着。
+            2. 后来改成一张表，却把分区渲染成一整行分隔条（`colSpan` 的 `<tr>`）
+               → 换汤不换药，看着还是「一坨分区叠着一坨」。
+
+            现在表里**完全没有分区这回事**：分类是侧栏的事（点一下就筛那一类），
+            在表里再来一层就是重复。行按分类排序，同类自然连在一起。
           */
           <table className="list-table pt-1">
             <ColumnHeader />
             <tbody>
-              {groups.map((group) => (
-                <Fragment key={group.name}>
-                  <GroupHeader
-                    name={group.name}
-                    count={group.items.length}
-                    active={group.filterable && filters.category === group.name}
-                    onFilter={group.filterable ? () => setCategory(group.name) : undefined}
+              {groups.flatMap((group) =>
+                group.items.map((p) => (
+                  <ProjectRow
+                    key={p.id}
+                    project={p}
+                    status={statuses?.get(p.id)}
+                    onRemove={() => setPendingRemoval(p)}
                   />
-                  {group.items.map((p) => (
-                    <ProjectRow
-                      key={p.id}
-                      project={p}
-                      status={statuses?.get(p.id)}
-                      onRemove={() => setPendingRemoval(p)}
-                    />
-                  ))}
-                </Fragment>
-              ))}
+                )),
+              )}
             </tbody>
           </table>
         )}
@@ -240,51 +239,6 @@ function SelectionBar() {
         </span>
       </div>
     </div>
-  )
-}
-
-/**
- * 分区标题——**它是表里的一行（`<tr>`），不是一张新表**。
- *
- * 原来每个分区有一份自己的表头，于是多分区就成了「好几张表叠着」。
- * 现在它是一行跨满全部列（`colSpan=11`）的分隔条，分组名与项目名左对齐。
- *
- * 那个 `branch-node` 小圆点去掉了：它画在 `pl-5` 的位置，与名称列的起点对不齐，
- * 在单表布局里就是纯粹的错位。
- */
-function GroupHeader({
-  name,
-  count,
-  active,
-  onFilter,
-}: {
-  name: string
-  count: number
-  active: boolean
-  onFilter?: () => void
-}) {
-  return (
-    <tr className="group-row">
-      <td colSpan={11} className="pt-4">
-        <div className="flex items-baseline gap-2 border-b border-line-soft pb-1">
-          {/* 空一格给选择框，让分组名与项目名对齐 */}
-          <span className="w-3.5 shrink-0" />
-          {onFilter ? (
-            <button
-              onClick={onFilter}
-              className={`font-mono text-[12px] tracking-wide hover:underline ${
-                active ? 'text-accent underline' : 'text-ink-2'
-              }`}
-            >
-              {name}
-            </button>
-          ) : (
-            <span className="font-mono text-[12px] tracking-wide text-ink-3">{name}</span>
-          )}
-          <span className="font-mono text-[12px] text-ink-3">{count}</span>
-        </div>
-      </td>
-    </tr>
   )
 }
 

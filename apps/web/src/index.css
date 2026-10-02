@@ -61,118 +61,113 @@
   }
 }
 
-@layer components {
-  /*
-    分类分组的「轨道」（`.branch` + `.branch-node`）随旧布局一起删掉了。
-    那是给「每个分区一张表」画的装饰：一条竖线加一个端点圆点。
-    改成单表之后分组只是一行分隔条，这些元素既没有对齐基准、也没了用途。
-  */
+/*
+  下面这些**故意不放进 `@layer`**。
 
-  .row-link {
-    transition: background-color 120ms ease;
-  }
-  .row-link:hover {
-    background-color: var(--color-accent-wash);
-  }
-  /* 行操作按钮平时不显眼，指到这一行才露出来（原来靠 tailwind 的 group-hover） */
-  .row-link .row-actions {
-    opacity: 0;
-    transition: opacity 120ms ease;
-  }
-  .row-link:hover .row-actions,
-  .row-link:focus-within .row-actions {
-    opacity: 1;
-  }
+  Tailwind v4 里 `@layer components` 的优先级低于 `@layer utilities`——
+  表格的列宽和「窄屏收列」的 `display` 一旦写在 components 层，
+  就会被元素上的工具类（`truncate` 带的 `overflow`、`flex` 带的 `display` 等）盖掉。
+  无层（unlayered）样式的优先级高于任何 layer，正是这里需要的。
+*/
+.row-link {
+  transition: background-color 120ms ease;
+}
+.row-link:hover {
+  background-color: var(--color-accent-wash);
+}
+/* 行操作按钮平时不显眼，指到这一行才露出来（原来靠 tailwind 的 group-hover） */
+.row-link .row-actions {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.row-link:hover .row-actions,
+.row-link:focus-within .row-actions {
+  opacity: 1;
+}
 
-  /*
-    清单表。**原生 `<table>` + `table-layout: fixed`**。
+/*
+  清单表。**一个表头 + 平铺的行，表里没有「分区」这回事。**
 
-    为什么最后落到这个：我前面用 flex 和 grid 各排了一版，两次都坏在
-    「表头与数据行的列宽得手工保持一致」——断点写岔一次就整体错位；
-    grid 那版更糟，列模板是 JS 拼串的 `grid-cols-[...]`，
-    Tailwind 只扫源码字面量，那条规则压根没生成，整张表退化成单列竖排。
+  分组曾经被渲染成表里的一整行分隔条（`colSpan` 的 `<tr>`），
+  于是哪怕换了 `<table>`，看着还是「一坨分区叠着一坨」。
+  分类是侧栏的事（点一下筛那一类），表里再来一层就是重复。
 
-    `table-layout: fixed` 让浏览器按第一行的列宽统一分配，
-    表头与数据行**想不对齐都难**，构建工具也插不上手。
-    列宽写在这套 `.col-*` 上，表头与数据行用的是同一组类名。
-  */
-  .list-table {
-    table-layout: fixed;
-    width: 100%;
-    border-collapse: collapse;
-  }
-  .list-table th,
-  .list-table td {
-    padding: 0.375rem 0.5rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    vertical-align: middle;
-  }
-  /* 表头与分区行铺满底色，滚动时数据不会从它们背后透出来 */
-  .tr-tint,
-  .group-row {
-    background-color: var(--color-paper);
-  }
-  .list-table thead tr {
-    border-bottom: 1px solid var(--color-line);
-  }
+  `table-layout: fixed` 让浏览器按第一行列宽统一分配，表头与数据行**想不对齐都难**。
+  列宽写在这套 `.col-*` 上，表头与数据行用的是同一组类名。
+*/
+.list-table {
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.25rem;
+}
+.list-table th,
+.list-table td {
+  padding: 0.375rem 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+/* 表头铺满底色，滚动时数据不会从它背后透出来 */
+.tr-tint {
+  background-color: var(--color-paper);
+}
+.list-table thead tr {
+  border-bottom: 1px solid var(--color-line);
+}
 
-  /* 列宽。表头与数据行共用，窄屏只是把某些列收掉（table 会自动重算剩下几列）。 */
-  .col-check {
-    width: 1.75rem;
-  }
-  .col-name {
-    width: 13rem;
-  }
-  .col-tags {
-    width: 6rem;
-  }
-  .col-behind {
-    width: 5.5rem;
-  }
+/* 列宽。表头与数据行共用；窄屏用 display:none 收列，table 会自动重算剩下的宽度。 */
+.col-check {
+  width: 1.75rem;
+}
+.col-name {
+  width: 13rem;
+}
+.col-tags {
+  width: 6rem;
+}
+.col-behind {
+  width: 5.5rem;
+}
+.col-author {
+  width: 5.5rem;
+}
+.col-recommend {
+  width: 5rem;
+}
+.col-checked {
+  width: 5.5rem;
+}
+.col-notes {
+  width: 4rem;
+}
+.col-actions {
+  width: 3.75rem;
+  text-align: right;
+}
+/* 摘要与路径分享剩下的宽度 */
+.col-path {
+  width: 13rem;
+}
+.col-summary {
+  width: auto;
+}
+@media (width < 80rem) {
   .col-author {
-    width: 5.5rem;
+    display: none;
   }
-  .col-recommend {
-    width: 5rem;
-  }
-  .col-checked {
-    width: 5.5rem;
-  }
-  .col-notes {
-    width: 4rem;
-  }
-  .col-actions {
-    width: 3.75rem;
-  }
-  /* 摘要与路径分享剩下的宽度；窄屏时收掉其中一列，剩下的自然变宽。 */
+}
+@media (width < 64rem) {
+  .col-summary,
   .col-path {
-    width: 13rem;
+    display: none;
   }
-  .col-summary {
-    width: auto;
-  }
-  @media (width < 80rem) {
-    .col-author {
-      display: none;
-    }
-  }
-  @media (width < 64rem) {
-    .col-summary,
-    .col-path {
-      display: none;
-    }
-  }
-  @media (width < 48rem) {
-    .col-tags,
-    .col-recommend {
-      display: none;
-    }
-  }
-  /* 操作列放最后：`width` 已给，这里只让它靠右 */
-  .col-actions {
-    text-align: right;
+}
+@media (width < 48rem) {
+  .col-tags,
+  .col-recommend {
+    display: none;
   }
 }
 
