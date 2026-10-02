@@ -74,6 +74,91 @@
   .row-link:hover {
     background-color: var(--color-accent-wash);
   }
+
+  /*
+    清单表的列定义。**表头与每一行共用这一份，这是「列能对齐」的全部秘密。**
+
+    为什么不用 `grid-cols-[...]` 写在一行里：那个值当初是用 JS 把几段字符串
+    `join(' ')` 拼出来的，而 Tailwind v4 只扫描**源码里的完整字面量**——
+    结果那条规则压根没生成，grid 退化成单列，整张表竖着排了。
+    写在这里是普通 CSS，构建工具不会再"推断"它，也不会被拼串坑到。
+
+    为什么列宽也集中在表头 `.col-*` 上：格子数在所有断点都保持 11 个，
+    窄屏只是把某些列**缩到 0 宽**（`overflow: hidden`），不是 `display: none`。
+    如果用 `hidden` 拿掉格子，grid 的列定义与子元素数量就对不上，
+    后面的列会整体左移——这正是上一版错位的原因。
+  */
+  .list-grid {
+    display: grid;
+    align-items: center;
+    column-gap: 0.75rem;
+    /* 选择框 名称 摘要 路径 标签 落后 作者更新 推荐 上次检查 备注 操作 */
+    grid-template-columns:
+      0.875rem 13rem minmax(0, 1fr) 0 5rem 0 0 0 0 0 3.5rem;
+  }
+  @media (width >= 80rem) {
+    .list-grid {
+      grid-template-columns:
+        0.875rem 13rem minmax(0, 1fr) 13rem 5rem 0 0 0 0 0 3.5rem;
+    }
+  }
+  @media (width >= 96rem) {
+    .list-grid {
+      grid-template-columns:
+        0.875rem 13rem minmax(0, 1fr) 13rem 5rem 6rem 5rem 5rem 5rem 4rem 3.5rem;
+    }
+  }
+
+  /* 列宽：窄屏一律 0，到对应断点才撑开。表头与行共用。 */
+  .col-summary {
+    width: 0;
+    overflow: hidden;
+  }
+  @media (width >= 64rem) {
+    .col-summary {
+      width: auto;
+    }
+  }
+  .col-path,
+  .col-author {
+    width: 0;
+    overflow: hidden;
+  }
+  @media (width >= 80rem) {
+    .col-path,
+    .col-author {
+      width: auto;
+    }
+  }
+  .col-behind {
+    width: 3.5rem;
+    overflow: hidden;
+  }
+  @media (width >= 48rem) {
+    .col-behind {
+      width: auto;
+    }
+  }
+  .col-recommend,
+  .col-checked {
+    width: 0;
+    overflow: hidden;
+  }
+  @media (width >= 64rem) {
+    .col-recommend,
+    .col-checked {
+      width: auto;
+    }
+  }
+  .col-notes {
+    width: 0;
+    overflow: hidden;
+  }
+  @media (width >= 40rem) {
+    .col-notes {
+      width: auto;
+    }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

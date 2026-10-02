@@ -79,7 +79,7 @@ export function ProjectsPage() {
             现在表头只印一次，分组是表里的一行分隔（占满整行），
             所有行共用同一套 grid 列定义（`LIST_COLUMNS`），列必然对齐。
           */
-          <div className={`${LIST_COLUMNS} pt-1`}>
+          <div className="list-grid pt-1">
             <ColumnHeader />
             {groups.map((group) => (
               <Fragment key={group.name}>
@@ -135,39 +135,30 @@ function EmptyList({ filtering }: { filtering: boolean }) {
 }
 
 /**
- * 表格的列定义。**表头与每一行共用这一份**——这是「列能对齐」的全部秘密。
+ * 表头。只印一次，粘在工具栏下面。
  *
- * 为什么用 grid 而不是 flex：原来每行是 `flex items-center gap-3` + 每个格子写死宽度，
- * 表头一旦与某行断点不同（`lg:block` vs `sm:block`）就整体错位，
- * 跨分区更对不齐。grid 的 `grid-template-columns` 在一行之内统一分配，不可能错。
+ * **每个格子都带 `.col-*`（列宽），和下面的行写的是同一套类**——
+ * 所以表头与行的列宽在任何断点都一致。这正是上一版错位的根因：
+ * 表头用 `lg:block`、行里用 `sm:block`，两边对不上，列必然错开。
  *
- * 窄屏时隐藏的列把宽度设成 `0`——不能只是 `display:none`：那样 grid 的列定义
- * 和实际子元素数量就对不上了，后面的列会整体左移。
+ * 列定义本身（`.list-grid` 与那套 `.col-*`）在 `index.css` 里，用普通 CSS 写的。
+ * 曾经把它写成 JS 拼串的 `grid-cols-[...]`，Tailwind v4 扫不到完整字面量，
+ * 那条规则没生成，整张表退化成单列竖着排。
  */
-const LIST_COLUMNS = [
-  'grid items-center gap-x-3',
-  // 选择框 · 名称 · 摘要 · 路径 · 标签 · 落后 · 作者更新 · 推荐 · 上次检查 · 备注 · 操作
-  'grid-cols-[0.875rem_13rem_0px_0px_5rem_0px_0px_0px_0px_0px_3.5rem]',
-  'lg:grid-cols-[0.875rem_13rem_minmax(0,1fr)_0px_5rem_0px_0px_0px_0px_0px_3.5rem]',
-  'xl:grid-cols-[0.875rem_13rem_minmax(0,1fr)_13rem_5rem_6rem_5rem_5rem_5rem_4rem_3.5rem]',
-  '2xl:grid-cols-[0.875rem_13rem_minmax(0,1fr)_13rem_5rem_6rem_5rem_5rem_5rem_4rem_3.5rem]',
-].join(' ')
-
-/** 表头。只印一次，粘在工具栏下面。 */
 function ColumnHeader() {
   return (
     <div className="sticky top-[3.25rem] z-[5] border-b border-line bg-paper/95 py-1.5 text-[11px] text-ink-3 backdrop-blur">
       <span />
       <span>名称</span>
-      <span className="hidden lg:block">摘要</span>
-      <span className="hidden font-mono xl:block">本地路径</span>
+      <span className="col-summary">摘要</span>
+      <span className="col-path font-mono">本地路径</span>
       <span>标签</span>
       {/* 这一列只回答「跟远程差多少」——不显示分支名，也不显示脏标记 */}
-      <span className="hidden md:block">落后</span>
-      <span className="hidden text-right xl:block">作者更新</span>
-      <span className="hidden lg:block">推荐</span>
-      <span className="hidden text-right lg:block">上次检查</span>
-      <span className="hidden text-right sm:block">备注</span>
+      <span className="col-behind">落后</span>
+      <span className="col-author text-right">作者更新</span>
+      <span className="col-recommend">推荐</span>
+      <span className="col-checked text-right">上次检查</span>
+      <span className="col-notes text-right">备注</span>
       <span />
     </div>
   )
@@ -310,7 +301,7 @@ function ProjectRow({
 
   return (
     <div
-      className={`row-link group py-1.5 ${gone ? 'opacity-50' : ''}`}
+      className={`list-grid row-link group py-1.5 ${gone ? 'opacity-50' : ''}`}
       title={gone ? '目录不在了。点「编辑」可以把它指到新位置。' : undefined}
     >
       <input
@@ -326,10 +317,10 @@ function ProjectRow({
       >
         {p.name}
       </Link>
-      <span className="hidden min-w-0 truncate text-[12.5px] text-ink-2 lg:block">
+      <span className="col-summary min-w-0 truncate text-[12.5px] text-ink-2">
         {p.summary ?? ''}
       </span>
-      <span className="hidden min-w-0 truncate font-mono text-[12px] text-ink-3 xl:block">
+      <span className="col-path min-w-0 truncate font-mono text-[12px] text-ink-3">
         {shortenPath(p.path, 2)}
       </span>
       <span className="flex min-w-0 flex-wrap gap-1 overflow-hidden">
@@ -342,22 +333,22 @@ function ProjectRow({
           </span>
         ))}
       </span>
-      <span className="hidden min-w-0 md:block">
+      <span className="col-behind min-w-0">
         <StatusCell status={status} checkedAt={p.latestCheck?.checkedAt ?? null} />
       </span>
       {/* 作者上次更新：远程最后一次提交的时间。用户明确要看这一条 */}
       <span
-        className="hidden truncate text-right font-mono text-[12px] text-ink-3 xl:block"
+        className="col-author min-w-0 truncate text-right font-mono text-[12px] text-ink-3"
         title={status?.lastCommit ? status.lastCommit.subject : undefined}
       >
         {status?.lastCommit ? formatRelative(status.lastCommit.date) : ''}
       </span>
       {/* 推荐更新：用户点名要的那一列。结论来自上次检查（见 RecommendationCell 的注释） */}
-      <span className="hidden min-w-0 lg:block">
+      <span className="col-recommend min-w-0">
         <RecommendationCell recommendation={p.latestCheck?.recommendation ?? null} />
       </span>
       <span
-        className="hidden min-w-0 justify-end lg:flex"
+        className="col-checked flex min-w-0 justify-end"
         title={p.latestCheck ? `上次检查：${p.latestCheck.status}` : '还没点过「检查更新」'}
       >
         {p.latestCheck ? (
@@ -366,7 +357,7 @@ function ProjectRow({
           <Meta label="检查" value="没查过" placeholder />
         )}
       </span>
-      <span className="hidden truncate text-right font-mono text-[12px] text-ink-3 sm:block">
+      <span className="col-notes min-w-0 truncate text-right font-mono text-[12px] text-ink-3">
         {p.notesCount > 0 ? `${p.notesCount} 条` : ''}
       </span>
       <span className="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
