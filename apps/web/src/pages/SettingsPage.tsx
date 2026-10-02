@@ -3,6 +3,7 @@ import { ErrorNote, Field, Input } from '@/components/ui'
 import { ApiError } from '@/lib/api'
 import { useSaveSettings, useSettings } from '@/features/settings/queries'
 import { ScanSection } from '@/features/settings/ScanSection'
+import { CommandsSection } from '@/features/settings/CommandsSection'
 import { TagSection } from '@/features/settings/TagSection'
 
 export function SettingsPage() {
@@ -16,6 +17,8 @@ export function SettingsPage() {
       <ScanSection />
 
       <GitSection />
+
+      <CommandsSection />
 
       <TagSection />
 

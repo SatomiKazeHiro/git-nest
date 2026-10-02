@@ -33,6 +33,24 @@ export function parseDirtyCount(raw: string): number {
   return raw.split('\n').filter((l) => l.trim().length > 0).length
 }
 
+/**
+ * 统计改动里「已跟踪被改」与「未跟踪新文件」各有多少。
+ *
+ * porcelain 的格式是 `XY <path>`：未跟踪是 `??`。其余（` M`、`M `、`A `、`D `、
+ * `R `…）都算已跟踪的改动。**不需要解析路径**（路径可能带引号、可能含空格），
+ * 只看前两个字符就够。
+ */
+export function countByKind(raw: string): { trackedChanges: number; untrackedFiles: number } {
+  let trackedChanges = 0
+  let untrackedFiles = 0
+  for (const line of raw.split('\n')) {
+    if (line.trim().length === 0) continue
+    if (line.startsWith('??')) untrackedFiles += 1
+    else trackedChanges += 1
+  }
+  return { trackedChanges, untrackedFiles }
+}
+
 /** 脏标记：`git status --porcelain` 一行一个改动文件。 */
 export const readWorktree: WorktreeInspector = async (
   path: string,
@@ -41,8 +59,9 @@ export const readWorktree: WorktreeInspector = async (
   const result = await probe(['status', '--porcelain'], cwd(path, options))
   // 读不出来时返回 null，**不能**返回「干净」——那正好是最危险的默认值
   if (!result.ok) return null
-  const changeCount = parseDirtyCount(result.stdout)
-  return { dirty: changeCount > 0, changeCount }
+  const { trackedChanges, untrackedFiles } = countByKind(result.stdout)
+  const changeCount = trackedChanges + untrackedFiles
+  return { dirty: changeCount > 0, changeCount, trackedChanges, untrackedFiles }
 }
 
 /**
@@ -136,5 +155,5 @@ export async function readHasCommonAncestor(
 }
 
 function cwd(path: string, options: InspectOptions): RunOptions {
-  return { cwd: path, timeoutMs: options.timeoutMs }
+  return { cwd: path, timeoutMs: options.timeoutMs, label: options.label ?? 'status' }
 }

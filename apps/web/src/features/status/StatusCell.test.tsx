@@ -132,6 +132,8 @@ describe('清单页状态格只回答「跟远程差多少」', () => {
       detached: false,
       dirty: false,
       dirtyCount: 0,
+      dirtyTracked: 0,
+      dirtyUntracked: 0,
       upstream: 'origin/main',
       upstreamGone: false,
       ahead: 0,

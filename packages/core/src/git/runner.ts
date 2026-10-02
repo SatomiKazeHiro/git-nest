@@ -19,6 +19,11 @@ export interface RunOptions {
   cwd: string
   timeoutMs?: number
   env?: Record<string, string>
+  /**
+   * 谁发起的这次调用（`auto-fetch` / `check` / `pull` / `status` …）。
+   * 只进命令日志，不影响行为。见 `CommandLogEntry.label`。
+   */
+  label?: string
 }
 
 export interface GitResult {
@@ -66,9 +71,53 @@ export function resetGitSpawnCount(): void {
   spawnCount = 0
 }
 
+/**
+ * 命令日志：**最近执行过的 git 命令，记在内存里，供排查用**。
+ *
+ * 为什么要有它：这个软件会**自己联网**（自动 fetch）。自动做的事如果不留痕，
+ * 用户没法知道它到底跑了什么、什么时候跑的、有没有失败。日志只记「执行过什么」，
+ * 不是审计系统——重启就没了，也只留最近 `COMMAND_LOG_LIMIT` 条。
+ *
+ * `label` 是「谁发起的」（比如 `auto-fetch` / `check` / `status`）。没有它就只是
+ * 一堆看不出上下文的命令，等于没记。
+ */
+export interface CommandLogEntry {
+  at: string
+  /** 发起者：auto-fetch / check / pull / status … 未知时为空串 */
+  label: string
+  /** 去掉固定配置项之后的实参（那些每条都一样，记了只是噪音） */
+  args: string[]
+  /** 仓库目录 */
+  cwd: string
+  code: number
+  ms: number
+  timedOut: boolean
+}
+
+const COMMAND_LOG_LIMIT = 1000
+const commandLog: CommandLogEntry[] = []
+
+/** 最近执行的命令，**新的在后**。 */
+export function recentCommands(): readonly CommandLogEntry[] {
+  return commandLog
+}
+
+export function clearCommandLog(): void {
+  commandLog.length = 0
+}
+
+function record(entry: CommandLogEntry): void {
+  commandLog.push(entry)
+  // 环形缓冲：只留最近 N 条，长时间跑的服务也不会无限涨
+  if (commandLog.length > COMMAND_LOG_LIMIT) {
+    commandLog.splice(0, commandLog.length - COMMAND_LOG_LIMIT)
+  }
+}
+
 export function runGit(args: string[], options: RunOptions): Promise<GitResult> {
   spawnCount += 1
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const startedAt = Date.now()
   // 用 -C 而不是 spawn 的 cwd：cwd 走的是 OS 的 SetCurrentDirectory，
   // 路径超过 MAX_PATH 时会直接 spawn 失败（ENOENT），而 -C 是把路径交给 git 自己处理。
   // 跨平台通用，也和 github-kb 的做法一致。
@@ -95,13 +144,25 @@ export function runGit(args: string[], options: RunOptions): Promise<GitResult> 
       (error, stdout, stderr) => {
         const out = stdout.toString()
         const err = stderr.toString()
-        if (!error) return resolve({ code: 0, stdout: out, stderr: err, timedOut: false })
+        const finish = (code: number, timedOut: boolean) => {
+          record({
+            at: new Date().toISOString(),
+            label: options.label ?? '',
+            args,
+            cwd: options.cwd,
+            code,
+            ms: Date.now() - startedAt,
+            timedOut,
+          })
+          resolve({ code, stdout: out, stderr: err, timedOut })
+        }
+        if (!error) return finish(0, false)
 
         const killed = (error as { killed?: boolean }).killed === true
         const code = typeof (error as { code?: unknown }).code === 'number'
           ? ((error as { code: number }).code)
           : 1
-        resolve({ code: killed ? 124 : code, stdout: out, stderr: err, timedOut: killed })
+        finish(killed ? 124 : code, killed)
       },
     )
   })

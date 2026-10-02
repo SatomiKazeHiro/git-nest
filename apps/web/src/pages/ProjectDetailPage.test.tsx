@@ -32,6 +32,8 @@ function makeStatus(overrides: Partial<RepoStatus> = {}): RepoStatus {
     detached: false,
     dirty: false,
     dirtyCount: 0,
+    dirtyTracked: 0,
+    dirtyUntracked: 0,
     upstream: 'origin/master',
     upstreamGone: false,
     ahead: 0,
@@ -74,15 +76,26 @@ describe('git 状态摘要', () => {
     expect(line.textContent).not.toBe('没查过远程')
   })
 
-  it('脏不脏不当主角：落后时标题仍是「落后」，脏只作为旁边一句提醒', () => {
-    renderPanel(makeStatus({ dirty: true, dirtyCount: 9, status: 'dirty' }))
+  it('脏不脏不当主角：落后时标题仍是「落后」，脏只作为旁边一句提醒（且说清是哪一种）', () => {
+    renderPanel(makeStatus({ dirty: true, dirtyCount: 9, dirtyTracked: 2, dirtyUntracked: 7, status: 'dirty' }))
 
     const line = summaryLine()
     // 主角是远程相对结论，不是「有未提交改动」
     expect(line.textContent).toContain('落后远程')
     expect(line.textContent).toContain('↓2411')
-    // 但脏这件事也不能被藏掉——它决定了「拉了会不会踩到你」
-    expect(line.textContent).toContain('有未提交改动')
+    // 但脏这件事也不能被藏掉——它决定了「拉了会不会踩到你」。
+    // 而且要分开说「你改过的」和「未跟踪的」：一律说「有 N 处未提交改动」
+    // 会让人以为工具在无理由地拦他（未跟踪的八成是构建产物）。
+    expect(line.textContent).toContain('2 个文件被改')
+    expect(line.textContent).toContain('7 个未跟踪')
+  })
+
+  it('只有未跟踪文件时不谎报「你改过文件」', () => {
+    renderPanel(makeStatus({ dirty: true, dirtyCount: 7, dirtyTracked: 0, dirtyUntracked: 7, status: 'dirty' }))
+
+    const line = summaryLine()
+    expect(line.textContent).toContain('7 个未跟踪文件')
+    expect(line.textContent).not.toContain('个文件被改')
   })
 
   it('领先时同理：方向和数字都要在', () => {

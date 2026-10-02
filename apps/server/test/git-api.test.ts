@@ -168,15 +168,16 @@ describe('GET /api/status', () => {
   })
 
   /**
-   * 列表接口走的是 lean 档：不读工作区、不读最后提交（列表页不显示这两条），
-   * 所以 `dirty` 恒为 false、`lastCommit` 恒为 null。
+   * 列表接口走的是 lean 档：**不读工作区**，所以 `dirty` 恒为 false、`dirtyCount` 恒为 0。
+   * `lastCommit` 则是**两档都读**——它回答「作者上次更新是什么时候」，
+   * 是用户明确要看的一列（早期为省进程把它从列表拿掉过，那是错的）。
    *
    * 这条同时钉住两件更要紧的事：
    * 1. **两档的缓存必须分开**。lean 的「没有脏标记」要是混进详情页的缓存，
    *    详情页会在几秒内谎报「干净」——而脏标记正是 `pull` 的安全闸。
-   * 2. 单仓库接口仍然是 full 档，dirty / lastCommit 一个都不能少。
+   * 2. 单仓库接口仍然是 full 档，dirty 一个都不能少。
    */
-  it('lean 档不报 dirty/lastCommit，且不会污染详情页的 full 档', async () => {
+  it('lean 档不报 dirty，但报 lastCommit；且不会污染详情页的 full 档', async () => {
     const dir = path.join(root, 'lean-detail')
     fs.mkdirSync(dir, { recursive: true })
     git(dir, 'init', '-b', 'main')
@@ -194,15 +195,19 @@ describe('GET /api/status', () => {
       branch: 'main',
       dirty: false,
       dirtyCount: 0,
-      lastCommit: null,
       status: 'no_remote',
     })
+    // 「作者上次更新」这一条列表页也要有
+    expect(lean.lastCommit.subject).toBe('初始提交')
 
-    // 紧接着问详情：同一条路径、缓存还没过期，也必须拿到 full 档的答案
+    // 紧接着问详情：同一条路径、缓存还没过期，也必须拿到 full 档的答案。
+    // 特别注意 dirty 与 dirtyUntracked —— 这两个字段容易在缓存串味时被写成 0。
     const detail = await app.inject({ method: 'GET', url: `/api/projects/${id}/status` })
     expect(detail.json().status).toMatchObject({
       dirty: true,
       dirtyCount: 1,
+      dirtyTracked: 0,
+      dirtyUntracked: 1,
       status: 'dirty',
     })
     expect(detail.json().status.lastCommit.subject).toBe('初始提交')

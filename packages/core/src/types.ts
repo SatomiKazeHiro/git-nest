@@ -117,8 +117,8 @@ export const VERDICT_LABEL: Record<UpdateVerdict, string> = {
 }
 
 /** 从短码重建一条推荐（`reason` 用上面那份固定说法）。 */
-export function recommendationFrom(verdict: UpdateVerdict): UpdateRecommendation {
-  return { verdict, ahead: null, behind: null, canPull: false, reason: VERDICT_REASON[verdict] }
+export function recommendationFrom(verdict: UpdateVerdict, canPull = false): UpdateRecommendation {
+  return { verdict, ahead: null, behind: null, canPull, reason: VERDICT_REASON[verdict] }
 }
 
 /** update_checks.status 的取值见 git/types.ts 的 UpdateStatus（同一份定义）。 */

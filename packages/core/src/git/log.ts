@@ -112,7 +112,7 @@ export async function getLog(path: string, options: LogOptions = {}): Promise<Gi
 export async function analyzeUpdates(path: string, options: LogOptions = {}): Promise<UpdateReport> {
   const scheduler = options.scheduler ?? defaultScheduler
   return scheduler.schedule(path, async () => {
-    const cwd = { cwd: path, timeoutMs: options.timeoutMs }
+    const cwd = { cwd: path, timeoutMs: options.timeoutMs, label: options.label ?? 'check' }
 
     // 有没有 origin？没有就别去 fetch —— git 会报一堆看着像网络问题的错。
     // 这一条也顺带回答了「是不是仓库」：非仓库目录里 `git remote` 会失败。

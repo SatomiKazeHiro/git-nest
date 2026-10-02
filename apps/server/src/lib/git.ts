@@ -93,6 +93,7 @@ export async function repoStatus(
       scheduler,
       profile: 'full',
       lastUpstreamSha: lastSha,
+      label: 'status',
     })
 
   if (options.fresh) {
@@ -148,6 +149,8 @@ function unreadableStatus(path: string): RepoStatus {
     detached: false,
     dirty: false,
     dirtyCount: 0,
+    dirtyTracked: 0,
+    dirtyUntracked: 0,
     upstream: null,
     upstreamGone: false,
     ahead: null,
@@ -167,9 +170,13 @@ function unreadableStatus(path: string): RepoStatus {
  * 那是判「作者有没有改写上游历史」的**唯一**依据（见 core 的 `inspect/recommend.ts`）。
  * core 不认识数据库，所以这个事实必须由 server 侧提供。
  */
-export function analyze(path: string, lastUpstreamSha: string | null = null) {
+export function analyze(
+  path: string,
+  lastUpstreamSha: string | null = null,
+  label = 'check',
+) {
   const { gitTimeoutMs } = current()
-  return analyzeUpdates(path, { timeoutMs: gitTimeoutMs, scheduler, lastUpstreamSha })
+  return analyzeUpdates(path, { timeoutMs: gitTimeoutMs, scheduler, lastUpstreamSha, label })
 }
 
 export function pull(path: string) {

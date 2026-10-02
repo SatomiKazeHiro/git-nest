@@ -73,6 +73,8 @@ function blank(path: string): RepoStatus {
     detached: false,
     dirty: false,
     dirtyCount: 0,
+    dirtyTracked: 0,
+    dirtyUntracked: 0,
     upstream: null,
     upstreamGone: false,
     ahead: null,
@@ -152,10 +154,14 @@ async function inspect(path: string, options: ReadStatusOptions): Promise<RepoSt
     : null
   const upstreamGone = upstreamIsGone(facts.upstreamGone, divergence?.upstreamGone ?? false)
 
-  // 工作区与最后提交：只有 full 档才付这份代价。
+  // 工作区：只有 full 档才付这份代价。
   const worktree = profile === 'full' ? await readWorktree(path, options) : null
-  const lastCommit =
-    profile === 'full' && facts.hasCommits ? await readLastCommit(path, options) : null
+  // 最后提交：**两档都读**。
+  //
+  // 它回答的是用户明确要看的一件事——「这个项目作者上次更新是什么时候」。
+  // 一开始为了省一次进程把它从列表拿掉了，那是错的：用户要的就是这一条。
+  // 代价是列表页每仓库多一次 `log -1`（约 70ms），换来的是那一列有内容。
+  const lastCommit = facts.hasCommits ? await readLastCommit(path, options) : null
 
   // 脏标记读不出来时，**不能**当作「干净」往下走：pull 会据此决定要不要动工作区。
   if (profile === 'full' && facts.hasCommits && worktree === null) {
@@ -196,7 +202,7 @@ async function inspect(path: string, options: ReadStatusOptions): Promise<RepoSt
     detached: facts.detached,
     // 「有提交」以「最后提交读出来了」为准（改造前的口径）：HEAD 在但 log 失败
     // （仓库坏、或引用悬空）时应当报错，而不是嘴硬说 up_to_date。
-    hasCommits: facts.hasCommits && (profile === 'lean' || lastCommit !== null),
+    hasCommits: facts.hasCommits && lastCommit !== null,
     upstream: facts.upstream !== null && !upstreamGone,
     ahead: upstreamGone ? null : (divergence?.ahead ?? null),
     behind: upstreamGone ? null : (divergence?.behind ?? null),
@@ -211,6 +217,8 @@ async function inspect(path: string, options: ReadStatusOptions): Promise<RepoSt
     isRepo: true,
     dirty,
     dirtyCount: worktree?.changeCount ?? 0,
+    dirtyTracked: worktree?.trackedChanges ?? 0,
+    dirtyUntracked: worktree?.untrackedFiles ?? 0,
     upstreamGone,
     ahead: derive.ahead,
     behind: derive.behind,

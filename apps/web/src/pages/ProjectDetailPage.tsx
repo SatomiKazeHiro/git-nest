@@ -210,6 +210,33 @@ function Recommendation({ recommendation }: { recommendation: UpdateRecommendati
 }
 
 /**
+ * 脏标记在摘要里的短标签与提示。
+ *
+ * **分开说「你改过的」和「未跟踪的新文件」**——前者更新可能覆盖，后者多半是
+ * 构建产物。一律说「有 N 处未提交改动」会让人以为工具在无理由地拦他。
+ * （措辞与 core `pull.ts` 的 `describeWorktree` 同一个口径，但那边是给 pull
+ * 结果用的整句，这边是摘要里的一小格，所以没有直接共用那个函数。）
+ */
+function dirtyLabel(s: RepoStatus): string {
+  if (s.dirtyTracked > 0 && s.dirtyUntracked > 0) {
+    return `${s.dirtyTracked} 个文件被改 · ${s.dirtyUntracked} 个未跟踪`
+  }
+  if (s.dirtyTracked > 0) return `${s.dirtyTracked} 个文件被改`
+  return `${s.dirtyUntracked} 个未跟踪文件`
+}
+
+function dirtyHint(s: RepoStatus): string {
+  const parts: string[] = []
+  if (s.dirtyTracked > 0) {
+    parts.push(`${s.dirtyTracked} 个已跟踪文件被改过——更新可能覆盖它们，建议先提交或 stash`)
+  }
+  if (s.dirtyUntracked > 0) {
+    parts.push(`${s.dirtyUntracked} 个未跟踪文件（多半是构建产物、依赖目录这类，更新通常踩不到）`)
+  }
+  return parts.join('；')
+}
+
+/**
  * git 状态摘要。
  *
  * 原来是 6 行仪表盘（状态 / 当前分支 / 上游分支 / 领先落后 / 远程地址 / 最后提交），
@@ -304,9 +331,9 @@ export function StatusPanel({
         {status.dirty ? (
           <span
             className="font-mono text-[12px] text-ink-3"
-            title={`工作区有 ${status.dirtyCount} 处未提交改动；更新时可能会踩到它们`}
+            title={dirtyHint(status)}
           >
-            · 有未提交改动
+            · {dirtyLabel(status)}
           </span>
         ) : null}
       </div>

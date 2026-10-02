@@ -1,5 +1,6 @@
 import { probe, runGit, toGitError, type RunOptions } from './runner.ts'
 import { defaultScheduler, type Scheduler } from './scheduler.ts'
+import { readWorktree } from './inspect/via-cli.ts'
 import type { PullOutcome, PullResult, UpdateStatus } from './types.ts'
 
 export type { PullOutcome, PullResult }
@@ -85,6 +86,27 @@ async function countPulled(cwd: RunOptions): Promise<number> {
   return Number.isFinite(n) ? n : 0
 }
 
+/**
+ * 脏工作区的说明。**分开说「你改过的文件」与「未跟踪的新文件」**——
+ * 这两种对「能不能拉」的含义完全不同：
+ * - 已跟踪被改：更新可能覆盖它们，要用户自己决定
+ * - 未跟踪新文件：多半是构建产物、`.venv`、下载的数据，更新通常踩不到
+ *
+ * 以前一律说「工作区有 N 处未提交改动」。用户看到一堆跟他无关的构建产物
+ * 被当成拦路的理由，只会觉得这工具在碍事。
+ * **判据没变（照样跳过），变的是把「是什么」说清楚。**
+ */
+export function describeWorktree(input: { trackedChanges: number; untrackedFiles: number }): string {
+  const { trackedChanges, untrackedFiles } = input
+  if (trackedChanges > 0 && untrackedFiles > 0) {
+    return `工作区有改动：${trackedChanges} 个已跟踪文件被改过（更新可能覆盖它们），另有 ${untrackedFiles} 个未跟踪文件（多半是构建产物、依赖目录这类）`
+  }
+  if (trackedChanges > 0) {
+    return `有 ${trackedChanges} 个已跟踪文件被改过，更新可能覆盖它们`
+  }
+  return `只有 ${untrackedFiles} 个未跟踪文件（多半是构建产物、依赖目录这类），但为稳妥起见没有自动更新`
+}
+
 /** 返回非 null 表示该跳过。全部是本地事实，不依赖 fetch。 */
 async function preflight(cwd: RunOptions): Promise<PullResult | null> {
   const inside = await probe(['rev-parse', '--is-inside-work-tree'], cwd)
@@ -95,11 +117,11 @@ async function preflight(cwd: RunOptions): Promise<PullResult | null> {
   const hasCommits = (await probe(['rev-parse', '--verify', '-q', 'HEAD'], cwd)).ok
   if (!hasCommits) return SKIP('仓库还没有提交', 'no_commits')
 
-  const porcelain = await probe(['status', '--porcelain'], cwd)
-  if (porcelain.ok && porcelain.stdout.trim()) {
-    const count = porcelain.stdout.split('\n').filter((l) => l.trim()).length
-    return SKIP(`工作区有 ${count} 处未提交改动`, 'dirty')
-  }
+  // 工作区判定与读状态共用同一份实现（`readWorktree`），不在这里另写一遍 porcelain 解析
+  const facts = await readWorktree(cwd.cwd, { timeoutMs: cwd.timeoutMs, label: 'pull' })
+  // 读不出来时**不往下走**：这时「脏不脏」是未知的，而未知不等于干净
+  if (facts === null) return SKIP('读不出工作区状态，不敢动它', 'error')
+  if (facts.dirty) return SKIP(describeWorktree(facts), 'dirty')
 
   const head = await probe(['symbolic-ref', '-q', '--short', 'HEAD'], cwd)
   if (!head.ok) return SKIP('HEAD 处于游离状态', 'detached')

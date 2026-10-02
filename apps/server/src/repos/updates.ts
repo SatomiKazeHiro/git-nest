@@ -9,6 +9,13 @@ export interface UpdateCheckDetail {
   tags: string[]
   /** 这次算出的「推不推荐更新」的结论 */
   verdict?: UpdateVerdict
+  /**
+   * 那一刻是不是**确实有东西可拉**（safe 且落后）。
+   *
+   * 必须一起存：光凭 `verdict === 'safe'` 推不出来——「已是最新」与「本地领先」
+   * 也都是 safe，但那时没有东西可拉。清单页要靠它决定要不要说「可更新」。
+   */
+  canPull?: boolean
   /** 这次看到的上游 SHA —— 下次检查靠它判「作者改写历史」 */
   upstreamSha?: string | null
   error?: unknown
@@ -20,7 +27,9 @@ export function recordUpdateCheck(db: DB, projectId: number, report: UpdateRepor
     incoming: report.incoming.length,
     outgoing: report.outgoing.length,
     tags: report.tags,
-    ...(report.recommendation ? { verdict: report.recommendation.verdict } : {}),
+    ...(report.recommendation
+      ? { verdict: report.recommendation.verdict, canPull: report.recommendation.canPull }
+      : {}),
     ...(report.upstreamSha ? { upstreamSha: report.upstreamSha } : {}),
     ...(report.error ? { error: report.error } : {}),
   }

@@ -91,6 +91,19 @@ git-nest/
 超过 12 小时把「已是最新」降级成「上次看是最新」。纯本地状态（脏 / 游离 / 没有远程）
 任何时候都可信，不受影响。
 
+## 自动 fetch 与命令日志
+
+服务启动 30 秒后自动跑一轮 fetch，之后每 30 分钟一轮。它让「落后多少 / 推不推荐更新」
+的数字保持新鲜——否则新加的仓库在你手动检查前推荐列一直是空的。
+
+**它只更新 `refs/remotes/*`：不 pull、不快进、不碰工作区**，「绝不自动更新」那条不变量
+仍然成立。personal 分类默认跳过（跟设置页那个开关走）。
+
+**每一条 git 命令都记进命令日志**（设置页 →「自动 fetch 与命令日志」→ 看命令日志，
+或 `GET /api/commands`）：时间、发起者（`auto-fetch` / `check` / `status` / `pull`）、
+完整实参、仓库目录、退出码、耗时。日志在内存里，最近 1000 条，重启清空——
+它是排查工具，不是审计系统。
+
 ## 推不推荐更新（一阶段最要紧的一条）
 
 清单页有「推荐」一列，详情页有完整理由。它回答的不是「落后几个」，而是
@@ -147,6 +160,10 @@ POST   /api/scan                   扫一层子目录预览（只读；remember=
 POST   /api/projects/import        把扫出来的目录入库（一个事务：要么全进、要么全不进）
 GET    /api/settings               读设置
 PATCH  /api/settings              改设置（personal 是否参与检查、git 超时、并发、确认阈值、常用目录）
+
+GET    /api/commands              最近执行过的 git 命令（?limit=，默认 100 上限 1000，新的在前）
+DELETE /api/commands              清空命令日志（内存里的事，重启也会清）
+POST   /api/auto-fetch            手动跑一轮自动 fetch（定时器最快也要等 30 秒）
 
 POST   /api/updates/check         批量 fetch+分析，202 返回 taskId（ids 省略 = 全部非 personal）
 GET    /api/updates/:taskId       任务快照

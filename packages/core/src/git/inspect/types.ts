@@ -38,6 +38,19 @@ export interface WorktreeFacts {
   dirty: boolean
   /** 改动文件数（含未跟踪） */
   changeCount: number
+  /**
+   * 其中**已跟踪文件**被改动的数量（` M` / `M ` / `R ` 之类）。
+   * 这些是真会被更新覆盖的东西。
+   */
+  trackedChanges: number
+  /**
+   * 其中**未跟踪**的新文件数量（`??`）。
+   * 绝大多数是构建产物、`.venv`、下载的数据——更新通常踩不到它们。
+   *
+   * 分开数是为了更新前那句提示能说人话：一律说「有 N 处未提交改动」的话，
+   * 用户会以为工具在拦他，而其实那 N 处里八成跟他改的东西无关。
+   */
+  untrackedFiles: number
 }
 
 /** ahead/behind 与「上游是不是真的没了」。 */
@@ -100,4 +113,9 @@ export type CommitInspector = (
 
 export interface InspectOptions {
   timeoutMs?: number
+  /**
+   * 谁发起的这次读取（进命令日志用，不影响行为）。
+   * 见 `runner.ts` 的 `CommandLogEntry.label`。
+   */
+  label?: string
 }

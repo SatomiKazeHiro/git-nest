@@ -108,6 +108,8 @@ function missingStatus(path: string): RepoStatus {
     detached: false,
     dirty: false,
     dirtyCount: 0,
+    dirtyTracked: 0,
+    dirtyUntracked: 0,
     upstream: null,
     upstreamGone: false,
     ahead: null,

@@ -58,6 +58,16 @@ export interface RepoStatus {
   dirty: boolean
   /** porcelain 输出行数：改动文件数（含未跟踪） */
   dirtyCount: number
+  /**
+   * 改动里「已跟踪文件被改」的数量。**这些才是更新真会踩到的东西。**
+   * 只有 full 档读得到，lean 档恒为 0（那边不读工作区）。
+   */
+  dirtyTracked: number
+  /**
+   * 改动里「未跟踪新文件」的数量。绝大多数是构建产物、`.venv`、下载的数据。
+   * 只有 full 档读得到，lean 档恒为 0。
+   */
+  dirtyUntracked: number
   upstream: string | null
   /** 上游分支已被远程删除 */
   upstreamGone: boolean

@@ -14,10 +14,13 @@ import { cleanup, commit, git, initClone, initRepo } from '../helpers/repo.ts'
  * 直接决定批量操作的耗时。历史上这里跑过 7–8 条命令，后来合并成 3 条，
  * 现在又按「列表页到底要看什么」分了两档：
  *
- * - `full`：ref/config 走库（0 进程）+ rev-list + status + log = **3 条**，
+ * - `full`：ref/config 走库（0 进程）+ rev-list + log + status = **3 条**，
  *   再加 **1 条**算「推不推荐更新」（问「谁是祖先」）。有上游时共 **4 条**。
- * - `lean`：ref/config 走库（0 进程）+ rev-list = **最多 1 条**。
+ * - `lean`：ref/config 走库（0 进程）+ rev-list + log = **2 条**。
  *   判决不在这里算——列表页用上次检查落库的结论（见 `UpdateCheckSummary`）。
+ *
+ * `lean` 的那条 `log -1` 是**故意的**：它给出「作者上次更新是什么时候」，
+ * 是用户明确要看的一列。早期为了省这一次进程把它从列表拿掉过，那是错的。
  *
  * 这条测试是**防回归**用的：以后谁往读取路径里加探针，数字涨上去就会红。
  * 上限给得比实际松一点，只拦住「又变回七八条」这种量级的变化。
@@ -79,19 +82,19 @@ describe('读状态的 git 子进程数（full 档：详情页 / pull 前置检�
 })
 
 describe('读状态的 git 子进程数（lean 档：列表页）', () => {
-  it('有远程、有上游：只有 rev-list 一条', async () => {
+  it('有远程、有上游：rev-list 加一条 log（作者更新时间）', async () => {
     const { origin, clone } = initClone(0)
     track(origin)
     track(clone)
-    expect(await spawnsFor(clone, 'lean')).toBeLessThanOrEqual(1)
+    expect(await spawnsFor(clone, 'lean')).toBeLessThanOrEqual(2)
   })
 
-  it('脏工作区：lean 档不看工作区，所以还是只有 rev-list 一条', async () => {
+  it('脏工作区：lean 档不看工作区，所以还是两条', async () => {
     const { origin, clone } = initClone(0)
     track(origin)
     track(clone)
     fs.writeFileSync(path.join(clone, 'x.txt'), 'x')
-    expect(await spawnsFor(clone, 'lean')).toBeLessThanOrEqual(1)
+    expect(await spawnsFor(clone, 'lean')).toBeLessThanOrEqual(2)
   })
 
   it('空仓库：一条都不用起（没提交就不必算领先/落后）', async () => {

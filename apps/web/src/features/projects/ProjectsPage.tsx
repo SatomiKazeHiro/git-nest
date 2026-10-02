@@ -137,6 +137,7 @@ function ColumnHeader() {
       <span className="w-20 shrink-0 sm:w-24">标签</span>
       {/* 这一列只回答「跟远程差多少」——不显示分支名，也不显示脏标记 */}
       <span className="hidden w-24 shrink-0 md:block">落后</span>
+      <span className="hidden w-20 shrink-0 text-right xl:inline-block">作者更新</span>
       <span className="hidden w-20 shrink-0 lg:block">推荐</span>
       <span className="hidden w-20 shrink-0 text-right lg:inline-block">上次检查</span>
       <span className="hidden w-16 shrink-0 text-right sm:inline-block">备注</span>
@@ -294,6 +295,13 @@ function ProjectRow({
       </span>
       <span className="hidden w-24 shrink-0 md:block">
         <StatusCell status={status} checkedAt={p.latestCheck?.checkedAt ?? null} />
+      </span>
+      {/* 作者上次更新：远程最后一次提交的时间。用户明确要看这一条 */}
+      <span
+        className="hidden w-20 shrink-0 text-right font-mono text-[12px] text-ink-3 xl:block"
+        title={status?.lastCommit ? status.lastCommit.subject : undefined}
+      >
+        {status?.lastCommit ? formatRelative(status.lastCommit.date) : ''}
       </span>
       {/* 推荐更新：用户点名要的那一列。结论来自上次检查（见 RecommendationCell 的注释） */}
       <span className="hidden w-20 shrink-0 lg:block">

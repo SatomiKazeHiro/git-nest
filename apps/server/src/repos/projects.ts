@@ -249,10 +249,11 @@ function latestChecksByProject(db: DB, ids: number[]): Map<number, UpdateCheckSu
 function recommendationFromDetail(detail: string | null): UpdateRecommendation | null {
   if (!detail) return null
   try {
-    const parsed = JSON.parse(detail) as { verdict?: unknown }
+    const parsed = JSON.parse(detail) as { verdict?: unknown; canPull?: unknown }
     const verdict = parsed.verdict
     if (typeof verdict !== 'string' || !isVerdict(verdict)) return null
-    return recommendationFrom(verdict)
+    // canPull 一起存了（光凭 verdict 推不出来：「已是最新」也是 safe，但没东西可拉）
+    return recommendationFrom(verdict, parsed.canPull === true)
   } catch {
     return null
   }

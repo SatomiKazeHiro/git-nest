@@ -36,7 +36,7 @@ describe('pullRepo', () => {
     expect(result.summary).toBe('已是最新')
   })
 
-  it('工作区脏 → 跳过，不碰它', async () => {
+  it('工作区脏 → 跳过，不碰它，并说清是「你改过的文件」', async () => {
     const { origin, clone } = track(initClone(0))
     commit(origin, '远程提交')
     git(clone, 'fetch', 'origin')
@@ -47,8 +47,26 @@ describe('pullRepo', () => {
 
     expect(result.outcome).toBe('skipped')
     expect(result.status).toBe('dirty')
-    expect(result.reason).toContain('未提交')
+    // 以前一律说「有 N 处未提交改动」，现在分开说：这句是被改的**已跟踪文件**。
+    // 用户要能分清「我改了东西」和「这只是构建产物」（后者单独一种说法）。
+    expect(result.reason).toContain('已跟踪文件被改过')
     expect(git(clone, 'rev-parse', 'HEAD').trim()).toBe(before)
+  })
+
+  it('只有未跟踪文件 → 照样跳过，但别说成「你改过文件」', async () => {
+    const { origin, clone } = track(initClone(0))
+    commit(origin, '远程提交')
+    git(clone, 'fetch', 'origin')
+    // 未跟踪的新文件：多半是构建产物
+    fs.writeFileSync(path.join(clone, 'build-output.log'), 'x', 'utf8')
+
+    const result = await pullRepo(clone)
+
+    expect(result.outcome).toBe('skipped')
+    expect(result.status).toBe('dirty')
+    expect(result.reason).toContain('未跟踪文件')
+    expect(result.reason).toContain('构建产物')
+    expect(result.reason).not.toContain('已跟踪文件被改过')
   })
 
   it('detached HEAD → 跳过', async () => {

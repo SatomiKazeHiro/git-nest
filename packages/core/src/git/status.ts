@@ -17,6 +17,8 @@ export interface StatusOptions {
    * 这个事实只能由调用方提供。见 `inspect/recommend.ts` 文件头的限制说明。
    */
   lastUpstreamSha?: string | null
+  /** 谁发起的这次读取（进命令日志，不影响行为）。 */
+  label?: string
 }
 
 type ReadOptions = ReadStatusOptions

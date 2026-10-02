@@ -31,6 +31,8 @@ function shape(s: Awaited<ReturnType<typeof getRepoStatus>>) {
     detached: s.detached,
     dirty: s.dirty,
     dirtyCount: s.dirtyCount,
+    dirtyTracked: s.dirtyTracked,
+    dirtyUntracked: s.dirtyUntracked,
     upstream: s.upstream,
     upstreamGone: s.upstreamGone,
     ahead: s.ahead,
@@ -194,11 +196,33 @@ describe('状态行为等价表', () => {
     expect(shape(status)).toMatchObject({ dirty: true, status: 'dirty', behind: 1 })
   })
 
-  it('未跟踪文件也算脏', async () => {
+  it('未跟踪文件也算脏，而且单独归类（它多半是构建产物）', async () => {
     const dir = track(initRepo())
     fs.writeFileSync(path.join(dir, 'untracked.txt'), 'x')
     const status = await getRepoStatus(dir)
-    expect(shape(status)).toMatchObject({ dirty: true, dirtyCount: 1, status: 'dirty' })
+    expect(shape(status)).toMatchObject({
+      dirty: true,
+      dirtyCount: 1,
+      dirtyTracked: 0,
+      dirtyUntracked: 1,
+      status: 'dirty',
+    })
+  })
+
+  it('改了已跟踪文件与有未跟踪文件，分开数得清', async () => {
+    const dir = track(initRepo())
+    // 改一个已跟踪的（initRepo 里有 README.md）
+    fs.writeFileSync(path.join(dir, 'README.md'), '# 改过\n')
+    fs.writeFileSync(path.join(dir, 'build.log'), 'x')
+    const status = await getRepoStatus(dir)
+    // 这一分类是「更新前那句话能不能说人话」的依据：
+    // 一律说「有 N 处未提交改动」会让人以为工具在无理由地拦他。
+    expect(shape(status)).toMatchObject({
+      dirty: true,
+      dirtyCount: 2,
+      dirtyTracked: 1,
+      dirtyUntracked: 1,
+    })
   })
 
   it('最后提交：full 档读得到 hash / subject / author', async () => {
@@ -237,7 +261,7 @@ describe('lean 档只少读工作区与最后提交', () => {
     expect(sl).toMatchObject({ branch: 'main', upstream: 'origin/main', behind: 1, status: 'behind' })
   })
 
-  it('唯一的差异：lean 的 dirty/dirtyCount 归零、lastCommit 为 null，结论让位给远程状态', async () => {
+  it('唯一的差异：lean 只有工作区那几条归零，结论让位给远程状态', async () => {
     const { origin, clone } = initClone(0)
     track(origin)
     track(clone)
@@ -249,11 +273,13 @@ describe('lean 档只少读工作区与最后提交', () => {
     // 两档都知道自己落后，都知道身后有 1 个提交
     expect(sf).toMatchObject({ behind: 1, dirty: true, dirtyCount: 1, status: 'dirty' })
     expect(sl).toMatchObject({ behind: 1, dirty: false, dirtyCount: 0, status: 'behind' })
+    // **lastCommit 两档都有**：它回答「作者上次更新是什么时候」，是用户明确要看的，
+    // 所以列表页也为它付一次 `log -1`（早期为了省进程把它拿掉过，那是错的）
     expect(full.lastCommit).not.toBeNull()
-    expect(lean.lastCommit).toBeNull()
-    // 除了这三条，其余字段逐字节相同
-    const { dirty: _fd, dirtyCount: _fc, status: _fs, ...restFull } = sf
-    const { dirty: _ld, dirtyCount: _lc, status: _ls, ...restLean } = sl
+    expect(lean.lastCommit).toEqual(full.lastCommit)
+    // 除了工作区那几条，其余字段逐字节相同
+    const { dirty: _fd, dirtyCount: _fc, dirtyTracked: _ft, dirtyUntracked: _fu, status: _fs, ...restFull } = sf
+    const { dirty: _ld, dirtyCount: _lc, dirtyTracked: _lt, dirtyUntracked: _lu, status: _ls, ...restLean } = sl
     expect(restLean).toEqual(restFull)
   })
 

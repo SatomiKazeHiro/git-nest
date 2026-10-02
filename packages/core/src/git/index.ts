@@ -19,7 +19,10 @@ export {
   toGitError,
   gitSpawnCount,
   resetGitSpawnCount,
+  recentCommands,
+  clearCommandLog,
   DEFAULT_TIMEOUT_MS,
+  type CommandLogEntry,
   type GitResult,
   type RunOptions,
 } from './runner.ts'
