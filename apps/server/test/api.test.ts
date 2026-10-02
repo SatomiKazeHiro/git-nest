@@ -59,10 +59,10 @@ describe('GET /api/health', () => {
 
 describe('POST /api/projects', () => {
   it('创建后返回完整项目记录', async () => {
-    const res = await makeProject('alpha', { category: 'tools', summary: '示例摘要' })
+    const res = await makeProject('alpha', { category: 'tools', record: '在 B 站看到的' })
     expect(res.statusCode).toBe(201)
     const { project } = res.json()
-    expect(project).toMatchObject({ name: 'alpha', category: 'tools', summary: '示例摘要' })
+    expect(project).toMatchObject({ name: 'alpha', category: 'tools', record: '在 B 站看到的' })
     expect(project.path).not.toContain('\\')
     expect(project.tags).toEqual([])
     expect(project.latestCheck).toBeNull()
@@ -152,11 +152,10 @@ describe('PATCH / DELETE /api/projects/:id', () => {
 
   it('只改一个字段不会清空其它字段', async () => {
     // 这条守的是一个真实踩过的坑：zod 的 transform 挂在最外层时，
-    // 未提交的键会被物化成 null，于是「改个名字」会把远程地址/来源/摘要一起清掉。
+    // 未提交的键会被物化成 null，于是「改个名字」会把远程地址/记录一起清掉。
     const created = await makeProject('patch-me', {
-      summary: '原摘要',
+      record: '原记录',
       remoteUrl: 'https://example.invalid/repo.git',
-      sourceUrl: 'https://example.invalid/video',
     })
     const id = created.json().project.id
 
@@ -170,34 +169,32 @@ describe('PATCH / DELETE /api/projects/:id', () => {
     expect(res.statusCode).toBe(200)
     const { project } = res.json()
     expect(project.name).toBe('改名后')
-    expect(project.summary).toBe('原摘要')
+    expect(project.record).toBe('原记录')
     expect(project.remoteUrl).toBe('https://example.invalid/repo.git')
-    expect(project.sourceUrl).toBe('https://example.invalid/video')
 
     // 落库的也得是原值，不能只是响应好看
     const row = db
-      .prepare('SELECT summary, remote_url, source_url FROM projects WHERE id = ?')
-      .get(id) as { summary: string | null; remote_url: string | null; source_url: string | null }
+      .prepare('SELECT record, remote_url FROM projects WHERE id = ?')
+      .get(id) as { record: string; remote_url: string | null }
     expect(row).toEqual({
-      summary: '原摘要',
+      record: '原记录',
       remote_url: 'https://example.invalid/repo.git',
-      source_url: 'https://example.invalid/video',
     })
   })
 
-  it('显式提交 null 才是清空', async () => {
-    const created = await makeProject('clear-me', { summary: '要被清掉的摘要' })
+  it('记录清空 = 提交空串（这一列是 NOT NULL，不用 null 表示空）', async () => {
+    const created = await makeProject('clear-me', { record: '要被清掉的记录' })
     const id = created.json().project.id
 
     const res = await app.inject({
       method: 'PATCH',
       url: `/api/projects/${id}`,
       headers: json,
-      payload: { summary: null },
+      payload: { record: '' },
     })
 
     expect(res.statusCode).toBe(200)
-    expect(res.json().project.summary).toBeNull()
+    expect(res.json().project.record).toBe('')
   })
 
   it('空 body 返回 422 而不是静默通过', async () => {
@@ -246,18 +243,13 @@ describe('PATCH / DELETE /api/projects/:id', () => {
     expect(res.statusCode).toBe(409)
   })
 
-  it('删除项目不会留下备注、标签关联与检查历史', async () => {
+  it('删除项目不会留下标签关联与检查历史', async () => {
     // 标题原来写「备注与标签关联」，但只断言了 notes（审计指出：假绿）。
-    // 这里把三种会级联的子行都真的造出来 —— 空表上的 COUNT(*) = 0 说明不了任何事。
+    // 备注后来整个撤掉了，这里改成把两种会级联的子行真的造出来 ——
+    // 空表上的 COUNT(*) = 0 说明不了任何事。
     const created = await makeProject('temporary')
     const id = created.json().project.id
 
-    await app.inject({
-      method: 'POST',
-      url: `/api/projects/${id}/notes`,
-      headers: json,
-      payload: { content: '待会儿删掉' },
-    })
     const tagged = await app.inject({
       method: 'PUT',
       url: `/api/projects/${id}/tags`,
@@ -270,11 +262,10 @@ describe('PATCH / DELETE /api/projects/:id', () => {
        VALUES (?, ?, ?, ?, ?, NULL)`,
     ).run(id, new Date().toISOString(), 'behind', 0, 1)
 
-    // 先确认三张表真的有行（否则下面的 0 是空的 0）
+    // 先确认两张表真的有行（否则下面的 0 是空的 0）
     const countOf = (table: string) =>
       (db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE project_id = ?`).get(id) as { n: number })
         .n
-    expect(countOf('notes')).toBe(1)
     expect(countOf('project_tags')).toBe(1)
     expect(countOf('update_checks')).toBe(1)
 
@@ -282,7 +273,7 @@ describe('PATCH / DELETE /api/projects/:id', () => {
     expect(res.statusCode).toBe(200)
     expect((await app.inject({ method: 'GET', url: `/api/projects/${id}` })).statusCode).toBe(404)
 
-    for (const table of ['notes', 'project_tags', 'update_checks']) {
+    for (const table of ['project_tags', 'update_checks']) {
       expect(countOf(table), `${table} 不该留下孤儿行`).toBe(0)
     }
     // 标签本身留着（可能还有别的项目在用）
@@ -349,55 +340,6 @@ describe('latestCheck 只能由成功的远程检查提供', () => {
     expect(latest).not.toBeNull()
     expect(latest.status).toBe('behind')
     expect(latest.checkedAt).toBe(earlier)
-  })
-})
-
-describe('notes', () => {
-  it('增删改', async () => {
-    const created = await makeProject('noted')
-    const id = created.json().project.id
-
-    const add = await app.inject({
-      method: 'POST',
-      url: `/api/projects/${id}/notes`,
-      headers: json,
-      payload: { content: '第一条备注' },
-    })
-    expect(add.statusCode).toBe(201)
-
-    const list = await app.inject({ method: 'GET', url: `/api/projects/${id}/notes` })
-    expect(list.json().notes).toHaveLength(1)
-    const noteId = list.json().notes[0].id
-
-    const edited = await app.inject({
-      method: 'PATCH',
-      url: `/api/notes/${noteId}`,
-      headers: json,
-      payload: { content: '改过的备注' },
-    })
-    expect(edited.statusCode).toBe(200)
-
-    const detail = await app.inject({ method: 'GET', url: `/api/projects/${id}` })
-    expect(detail.json().project.notes[0].content).toBe('改过的备注')
-
-    expect((await app.inject({ method: 'DELETE', url: `/api/notes/${noteId}` })).statusCode).toBe(
-      200,
-    )
-    expect(
-      (await app.inject({ method: 'GET', url: `/api/projects/${id}/notes` })).json().notes,
-    ).toHaveLength(0)
-  })
-
-  it('空备注被拒绝', async () => {
-    const created = await makeProject('blank-note')
-    const id = created.json().project.id
-    const res = await app.inject({
-      method: 'POST',
-      url: `/api/projects/${id}/notes`,
-      headers: json,
-      payload: { content: '   ' },
-    })
-    expect(res.statusCode).toBe(422)
   })
 })
 

@@ -1,7 +1,7 @@
 # git-nest 设计文档
 
 > 个人 git 项目管理工具：管理自己的项目 + 追踪/备份网上开源项目的本地克隆。
-> 核心价值：项目表 CRUD + 更新分析（用户勾选，不自动）+ 备注/tag 元数据，未来接入 Agent 协助管理。
+> 核心价值：项目表 CRUD + 更新分析（用户勾选，不自动）+ 每个项目一段自己的记录 + tag 元数据，未来接入 Agent 协助管理。
 
 - 日期：2026-06-20
 - 状态：待用户审阅
@@ -56,8 +56,7 @@ CREATE TABLE projects (
   path        TEXT NOT NULL UNIQUE,          -- 本地绝对路径，仅存本地 DB，不外泄
   remote_url  TEXT,                          -- origin URL，可为空（纯本地项目）
   category    TEXT NOT NULL DEFAULT '',      -- 自由字符串，初始值见下
-  source_url  TEXT,                          -- 来源链接（如 B 站视频）
-  summary     TEXT,                          -- 一句话摘要（README 首段）
+  record      TEXT NOT NULL DEFAULT '',      -- ★ 你自己写的那段（迁移 004 加的，见 §13 第 19 条）
   added_at    TEXT NOT NULL,                 -- ISO 时间
   sort_order  INTEGER NOT NULL DEFAULT 0
 );
@@ -72,14 +71,6 @@ CREATE TABLE project_tags (
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   tag_id     INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
   PRIMARY KEY (project_id, tag_id)
-);
-
-CREATE TABLE notes (
-  id         INTEGER PRIMARY KEY,
-  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  content    TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
 );
 
 CREATE TABLE update_checks (
@@ -97,10 +88,14 @@ CREATE TABLE update_checks (
 );
 ```
 
+> **原设计里的 `source_url` / `summary` 两列与 `notes` 表已删**（迁移 004）：三样都被
+> `projects.record` 一个字段替代。为什么撤，见第 13 节第 19 条。
+
 设计要点：
 
 - **category 是自由字符串**，不做枚举表；初始值 personal / knowledge-base / backups / experiments / tools，用户可改可加
-- **notes 一对多**，支持多条备注，带时间戳
+- **记录是一个字段，不是一张表**：怎么找到这个项目的、有什么想法，链接写在正文里。
+  原设计的「notes 一对多 + 来源链接 + 摘要」已撤（§13 第 19 条）
 - **update_checks 保留历史**，支撑"最后检查时间"展示和未来趋势分析
 - `path` 只存本地 SQLite（不进入任何会被提交/分享的文件），遵循 github-kb 的路径隐私规则
 
@@ -167,23 +162,19 @@ scanDirectory(dir: string): Promise<ScannedRepo[]>
 
 ```
 GET    /api/projects?category=&tag=&q=     项目列表（含最新一次 update_check 摘要）
-POST   /api/projects                       手动添加本地路径；或给远程 URL + 目标目录，后端先 clone 再入库
-PATCH  /api/projects/:id                   改名/分类/来源链接/摘要/排序
+POST   /api/projects                       手动添加本地路径；或给远程 URL + 目标目录，后端先 clone 再添加
+PATCH  /api/projects/:id                   改名/分类/记录/排序
 DELETE /api/projects/:id                   移除管理（只删 DB 记录，绝不动磁盘仓库）
 
 GET    /api/projects/:id/status            实时 git 状态（getRepoStatus）
 GET    /api/projects/:id/log?max=          commit 图数据（getLog）
-GET    /api/projects/:id/notes             备注列表
-POST   /api/projects/:id/notes             新增备注
-PATCH  /api/notes/:id                      改备注
-DELETE /api/notes/:id                      删备注
 
 GET    /api/tags                           tag 列表
 POST   /api/tags                           新建 tag
 PUT    /api/projects/:id/tags              设置项目的 tag 集合（整体替换）
 
-POST   /api/scan                           { dir } → 扫描预览（不入库）
-POST   /api/projects/import                { paths: [...] } → 勾选项批量入库
+POST   /api/scan                           { dir } → 扫描预览（不写库）
+POST   /api/projects/import                { paths: [...] } → 勾选项批量添加进清单
 
 POST   /api/updates/check                  { ids?: [...] } → 批量 fetch+分析（SSE 进度）
 POST   /api/updates/apply                  { ids: [...] } → 勾选仓库 pull --ff-only（SSE 进度）
@@ -201,13 +192,19 @@ POST   /api/updates/apply                  { ids: [...] } → 勾选仓库 pull 
 
 - git-graph（react-git-log，HTML Grid 变体；封装在独立组件内，可替换）
 - 更新分析报告区（最新一次 check 的 commit 列表与新 tag）
-- 备注列表（增删改，多条）
-- tag 管理、分类、来源链接、摘要编辑
+- **记录**：在「编辑资料」弹窗里写（那个弹窗是**唯一的编辑器**，标签也在里面）；
+  详情页只**只读展示**它，正文里的链接可点。不放在页面上直接编辑，是因为那会造成
+  「记录在外面、别的字段在弹窗里」这种说不清的边界（用户原话：「这和顶部的编辑资料
+  不有歧义吗」）。同样地，标签行旁边那个「改标签」快捷入口也删了：指向同一个弹窗的
+  第二个门同样是重复。展示位置：**身份信息那张 `<dl>` 里的一行**（排在标签之后），
+  不单独占一个分区标题——它在库里就是 `projects` 表上的一列，和 路径 / 分类 / 标签
+  同级（原来是「git 状态」旁边的 `<h2>`，沿用了旧「备注」列表的位置）。
+- 身份信息与 tag：走「编辑资料」弹窗（tag 只有那一个编辑器）
 - 「检查更新」「更新到此仓库」按钮（单仓库版流程）
 
 ### 7.3 设置
 
-- 扫描目录管理：添加目录 → 扫描预览（列出发现的仓库 + remote + 摘要）→ 勾选入库 / 移除管理
+- 扫描目录管理：添加目录 → 扫描预览（列出发现的仓库 + remote + 摘要）→ 勾选添加 / 移除管理
 - 参数：git 超时、并发上限、personal 是否参与批量检测
 
 ## 8. 错误处理
@@ -228,8 +225,8 @@ POST   /api/updates/apply                  { ids: [...] } → 勾选仓库 pull 
 
 - `packages/core` 无 UI/HTTP 依赖 → Agent 可直接 import 或调 REST API
 - API 覆盖全部用户操作 → Agent 能力 = 用户能力，无特权后门
-- `update_checks` / `notes` / `tags` 的历史数据都在 SQLite → 供 Agent 做"哪些项目值得关注"的分析
-- 未来形态预想：一个 Agent 模块读取 API + 向用户提建议（"X 仓库 3 个月没更新且你有备注说要用它"），执行仍走勾选确认
+- `update_checks` / `tags` 的历史数据 + 每个项目的 `record` 都在 SQLite → 供 Agent 做"哪些项目值得关注"的分析
+- 未来形态预想：一个 Agent 模块读取 API + 向用户提建议（"X 仓库 3 个月没更新且你写的记录里说要拿它做东西"），执行仍走勾选确认
 
 ## 11. 推进计划
 
@@ -238,7 +235,7 @@ POST   /api/updates/apply                  { ids: [...] } → 勾选仓库 pull 
 | M1 骨架 | pnpm monorepo、SQLite schema、项目 CRUD API、列表页（无 git 状态） | 手动添加/编辑/移除项目，列表渲染 |
 | M2 git 状态 | core git 层 + 状态列 + 详情页 git-graph | 真实仓库的状态/图正确展示 |
 | M3 更新模块 | 批量检查 → 分析报告 → 勾选 → ff-only 更新 + SSE 进度 | 构造 behind 仓库完成全流程 |
-| M4 元数据 | 备注、tag、来源链接、目录扫描导入/移除 | 扫描一个目录入库并完整编辑元数据 |
+| M4 元数据 | 记录、tag、目录扫描导入/移除 | 扫描一个目录添加进清单并写下第一条记录 |
 | M5 打磨 | 错误归因、空态、Windows 兼容验证 | 断网/脏工作区/detached 场景提示正确 |
 
 每个里程碑结束跑通该里程碑验收再进下一个；M3 是核心价值所在，优先级最高。
@@ -311,7 +308,7 @@ POST   /api/updates/apply                  { ids: [...] } → 勾选仓库 pull 
 
 **2026-10 审计时补记的差异**（原来漏在本文档之外，见 `docs/AUDIT-2026-10-01.md`）
 
-11. 第 6 节的 `POST /api/projects` 支持「给远程 URL + 目标目录，后端先 clone 再入库」
+11. 第 6 节的 `POST /api/projects` 支持「给远程 URL + 目标目录，后端先 clone 再添加」
     **没有实现**：只接受已存在的本地目录，远程地址是从 `git remote` 读出来自动填的。
     clone 这种事交给用户自己在终端做，工具不越界。
 12. 第 4 节说 `pullRepo` 的前置检查含 `no_upstream`，实际**故意不查**：远程跟踪引用
@@ -324,8 +321,34 @@ POST   /api/updates/apply                  { ids: [...] } → 勾选仓库 pull 
 14. 第 9 节说「core 层用 mock」，实际 server 测试**没有任何 `vi.mock`** ——
     全部用临时目录里的真实 git 仓库跑。mock 掉 git 就测不到真正的行为差异。
 15. 第 7.1 节列表页的列定义已变（没有「最后 commit 时间」这一列；实际是
-    名称 / 本地路径 / 摘要 / 远程 / 状态 / 标签 / 备注 / 检查 / 加入）。
+    名称 / 本地路径 / 标签 / 落后 / 远程更新 / 推荐 / 上次检查）。
 16. 第 7.2 节详情页的「更新到此仓库」单仓库按钮**不存在**：单仓库更新走
     「检查更新」面板 → 勾选 → 「更新选中的」，和批量用同一条路径。
 17. 提交图默认只取**当前检出分支**（`git log <branch>`，不是 `--all`）：
     图组件按 `branch` 组织，混入别的分支会让提交的分支归属说不清。
+18. 第 7.2 节把 tag 管理放在详情页（原话「不必先点『编辑』弹窗」）。**这条已撤销**：
+    详情页那个行内 `TagPicker` 和「编辑资料」弹窗里的「标签」字段是同一份数据的
+    两个编辑器，而且保存语义不同（弹窗要按「保存改动」，行内点一下就直接 PUT），
+    用户反馈是「两个编辑分不清」。现在标签只有弹窗一个编辑器，详情页的「改标签」
+    按钮点开的也是这个弹窗。同一轮还把措辞按**会不会联网**分了家：联网的按钮叫
+    「联网检查更新」，只重读本地 git 状态的叫「重读本地状态」——原来「检查更新」
+    和「重新读取」两个名字看不出这个区别。
+19. **摘要、来源链接、备注列表三样全撤，只剩 `projects.record` 一个文本框。**
+    用户原话：「我只想在一个文本框内记录我的如何找到这个项目的过程和对这个项目的
+    想法而已，有些我甚至不经过链接，你孤零零的展示链接是何意味」「备注列表又是做
+    什么的，到底是给谁看的」。
+    错在同一个地方：这三样是照一份**手写 Markdown 清单的行内写法**建的模
+    （第 1 节说的前身，一条 bullet 后面挂一个链接），而不是按人怎么记东西建模。
+    - `summary`：README 就在本地磁盘上、扫描时本来就读得到（`packages/core` 的
+      `firstParagraph`），存一份只会过期。README 那句现在只在扫描预览里出现，不落库。
+    - `source_url`：`TEXT` 单列，结构上只允许一个链接；而真实形状是多跳
+      （B 站 → 视频里提到的仓库 → GitHub），而且链接常常只在句子里成立。
+    - `notes`：是「流」（N 条、各自时间戳、逐条改删），人要的是「文档」（一处、
+      持续改）。界面把它做成了没有宿主的评论框。
+    现在：迁移 004 删掉那两列与 `notes` 表，加 `record TEXT NOT NULL DEFAULT ''`
+    （清空 = 空串，不用 null）；四个 notes 路由、`repos/notes.ts`、`Note` 类型、
+    `notesCount` 全部下线；清单页的搜索 `q` 顺带覆盖记录正文。**旧数据按用户要求
+    直接丢弃，不做拼接搬运。**
+    编辑入口只有「编辑资料」弹窗一个（记录字段就在里面，详情页只读展示、链接可点）；
+    原来第一版把记录做成详情页上的文本框 + 「保存记录」，被用户指出「这和顶部的
+    编辑资料不有歧义吗」，于是收回弹窗。标签行那个「改标签」快捷入口同理删掉。

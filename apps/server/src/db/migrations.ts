@@ -71,4 +71,19 @@ export const migrations = [
         ON projects(lower(path)) WHERE path IS NOT NULL;
     `,
   },
+  {
+    id: '004_project_record',
+    sql: `
+      -- 「记录」：一个文本框吃掉原来的三样（摘要、来源链接、备注列表）。
+      --
+      -- 为什么直接删而不是搬：那三样是照一份手写 Markdown 清单的行内写法建的模
+      -- （一条 bullet 一句话一个链接），不是按人怎么记东西建的模，搬过去也只是
+      -- 把错的形状换个地方。用户明确同意丢掉这部分数据。
+      ALTER TABLE projects ADD COLUMN record TEXT NOT NULL DEFAULT '';
+
+      DROP TABLE IF EXISTS notes;
+      ALTER TABLE projects DROP COLUMN source_url;
+      ALTER TABLE projects DROP COLUMN summary;
+    `,
+  },
 ] as const

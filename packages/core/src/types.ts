@@ -39,14 +39,6 @@ export interface Tag {
   color: string | null
 }
 
-export interface Note {
-  id: number
-  projectId: number
-  content: string
-  createdAt: string
-  updatedAt: string
-}
-
 export interface Project {
   id: number
   name: string
@@ -54,8 +46,17 @@ export interface Project {
   path: string
   remoteUrl: string | null
   category: string
-  sourceUrl: string | null
-  summary: string | null
+  /**
+   * 你自己写的那一段：怎么找到这个项目的、对它的想法。链接随手写在里面。
+   *
+   * **只有一个字段**。原来拆成「摘要 + 来源链接 + 备注列表」三样，三样错在同一处：
+   * 按一份手写 Markdown 清单的行内写法建模（一条 bullet 一句话一个链接），
+   * 而不是按人怎么记东西建模。摘要能从 README 读出来就不该存；来源链接只有
+   * 一个格子，写不下「B 站 → 视频里提到的仓库 → GitHub」那一串；备注列表是
+   * 「流」（N 条、各自时间戳），而人要的是「文档」（一处、持续改）。
+   * 撤销过程见设计文档第 13 节第 19 条。
+   */
+  record: string
   addedAt: string
   sortOrder: number
 }
@@ -226,16 +227,18 @@ export function deriveStatus(input: DeriveInput): UpdateStatus {
   return 'up_to_date'
 }
 
-/** 列表页的一行：项目 + tag + 最近一次检查摘要 + 备注条数。 */
+/** 列表页的一行：项目 + tag + 最近一次检查摘要。 */
 export interface ProjectListItem extends Project {
   tags: Tag[]
   latestCheck: UpdateCheckSummary | null
-  notesCount: number
 }
 
-export interface ProjectDetail extends ProjectListItem {
-  notes: Note[]
-}
+/**
+ * 详情页拿到的就是列表页那一份：记录在 `Project.record` 里，不再有「只有详情页
+ * 才需要」的附加数据（原来这里挂着 `notes` 和 `notesCount`）。
+ * 保留这个别名是因为调用方读起来仍然是在说详情页。
+ */
+export type ProjectDetail = ProjectListItem
 
 export interface ProjectFilters {
   category?: string

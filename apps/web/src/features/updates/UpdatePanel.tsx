@@ -79,8 +79,9 @@ export function UpdatePanel({
             </span>
           ) : null}
           <Button onClick={startCheckNow} disabled={busy}>
-            {busy ? '检查中…' : task ? '重新检查' : '检查更新'}
-          </Button>          <button
+            {busy ? '联网检查中…' : task ? '重新检查' : '联网检查更新'}
+          </Button>
+          <button
             onClick={() => {
               reset()
               onClose()

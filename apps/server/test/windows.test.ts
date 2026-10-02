@@ -252,10 +252,10 @@ describe('仓库被移走之后', () => {
       method: 'PATCH',
       url: `/api/projects/${aId}`,
       headers: json,
-      payload: { path: a, summary: '同一路径改了摘要' },
+      payload: { path: a, record: '同一路径改了记录' },
     })
     expect(self.statusCode).toBe(200)
-    expect(self.json().project.summary).toBe('同一路径改了摘要')
+    expect(self.json().project.record).toBe('同一路径改了记录')
   })
 })
 

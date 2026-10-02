@@ -118,8 +118,8 @@ export function ScanSection() {
         onSuccess: (res) => {
           const msg =
             res.created.length > 0
-              ? `已加入清单 ${res.created.length} 个`
-              : '没有新的加入清单'
+              ? `已添加 ${res.created.length} 个`
+              : '没有新的可添加'
           setBanner(
             res.skipped.length > 0
               ? `${msg}；跳过 ${res.skipped.length} 个（${res.skipped[0]?.reason}…）`
@@ -127,7 +127,7 @@ export function ScanSection() {
           )
           setPicked(new Set())
         },
-        onError: (e) => setBanner(e instanceof ApiError ? e.message : '入库失败'),
+        onError: (e) => setBanner(e instanceof ApiError ? e.message : '添加失败'),
       },
     )
   }
@@ -136,7 +136,7 @@ export function ScanSection() {
     <section ref={sectionRef} id="scan">
       <h2 className="text-[15px] font-semibold text-ink">扫描目录</h2>
       <p className="mt-0.5 text-[13px] text-ink-2">
-        扫描只读：它只看有哪些仓库，不写清单也不动磁盘。挑中的才会入库。
+        扫描只读：它只看有哪些仓库，不写清单也不动磁盘。你挑中的那几个才会添加进来。
       </p>
 
       <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -219,7 +219,7 @@ export function ScanSection() {
           <header className="flex flex-wrap items-center gap-2 border-b border-line-soft px-3 py-2">
             <span className="min-w-0 truncate font-mono text-[12px] text-ink-2">{result.dir}</span>
             <span className="text-[12px] text-ink-3">
-              找到 {result.found.length} 个仓库{untracked.length > 0 ? `，${untracked.length} 个还没入库` : ''}
+              找到 {result.found.length} 个仓库{untracked.length > 0 ? `，${untracked.length} 个还没添加` : ''}
             </span>
             {untracked.length > 0 ? (
               <button
@@ -282,7 +282,7 @@ export function ScanSection() {
                     disabled={importRepos.isPending}
                   >
                     <Download size={14} aria-hidden />
-                    把选中的 {picked.size} 个加入清单
+                    添加选中的 {picked.size} 个
                   </Button>
                   <Button onClick={() => setPicked(new Set())}>
                     <Eraser size={14} aria-hidden />
@@ -341,9 +341,9 @@ function RemoveDialog({
       >
         <h2 className="text-[15px] font-semibold text-ink">把 {repo.name} 移出清单？</h2>
         <p className="mt-1.5 text-[13px] text-ink-2">
-          只删掉这一条记录。磁盘上的{' '}
+          只删掉清单里这一条。磁盘上的{' '}
           <span className="font-mono text-[12px]">{repo.dir}</span> 和它的 git 历史都不动，
-          备注与标签关联会一起清掉。
+          你写的那段记录与标签关联会一起清掉。
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button onClick={onClose}>留下</Button>
@@ -416,7 +416,7 @@ function ScanRow({
             <button
               onClick={onRemove}
               className="inline-flex items-center gap-1 text-[11.5px] text-ink-2 underline decoration-dotted hover:text-signal-bad"
-              title="只从清单里移除这一条记录，磁盘上的仓库不动"
+              title="只从清单里移除这一条，磁盘上的仓库不动"
             >
               <Trash2 size={11} aria-hidden />
               移出清单

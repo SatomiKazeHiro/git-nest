@@ -1,7 +1,7 @@
 # git-nest
 
 本地 git 项目管理工具：管理自己的项目 + 追踪网上开源项目的本地克隆。
-替代手写 README 项目清单——项目表、备注/tag 元数据、批量更新检测与勾选式更新。
+替代手写 README 项目清单——项目表 + 每个项目一段自己的记录、批量更新检测与勾选式更新。
 
 > **接手先看 [`docs/STATUS.md`](docs/STATUS.md)**：当前进度、代码地图、核心不变量、
 > 待决定的事、以及这个环境踩过的坑。
@@ -60,7 +60,7 @@ git-nest/
 | Zustand | 纯 UI 状态：筛选条件、行选中、编辑弹窗 |
 | Zod | 前后端共用同一份 schema（`packages/core/src/schemas.ts`），前端提交前先校验，错误逐字段显示 |
 | ahooks | `useDebounce` 搜索防抖 |
-| es-toolkit | `groupBy` 按分类分组、`orderBy` 分类/标签/备注排序 |
+| es-toolkit | `groupBy` 按分类分组、`orderBy` 分类/标签排序 |
 | React Router | 三个视图：清单 `/`、详情 `/projects/:id`、设置 `/settings` |
 | Tailwind v4 | 设计 token 定义在 `apps/web/src/index.css` 的 `@theme` 里 |
 | msw + testing-library | 勾选更新流程的组件级测试（设计文档第 9 节要求） |
@@ -139,8 +139,8 @@ GET    /api/health
 
 GET    /api/projects?category=&tag=&q=
 POST   /api/projects               路径必须是已存在的目录；不填 remoteUrl 时从 git 的 origin 自动填
-GET    /api/projects/:id           单个项目（含标签、备注、最近一次检查）
-PATCH  /api/projects/:id           部分更新：只提交的字段会被改（可改 path 重新指路）
+GET    /api/projects/:id           单个项目（含标签、记录、最近一次检查）
+PATCH  /api/projects/:id           部分更新：只提交的字段会被改（可改 path 重新指路，record 就是那段记录）
 DELETE /api/projects/:id           只删 DB 记录，绝不动磁盘仓库
 
 GET    /api/projects/:id/status    实时 git 状态（?fresh=true 绕开服务端 3 秒短缓存）
@@ -148,16 +148,12 @@ GET    /api/projects/:id/log?max=  当前检出分支的提交记录（一阶段
 GET    /api/status?ids=1,2,3       批量状态，列表页一次拿全（一次最多 200 个）
 
 PUT    /api/projects/:id/tags      整体替换项目的标签集合（不存在的标签名按需创建）
-GET    /api/projects/:id/notes     备注列表
-POST   /api/projects/:id/notes     加一条备注
-PATCH  /api/notes/:id             改备注内容
-DELETE /api/notes/:id             删备注
 GET    /api/tags                  标签列表（带每个标签的项目数）
 POST   /api/tags                  建标签（名字唯一、最长 40 字）
 DELETE /api/tags/:id              删标签（注意要带 :id；没有对集合的 DELETE）
 
 POST   /api/scan                   扫一层子目录预览（只读；remember=true 记进常用目录；depth 1–3）
-POST   /api/projects/import        把扫出来的目录入库（一个事务：要么全进、要么全不进）
+POST   /api/projects/import        把扫出来的目录添加进清单（一个事务：要么全进、要么全不进）
 GET    /api/settings               读设置
 PATCH  /api/settings              改设置（personal 是否参与检查、git 超时、并发、确认阈值、常用目录）
 
@@ -189,7 +185,7 @@ fetch 十几个仓库，不能让一个 HTTP 请求一直挂着。任务状态�
 
 ## 已完成
 
-**M1 骨架** — 项目 CRUD、分类/标签/备注元数据、清单页与详情页、标签设置页。
+**M1 骨架** — 项目 CRUD、分类/标签元数据、清单页与详情页、标签设置页。
 请求体验证统一走 zod，失败返回 422 + 逐字段说明。
 
 **M2 git 状态** — `packages/core` 的 git 执行层（status / log / pull / scan / scheduler /
@@ -204,8 +200,10 @@ git 超时、并发上限、确认阈值。**核心原则：绝不自动更新**
 真正动工作区的只有用户勾选后点的那一次。
 
 **M4 目录扫描导入** — 设置页的扫描区：输目录（常用目录会记下来）→ 扫描预览
-（仓库名 / 远程 / 摘要，标出哪些已在清单）→ 勾选 → 入库。扫描只读，不写库不动磁盘；
-入库只插 DB，名字取目录名、远程地址从 git 读，摘要与分类留给用户补。
+（仓库名 / 远程 / README 摘出来的那句，标出哪些已在清单）→ 勾选 → 添加。扫描只读，
+不写库不动磁盘；添加只插 DB，名字取目录名、远程地址从 git 读，分类留空、
+记录等你到「编辑资料」里写。（预览里那句摘要**不落库**：它是从 README 现场读的，
+存一份只会过期。）
 超过「确认阈值」个时会先问一遍范围。
 
 **M5 异常与 Windows 验证** — 错误归因落到每一类都带可操作的提示；目录没了不自动移除，

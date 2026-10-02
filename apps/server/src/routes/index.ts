@@ -1,13 +1,11 @@
 import type { FastifyPluginAsync } from 'fastify'
 import type { ZodType } from 'zod'
 import {
-  createNoteSchema,
   createProjectSchema,
   createTagSchema,
   idParamSchema,
   listProjectsQuerySchema,
   setProjectTagsSchema,
-  updateNoteSchema,
   updateProjectSchema,
   type CreateTagInput,
   type ProjectDetail,
@@ -20,12 +18,10 @@ import {
   deleteProject,
   getProject,
   insertProject,
-  listNotes,
   listProjects,
   pathExists,
   updateProject,
 } from '../repos/projects.ts'
-import { createNote, deleteNote, updateNote } from '../repos/notes.ts'
 import { createTag, listTags, setProjectTags, tagUsageCount, deleteTag } from '../repos/tags.ts'
 
 type InferOutput<S> = S extends ZodType<infer O, unknown> ? O : never
@@ -103,40 +99,8 @@ export const projectRoutes = (db: DB): FastifyPluginAsync => {
       setProjectTags(db, projectId, tagNames)
       return { project: getProject(db, projectId) }
     })
-
-    fastify.get('/projects/:id/notes', async (req) => {
-      const { id } = req.params as { id: string }
-      const projectId = idParamSchema.parse(id)
-      if (!getProject(db, projectId)) throw notFound('项目')
-      return { notes: listNotes(db, projectId) }
-    })
-
-    fastify.post('/projects/:id/notes', async (req, reply) => {
-      const { id } = req.params as { id: string }
-      const projectId = idParamSchema.parse(id)
-      const { content } = parse(createNoteSchema, req.body)
-      if (!getProject(db, projectId)) throw notFound('项目')
-      return reply.code(201).send({ noteId: createNote(db, projectId, content) })
-    })
   }
   return app
-}
-
-export const noteRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
-  fastify.patch('/notes/:id', async (req) => {
-    const { id } = req.params as { id: string }
-    const noteId = idParamSchema.parse(id)
-    const { content } = parse(updateNoteSchema, req.body)
-    if (!updateNote(db, noteId, content)) throw notFound('备注')
-    return { ok: true }
-  })
-
-  fastify.delete('/notes/:id', async (req) => {
-    const { id } = req.params as { id: string }
-    const noteId = idParamSchema.parse(id)
-    if (!deleteNote(db, noteId)) throw notFound('备注')
-    return { ok: true }
-  })
 }
 
 export const tagRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
@@ -168,8 +132,7 @@ async function createFromInput(
     name: string
     category: string
     remoteUrl: string | null
-    sourceUrl: string | null
-    summary: string | null
+    record: string
     sortOrder?: number
   },
   absPath: string,
@@ -182,8 +145,7 @@ async function createFromInput(
     path: absPath,
     remoteUrl,
     category: input.category,
-    sourceUrl: input.sourceUrl,
-    summary: input.summary,
+    record: input.record,
     ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
   })
   const project = getProject(db, id)

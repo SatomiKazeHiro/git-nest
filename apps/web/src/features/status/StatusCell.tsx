@@ -111,8 +111,8 @@ export function statusTitle(s: RepoStatus, freshness?: Freshness): string {
 
   if (state === 'never') {
     return hasCounts
-      ? `${base}。这个数字来自本地的远程跟踪分支，没联网确认——点「检查更新」去问一次`
-      : `${base}。本地还没有远程跟踪分支可比，点「检查更新」去问一次`
+      ? `${base}。这个数字来自本地的远程跟踪分支，没联网确认——点「联网检查更新」去问一次`
+      : `${base}。本地还没有远程跟踪分支可比，点「联网检查更新」去问一次`
   }
   if (state === 'stale') {
     return `${base}。这个数字来自上次检查时的 fetch，之后没再查过`
@@ -256,7 +256,7 @@ export function RecommendationCell({
     return (
       <span
         className="font-mono text-[12px] text-ink-3"
-        title="还没点过「检查更新」。推不推荐更新必须先问过远程才算得出来——本地看不出作者有没有改写历史。"
+        title="还没点过「联网检查更新」。推不推荐更新必须先问过远程才算得出来——本地看不出作者有没有改写历史。"
       >
         没查过
       </span>

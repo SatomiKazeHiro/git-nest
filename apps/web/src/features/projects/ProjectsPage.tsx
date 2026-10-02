@@ -126,7 +126,7 @@ function EmptyList({ filtering }: { filtering: boolean }) {
   ) : (
     <EmptyState
       title="清单还是空的"
-      body="先把已经在本机的仓库加进来：一个项目一条记录，之后就能在这里统一看着它们。路径填本地目录，例如 D:/Git/canvas-editor。"
+      body="先把已经在本机的仓库加进来：每加一个，清单上就多一行，之后就能在这里统一看着它们。路径填本地目录，例如 D:/Git/canvas-editor。"
       action={
         <Button variant="primary" onClick={openCreate}>
           添加第一个项目
@@ -144,8 +144,8 @@ function EmptyList({ filtering }: { filtering: boolean }) {
  * 表头与数据行不需要「手工保持一致」。
  *
  * 列的取舍（都是用户提的）：
- * - **没有「摘要」「备注」列**：摘要基本是空的，备注最多显示「3 条」这种没信息量的字。
- *   两者在详情页都能看，塞进表里只添乱。
+ * - **没有「记录」列**：那是要写长的一段东西，一列里塞个摘要没有意义；
+ *   它只在「编辑资料」弹窗里编辑，详情页只读展示（原来还试过「摘要」「备注」两列，都撤了）。
  * - **「作者更新」改成「远程更新」**：原来那个名字说不清是"我还是作者"更新的。
  *   它和「落后」「推荐」是同一组——都是远程那边的事实；
  *   而"你什么时候看的"是「上次检查」，两回事。
@@ -212,9 +212,15 @@ function Toolbar({
         {selectedCount > 0 ? ` · 已选 ${selectedCount}` : ''}
       </span>
       <div className="ml-auto flex items-center gap-2">
-        <Button onClick={onCheckUpdates} className={checking ? 'border-accent text-accent' : ''}>
+        {/* 「联网」两个字是必须的：详情页还有一个只读本地的按钮，
+            两个都叫「检查更新」的话，用户没法从名字看出哪个会联网。 */}
+        <Button
+          onClick={onCheckUpdates}
+          title="联网 fetch 远程，看每个仓库落后多少、推不推荐更新"
+          className={checking ? 'border-accent text-accent' : ''}
+        >
           <RefreshCw size={14} aria-hidden className={checking ? 'animate-spin' : ''} />
-          {checking ? '检查中…' : '检查更新'}
+          {checking ? '联网检查中…' : '联网检查更新'}
         </Button>
         <Button onClick={onScan} title="去设置里扫描一个目录，把本机仓库批量加进清单">
           <FolderSearch size={14} aria-hidden />
@@ -242,7 +248,7 @@ function SelectionBar() {
           取消选择
         </Button>
         <span className="text-[12px] text-ink-3">
-          勾选后点「检查更新」，只会检查这几个
+          勾选后点「联网检查更新」，只会检查这几个
         </span>
       </div>
     </div>
@@ -267,7 +273,7 @@ function ProjectRow({
   return (
     <tr
       className={`row-link ${gone ? 'opacity-50' : ''}`}
-      title={gone ? '目录不在了。点「编辑」可以把它指到新位置。' : undefined}
+      title={gone ? '目录不在了。点「编辑资料」可以把它指到新位置。' : undefined}
     >
       <td className="col-check">
         <input
@@ -329,8 +335,8 @@ function ProjectRow({
         <span className="row-actions flex justify-end gap-1">
           <button
             onClick={() => openEdit(p.id)}
-            title="编辑"
-            aria-label={`编辑 ${p.name}`}
+            title="编辑资料"
+            aria-label={`编辑资料 ${p.name}`}
             className="rounded-[3px] p-1 text-ink-2 hover:bg-paper hover:text-ink"
           >
             <Pencil size={13} aria-hidden />
@@ -355,8 +361,8 @@ function RemoveDialog({ project, onClose }: { project: ProjectListItem; onClose:
   return (
     <Dialog title={`把 ${project.name} 移出清单？`} onClose={onClose}>
       <p className="text-[13px] text-ink-2">
-        只删掉这一条记录。磁盘上的 <span className="font-mono text-[12px]">{project.path}</span>{' '}
-        和它的 git 历史都不动，备注和标签关联会一起清掉。
+        只删掉清单里这一条。磁盘上的 <span className="font-mono text-[12px]">{project.path}</span>{' '}
+        和它的 git 历史都不动，你写的那段记录和标签关联会一起清掉。
       </p>
       <div className="mt-4 flex justify-end gap-2">
         <Button onClick={onClose}>留下</Button>

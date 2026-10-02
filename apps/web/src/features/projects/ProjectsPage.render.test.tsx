@@ -57,13 +57,11 @@ function makeProject(id: number, name: string) {
     path: `D:/repos/${name}`,
     remoteUrl: null,
     category: 'tools',
-    sourceUrl: null,
-    summary: null,
+    record: '',
     addedAt: '2026-10-01T00:00:00Z',
     sortOrder: id,
     tags: [],
     latestCheck: null,
-    notesCount: 0,
   }
 }
 

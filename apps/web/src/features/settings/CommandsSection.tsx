@@ -106,7 +106,7 @@ export function CommandsSection() {
             <p className="px-3 py-2 font-mono text-[12px] text-ink-3">读取中…</p>
           ) : !data || data.entries.length === 0 ? (
             <p className="px-3 py-2 text-[12.5px] text-ink-3">
-              还没有记录。跑一轮检查或者等自动 fetch 之后就有了。
+              还没有命令记录。跑一轮检查或者等自动 fetch 之后就有了。
             </p>
           ) : (
             <>

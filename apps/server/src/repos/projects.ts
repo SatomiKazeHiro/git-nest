@@ -4,7 +4,6 @@ import {
   VERDICT_LABEL,
   isRemoteCheckStatus,
   recommendationFrom,
-  type Note,
   type Project,
   type ProjectDetail,
   type ProjectListItem,
@@ -13,7 +12,6 @@ import {
   type UpdateRecommendation,
   type UpdateVerdict,
 } from '@git-nest/core'
-import { listNotes as listNotesImpl } from './notes.ts'
 
 interface ProjectRow {
   id: number
@@ -21,8 +19,7 @@ interface ProjectRow {
   path: string
   remote_url: string | null
   category: string
-  source_url: string | null
-  summary: string | null
+  record: string
   added_at: string
   sort_order: number
 }
@@ -33,8 +30,7 @@ const toProject = (r: ProjectRow): Project => ({
   path: r.path,
   remoteUrl: r.remote_url,
   category: r.category,
-  sourceUrl: r.source_url,
-  summary: r.summary,
+  record: r.record,
   addedAt: r.added_at,
   sortOrder: r.sort_order,
 })
@@ -54,7 +50,8 @@ export function listProjects(db: DB, opts: ListProjectsOptions = {}): ProjectLis
     params['category'] = opts.category
   }
   if (opts.q) {
-    where.push('(p.name LIKE @q OR p.summary LIKE @q OR p.path LIKE @q OR p.remote_url LIKE @q)')
+    // 记录也参与搜索：那里面常写着「怎么找到的」，是找得回一个项目的线索
+    where.push('(p.name LIKE @q OR p.record LIKE @q OR p.path LIKE @q OR p.remote_url LIKE @q)')
     params['q'] = `%${opts.q}%`
   }
   if (opts.tag) {
@@ -79,26 +76,21 @@ export function listProjects(db: DB, opts: ListProjectsOptions = {}): ProjectLis
   const ids = rows.map((r) => r.id)
   const tags = tagsByProject(db, ids)
   const checks = latestChecksByProject(db, ids)
-  const noteCounts = noteCountsByProject(db, ids)
 
   return rows.map((r) => ({
     ...toProject(r),
     tags: tags.get(r.id) ?? [],
     latestCheck: checks.get(r.id) ?? null,
-    notesCount: noteCounts.get(r.id) ?? 0,
   }))
 }
 
 export function getProject(db: DB, id: number): ProjectDetail | null {
   const row = db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as ProjectRow | undefined
   if (!row) return null
-  const notes = listNotes(db, id)
   return {
     ...toProject(row),
     tags: tagsByProject(db, [id]).get(id) ?? [],
     latestCheck: latestChecksByProject(db, [id]).get(id) ?? null,
-    notesCount: notes.length,
-    notes,
   }
 }
 
@@ -107,8 +99,7 @@ export interface InsertProjectInput {
   path: string
   remoteUrl: string | null
   category: string
-  sourceUrl: string | null
-  summary: string | null
+  record: string
   sortOrder?: number
   addedAt?: string
 }
@@ -117,16 +108,15 @@ export function insertProject(db: DB, input: InsertProjectInput): number {
   const addedAt = input.addedAt ?? new Date().toISOString()
   const info = db
     .prepare(
-      `INSERT INTO projects (name, path, remote_url, category, source_url, summary, added_at, sort_order)
-       VALUES (@name, @path, @remoteUrl, @category, @sourceUrl, @summary, @addedAt, @sortOrder)`,
+      `INSERT INTO projects (name, path, remote_url, category, record, added_at, sort_order)
+       VALUES (@name, @path, @remoteUrl, @category, @record, @addedAt, @sortOrder)`,
     )
     .run({
       name: input.name,
       path: input.path,
       remoteUrl: input.remoteUrl,
       category: input.category,
-      sourceUrl: input.sourceUrl,
-      summary: input.summary,
+      record: input.record,
       addedAt,
       sortOrder: input.sortOrder ?? nextSortOrder(db, input.category),
     })
@@ -145,8 +135,7 @@ const UPDATABLE = {
   path: 'path',
   category: 'category',
   remoteUrl: 'remote_url',
-  sourceUrl: 'source_url',
-  summary: 'summary',
+  record: 'record',
   sortOrder: 'sort_order',
 } as const
 
@@ -184,10 +173,6 @@ export function pathExists(db: DB, p: string, exceptId?: number): boolean {
   return row !== undefined
 }
 
-export function listNotes(db: DB, projectId: number): Note[] {
-  // 实现在 repos/notes.ts；这里保留转发是为了不动既有调用方
-  return listNotesImpl(db, projectId)
-}
 export function tagsByProject(db: DB, ids: number[]): Map<number, Tag[]> {
   const map = new Map<number, Tag[]>()
   if (ids.length === 0) return map
@@ -261,17 +246,4 @@ function recommendationFromDetail(detail: string | null): UpdateRecommendation |
 
 function isVerdict(value: string): value is UpdateVerdict {
   return Object.hasOwn(VERDICT_LABEL, value)
-}
-
-function noteCountsByProject(db: DB, ids: number[]): Map<number, number> {
-  const map = new Map<number, number>()
-  if (ids.length === 0) return map
-  const rows = db
-    .prepare(
-      `SELECT project_id AS projectId, COUNT(*) AS n FROM notes
-       WHERE project_id IN (${ids.map(() => '?').join(',')}) GROUP BY project_id`,
-    )
-    .all(...ids) as { projectId: number; n: number }[]
-  for (const r of rows) map.set(r.projectId, r.n)
-  return map
 }

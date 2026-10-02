@@ -75,7 +75,7 @@ describe('路由抽取本身要靠谱', () => {
   it('能抽到一批真实路由', () => {
     expect(routes.size).toBeGreaterThan(15)
     expect(routes.has('GET /api/projects')).toBe(true)
-    expect(routes.has('PATCH /api/notes/:id')).toBe(true)
+    expect(routes.has('PATCH /api/projects/:id')).toBe(true)
   })
 })
 

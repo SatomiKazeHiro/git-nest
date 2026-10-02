@@ -97,7 +97,7 @@ export const scanRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
         remoteUrl = null
       }
 
-      // 名字取目录名，远程地址从 git 读；摘要留空，等用户补
+      // 名字取目录名，远程地址从 git 读；记录留空，想写的时候到详情页写
       candidates.push({ name: path.basename(abs) || abs, path: abs, remoteUrl })
     }
 
@@ -110,8 +110,7 @@ export const scanRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
           path: candidate.path,
           remoteUrl: candidate.remoteUrl,
           category: cat,
-          sourceUrl: null,
-          summary: null,
+          record: '',
           sortOrder: nextSortOrder(db, cat),
         })
         created.push({ id, name: candidate.name, path: candidate.path })

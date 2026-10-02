@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import type { RepoStatus } from '@git-nest/core'
-import { StatusPanel } from './ProjectDetailPage'
+import { StatusPanel, RecordView, RemoteRow, isWebUrl } from './ProjectDetailPage'
 
 /**
  * 这一条曾是一个真实的自相矛盾（用户报的）：
@@ -123,5 +123,86 @@ describe('git 状态摘要', () => {
   it('显示上游最后一次提交的相对时间（回答「作者上次更新是什么时候」）', () => {
     renderPanel(makeStatus())
     expect(screen.getByText(/上游最后提交/)).toBeTruthy()
+  })
+})
+
+/**
+ * 记录在页面上是**只读**的（唯一的编辑器是「编辑资料」弹窗），所以链接必须可点——
+ * 记录里写的多是「在 B 站看到 → 顺着找到 GitHub」这类句子，链接不可点等于要手抄。
+ *
+ * 钉的是那个 `split` 的奇偶位技巧：带捕获组时奇数位才是 URL 本身。
+ * 一处写错（比如反过来判断）整段文字就会串行，肉眼很难看出来。
+ */
+describe('记录（只读）', () => {
+  it('正文里的多个 URL 都变成可点链接，其余文字原样保留', () => {
+    const { container } = render(
+      <RecordView record={'在 B 站看到 https://example.invalid/v/1 ，顺着它找到 https://example.invalid/r/2 的'} />,
+    )
+
+    const links = [...container.querySelectorAll('a')]
+    expect(links.map((a) => a.getAttribute('href'))).toEqual([
+      'https://example.invalid/v/1',
+      'https://example.invalid/r/2',
+    ])
+    expect(container.textContent).toContain('在 B 站看到')
+    expect(container.textContent).toContain('顺着它找到')
+    expect(container.textContent).toContain('的')
+  })
+
+  it('换行照原样留着（记录是一段一段写的）', () => {
+    const { container } = render(<RecordView record={'第一行\n第二行'} />)
+    expect(container.textContent).toBe('第一行\n第二行')
+  })
+
+  it('空记录给一句「去哪儿写」，而不是留一片空白', () => {
+    const { container } = render(<RecordView record="" />)
+    expect(container.textContent).toContain('还没写')
+    expect(container.querySelector('a')).toBeNull()
+  })
+})
+
+/**
+ * 用户报的 bug：远程写的是 `git@github.com:Hufe921/canvas-editor.git`，
+ * 而那个 `<a href>` 把它当相对路径，点一下跳到
+ * `http://localhost:5174/projects/git@github.com:Hufe921/canvas-editor.git`。
+ *
+ * 用户的裁决：给不出真的（可点开的网页地址）就别占这一行。
+ * 所以现在是三态：https → 一行链接；SSH / file / 本地路径 → 整行不出；
+ * 没有 remote → 整行不出（「git 状态」里写着没有配置 origin）。
+ */
+describe('远程那一行', () => {
+  it('https 形式占一行，且 href 就是它本身', () => {
+    const { container } = render(<RemoteRow url="https://github.com/Hufe921/canvas-editor.git" />)
+
+    const link = container.querySelector('a')
+    expect(link?.getAttribute('href')).toBe('https://github.com/Hufe921/canvas-editor.git')
+    expect(link?.getAttribute('rel')).toBe('noreferrer')
+    expect(container.textContent).toContain('远程')
+  })
+
+  it('SSH 形式整行不出（给不出真链接就别占位）', () => {
+    const { container } = render(<RemoteRow url="git@github.com:Hufe921/canvas-editor.git" />)
+
+    expect(container.textContent).toBe('')
+    expect(container.querySelector('a')).toBeNull()
+  })
+
+  it('file:// 与 Windows 路径也不出行', () => {
+    for (const url of ['file:///D:/repos/x', 'D:/repos/x', '\\\\server\\share\\x']) {
+      const { container } = render(<RemoteRow url={url} />)
+      expect(container.textContent, url).toBe('')
+    }
+  })
+
+  it('没有 remote 时不出行', () => {
+    const { container } = render(<RemoteRow url={null} />)
+    expect(container.textContent).toBe('')
+  })
+
+  it('判据本身：只认 http/https（大小写不敏感）', () => {
+    expect(isWebUrl('HTTP://example.invalid/x')).toBe(true)
+    expect(isWebUrl('https://example.invalid/x')).toBe(true)
+    expect(isWebUrl('git@example.invalid:x.git')).toBe(false)
+    expect(isWebUrl('ssh://git@example.invalid/x.git')).toBe(false)
   })
 })

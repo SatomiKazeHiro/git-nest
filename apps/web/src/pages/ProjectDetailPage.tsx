@@ -1,35 +1,22 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
-import { orderBy } from 'es-toolkit'
-import { ArrowLeft, Check, Pencil, Plus, RefreshCw, Tag as TagIcon, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Pencil, RefreshCw, X } from 'lucide-react'
 import { isRemoteCheckStatus, deriveStatus, VERDICT_LABEL, type RepoStatus, type UpdateRecommendation, type UpdateStatus } from '@git-nest/core'
-import { Button, ErrorNote, Meta, Textarea } from '@/components/ui'
+import { Button, ErrorNote, Meta } from '@/components/ui'
 import { formatRelative } from '@/lib/format'
 import { useUiStore } from '@/store/ui'
 import { ProjectFormDialog } from '@/features/projects/ProjectFormDialog'
 import { useProjectStatus } from '@/features/status/queries'
 import { Delta, statusTitle, textFor, toneFor, freshnessOf } from '@/features/status/StatusCell'
 import { UpdatePanel } from '@/features/updates/UpdatePanel'
-import {
-  useAddNote,
-  useProject,
-  useRemoveNote,
-  useSetProjectTags,
-  useTags,
-  useUpdateNote,
-} from '@/features/projects/queries'
-import { TagPicker } from '@/features/projects/TagPicker'
+import { useProject } from '@/features/projects/queries'
 
 export function ProjectDetailPage() {
   const { id } = useParams()
   const projectId = Number(id)
   const openEdit = useUiStore((s) => s.openEdit)
   const [updating, setUpdating] = useState(false)
-  const [editingTags, setEditingTags] = useState(false)
-  const [tagNames, setTagNames] = useState<string[]>([])
-  const { data: allTags = [] } = useTags()
-  const setTags = useSetProjectTags()
-  // 点一次「重新读取」就把 nonce 加一，绕过服务端短缓存重查一遍
+  // 点一次「重读本地状态」就把 nonce 加一，绕过服务端短缓存重查一遍
   const [freshNonce, setFreshNonce] = useState(0)
   const validId = Number.isFinite(projectId) ? projectId : null
   const { data: project, isPending, error } = useProject(validId)
@@ -59,9 +46,9 @@ export function ProjectDetailPage() {
         <div className="border-l-2 border-signal-bad bg-panel px-4 py-3">
           <p className="text-[13.5px] font-medium text-signal-bad">这个目录不在了</p>
           <p className="mt-1 text-[13px] text-ink-2">
-            清单里的记录还在（备注、标签都留着），只是磁盘上找不到
+            清单里这一条还在（你写的记录、标签都留着），只是磁盘上找不到
             <span className="font-mono text-[12px]"> {project.path}</span>。
-            仓库如果是搬了家或改了名，点「编辑」把路径指到新位置就行；要是不用了就「移出清单」。
+            仓库如果是搬了家或改了名，点「编辑资料」把路径指到新位置就行；要是不用了就「移出清单」。
           </p>
         </div>
       ) : null}
@@ -78,32 +65,23 @@ export function ProjectDetailPage() {
           <h1 className="text-[22px] font-semibold leading-tight text-ink">{project.name}</h1>
           <Button onClick={() => openEdit(project.id)}>
             <Pencil size={14} aria-hidden />
-            编辑
+            编辑资料
           </Button>
-          <Button onClick={() => setUpdating((v) => !v)}>
+          <Button
+            onClick={() => setUpdating((v) => !v)}
+            title="联网 fetch 远程，再分析落后多少、推不推荐更新"
+          >
             {updating ? <X size={14} aria-hidden /> : <RefreshCw size={14} aria-hidden />}
-            {updating ? '收起更新' : '检查更新'}
+            {updating ? '收起更新' : '联网检查更新'}
           </Button>
         </div>
-        {project.summary ? (
-          <p className="mt-2 max-w-prose text-[13.5px] text-ink-2">{project.summary}</p>
-        ) : null}
       </div>
 
       <dl className="grid grid-cols-[7rem_1fr] gap-y-2 border-y border-line-soft py-4 text-[13px]">
         <dt className="text-ink-3">本地路径</dt>
         <dd className="min-w-0 truncate font-mono text-[12.5px] text-ink">{project.path}</dd>
 
-        <dt className="text-ink-3">远程</dt>
-        <dd className="min-w-0 truncate font-mono text-[12.5px] text-ink">
-          {project.remoteUrl ? (
-            <a href={project.remoteUrl} target="_blank" rel="noreferrer" className="hover:text-accent hover:underline">
-              {project.remoteUrl}
-            </a>
-          ) : (
-            <span className="text-ink-3">纯本地仓库</span>
-          )}
-        </dd>
+        <RemoteRow url={project.remoteUrl} />
 
         <dt className="text-ink-3">分类</dt>
         <dd className="font-mono text-[12.5px] text-ink">{project.category || '未分类'}</dd>
@@ -122,50 +100,18 @@ export function ProjectDetailPage() {
               </span>
             ))
           )}
-          {/* 设计文档 7.2：tag 管理放在详情页，不必先点「编辑」弹窗 */}
-          {editingTags ? (
-            <dd className="col-span-2 mt-1.5 flex flex-wrap items-center gap-2">
-              <TagPicker
-                tags={allTags}
-                value={tagNames}
-                onChange={(next) => {
-                  setTagNames(next)
-                  setTags.mutate({ id: project.id, tagNames: next })
-                }}
-              />
-              <Button onClick={() => setEditingTags(false)}>好了</Button>
-            </dd>
-          ) : (
-            <button
-              onClick={() => {
-                setTagNames(project.tags.map((t) => t.name))
-                setEditingTags(true)
-              }}
-              className="ml-1 inline-flex items-center gap-1 text-[12px] text-ink-2 hover:text-accent hover:underline"
-            >
-              <TagIcon size={12} aria-hidden />
-              编辑
-            </button>
-          )}
         </dd>
 
-        {project.sourceUrl ? (
-          <>
-            <dt className="text-ink-3">来源</dt>
-            <dd className="min-w-0 truncate font-mono text-[12.5px]">
-              <a
-                href={project.sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-accent hover:underline"
-              >
-                {project.sourceUrl}
-              </a>
-            </dd>
-          </>
-        ) : null}
+        {/* 记录排在标签之后、添加时间之前：它在库里就是 `projects` 表上的一列，
+            和上面这几行**同级**。原来它是个和「git 状态」并排的 `<h2>` 分区——
+            那是沿用了旧的「备注」列表的位置（列表配得上分区标题），
+            换成单列之后就不该再抬一级。 */}
+        <dt className="text-ink-3">记录</dt>
+        <dd>
+          <RecordView record={project.record} />
+        </dd>
 
-        <dt className="text-ink-3">加入清单</dt>
+        <dt className="text-ink-3">添加时间</dt>
         <dd className="font-mono text-[12.5px] text-ink-2">{formatRelative(project.addedAt)}</dd>
       </dl>
 
@@ -179,11 +125,6 @@ export function ProjectDetailPage() {
         lastCheckAt={project.latestCheck?.checkedAt ?? null}
         lastCheckStatus={project.latestCheck?.status ?? null}
       />
-
-      <section>
-        <h2 className="mb-2 text-[15px] font-semibold text-ink">备注</h2>
-        <Notes projectId={project.id} notes={project.notes} />
-      </section>
 
       <ProjectFormDialog />
     </div>
@@ -251,7 +192,8 @@ function dirtyHint(s: RepoStatus): string {
  *
  * 原来是 6 行仪表盘（状态 / 当前分支 / 上游分支 / 领先落后 / 远程地址 / 最后提交），
  * 但那里面混了三种东西：**这个软件要回答的**（跟远程差多少）、**git 客户端的事**
- * （当前分支）、**别处已经有的**（远程地址在下面的 dl 里就写着）。
+ * （当前分支）、**别处已经有的**（远程地址：能点开的在身份信息 dl 里占一行，
+ * 点不开的（SSH）两处都不放，这里只负责说清有没有 origin、上游叫什么）。
  *
  * 收敛成一行：结论 + 上游分支 + 上游最后一次提交时间。
  * 分支名不再显示——设计文档第 1 节写明不做 git 客户端，用户也从没问过自己在哪个分支。
@@ -313,12 +255,17 @@ export function StatusPanel({
             label="远程检查"
             value="没查过"
             placeholder
-            title="还没点过「检查更新」，所以下面的远程数字没有联网核实过"
+            title="还没点过「联网检查更新」，所以下面的远程数字没有联网核实过"
           />
         )}
-        <Button className="ml-auto" disabled={isFetching} onClick={onRefresh}>
+        <Button
+          className="ml-auto"
+          disabled={isFetching}
+          onClick={onRefresh}
+          title="不联网：只重读本机的 git 状态（绕开几秒缓存）。要问远程用上面的「联网检查更新」"
+        >
           <RefreshCw size={14} aria-hidden className={isFetching ? 'animate-spin' : ''} />
-          {isFetching ? '读取中…' : '重新读取'}
+          {isFetching ? '重读中…' : '重读本地状态'}
         </Button>
       </div>
 
@@ -368,110 +315,93 @@ export function StatusPanel({
   )
 }
 
-function Notes({
-  projectId,
-  notes,
-}: {
-  projectId: number
-  notes: { id: number; content: string; createdAt: string; updatedAt: string }[]
-}) {
-  const add = useAddNote()
-  const [draft, setDraft] = useState('')
-
-  const submit = () => {
-    const content = draft.trim()
-    if (!content) return
-    add.mutate({ id: projectId, content }, { onSuccess: () => setDraft('') })
-  }
-
-  const sorted = orderBy(notes, [(n) => n.createdAt], ['desc'])
-
+/**
+ * 远程那一行：**能点开才占一行，否则整行不出**。
+ *
+ * - `https://…` 的 remote 是网页地址 → 一行链接，点了去仓库页面。
+ * - `git@github.com:owner/repo.git` 这种 SSH 形式**不是 URL**：浏览器当相对路径，
+ *   拼成 `http://localhost:5174/projects/git@github.com:…`，点一下跳进本应用里一个
+ *   不存在的地址（用户报过的 bug）。它也不能点开任何网页 → **不占这一行**。
+ *   （用户的要求：给不出真的就别占位，「信息少了总比垃圾信息好」。）
+ * - 没有 remote → 也不占行：「git 状态」那边会写「这个仓库没有配置 origin」。
+ *
+ * 没做「从 SSH 推算出 `https://host/owner/repo`」：自建 host、非标准端口、嵌套路径
+ * 都推不准，猜出来的链接比没有链接更坏。
+ */
+export function RemoteRow({ url }: { url: string | null }) {
+  if (!url || !isWebUrl(url)) return null
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-2">
-        <Textarea
-          rows={2}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="记一句：为什么留着它、卡在哪个 issue、下次要看哪部分"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit()
-          }}
-        />
-        <div className="flex items-center gap-2">
-          <Button variant="primary" onClick={submit} disabled={!draft.trim() || add.isPending}>
-            <Plus size={14} aria-hidden />
-            加备注
-          </Button>
-          <span className="text-[12px] text-ink-3">Ctrl + Enter 也可以</span>
-        </div>
-      </div>
-
-      {sorted.length === 0 ? (
-        <p className="text-[13px] text-ink-3">还没有备注。</p>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {sorted.map((note) => (
-            <NoteItem key={note.id} note={note} />
-          ))}
-        </ul>
-      )}
-    </div>
+    <>
+      <dt className="text-ink-3">远程</dt>
+      <dd className="min-w-0 truncate font-mono text-[12.5px] text-ink">
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-accent hover:underline"
+        >
+          {url}
+        </a>
+      </dd>
+    </>
   )
 }
 
-function NoteItem({ note }: { note: { id: number; content: string; createdAt: string } }) {
-  const [editing, setEditing] = useState(false)
-  const [value, setValue] = useState(note.content)
-  const update = useUpdateNote()
-  const remove = useRemoveNote()
+/** http(s) 才算网页地址；其余（SSH / file / 本地路径）一律不给链接 */
+export function isWebUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url)
+}
 
+/**
+ * 「记录」：这个项目**唯一**由你写的地方 —— 但这一页只**看**，写是在
+ * 「编辑资料」弹窗里（那是它唯一的编辑器，见 ProjectFormDialog）。
+ *
+ * 渲染在身份信息那个 `<dl>` 里，和 路径 / 分类 / 标签 同一级——它在库里就是
+ * `projects` 表上的一列，不该比那几行高一级（曾经是「git 状态」旁边的 `<h2>` 分区，
+ * 那是沿用旧「备注」列表的位置，属于没重新想过）。
+ *
+ * 之前这里直接放了一个带保存按钮的文本框，结果是「记录在外面、别的字段在弹窗里」，
+ * 边界说不清（用户原话：「这和顶部的编辑资料不有歧义吗」）。现在这一页只读。
+ *
+ * 只读就**必须**让链接能点：记录里写的多是「在 B 站看到 → 顺着找到 GitHub」这类句子，
+ * 链接不可点等于要手抄。
+ *
+ * 这里原来挂的是备注列表（N 条、各自时间戳、能逐条改删），那是个「流」，
+ * 而人要的是「文档」；摘要与来源链接也一起撤了——见设计文档第 13 节第 19 条。
+ */
+export function RecordView({ record }: { record: string }) {
+  if (!record) {
+    return <p className="text-[13px] text-ink-3">还没写。点上方「编辑资料」写。</p>
+  }
   return (
-    <li className="border border-line-soft bg-panel px-3 py-2">
-      {editing ? (
-        <div className="flex flex-col gap-2">
-          <Textarea rows={3} value={value} onChange={(e) => setValue(e.target.value)} />
-          <div className="flex gap-2">
-            <Button
-              variant="primary"
-              disabled={!value.trim() || update.isPending}
-              onClick={() =>
-                update.mutate(
-                  { id: note.id, content: value.trim() },
-                  { onSuccess: () => setEditing(false) },
-                )
-              }
-            >
-              <Check size={14} aria-hidden />
-              保存
-            </Button>
-            <Button onClick={() => setEditing(false)}>取消</Button>
-          </div>
-        </div>
-      ) : (
-        <>
-          <p className="whitespace-pre-wrap text-[13px] text-ink">{note.content}</p>
-          <div className="mt-1.5 flex items-center gap-3">
-            <span className="font-mono text-[11.5px] text-ink-3">{formatRelative(note.createdAt)}</span>
-            <button
-              onClick={() => setEditing(true)}
-              title="改这条备注"
-              className="inline-flex items-center gap-1 text-[12px] text-ink-2 hover:text-ink"
-            >
-              <Pencil size={12} aria-hidden />
-              改
-            </button>
-            <button
-              onClick={() => remove.mutate(note.id)}
-              title="删这条备注"
-              className="inline-flex items-center gap-1 text-[12px] text-ink-2 hover:text-signal-bad"
-            >
-              <Trash2 size={12} aria-hidden />
-              删
-            </button>
-          </div>
-        </>
-      )}
-    </li>
+    <p className="max-w-prose whitespace-pre-wrap text-[13.5px] leading-6 text-ink-2">
+      {withLinks(record)}
+    </p>
+  )
+}
+
+/**
+ * 把正文里的 http(s) 链接变成可点的 `<a>`。
+ *
+ * 就一个正则，不引 Markdown 解析器：记录是纯文本，唯一需要特殊对待的就是 URL。
+ * 用 `split` 而不是 `replace`——带捕获组时，**奇数位正好是匹配到的 URL 本身**，
+ * 不用再判断哪一段是链接。（每次新建正则：`/g` 的正则有 `lastIndex` 状态，
+ * 复用会漏匹配。）
+ */
+function withLinks(text: string): ReactNode[] {
+  return text.split(/(https?:\/\/[^\s<>()]+)/g).map((part, i) =>
+    i % 2 === 1 ? (
+      <a
+        key={i}
+        href={part}
+        target="_blank"
+        rel="noreferrer"
+        className="break-all text-accent hover:underline"
+      >
+        {part}
+      </a>
+    ) : (
+      part
+    ),
   )
 }

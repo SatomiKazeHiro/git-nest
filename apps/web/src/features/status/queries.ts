@@ -34,7 +34,7 @@ export function useProjectStatus(
 ) {
   const fresh = options.fresh ?? false
   return useQuery({
-    // nonce 变化就重新发一次请求：手动「重新读取」要绕开服务端那 3 秒短缓存
+    // nonce 变化就重新发一次请求：手动「重读本地状态」要绕开服务端那 3 秒短缓存
     queryKey: statusKeys.one(id ?? 0, fresh, options.nonce ?? 0),
     queryFn: () =>
       api

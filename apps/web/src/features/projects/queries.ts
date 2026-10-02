@@ -75,8 +75,7 @@ export interface ProjectPayload {
   path: string
   category: string
   remoteUrl: string | null
-  sourceUrl: string | null
-  summary: string | null
+  record: string
 }
 
 export function useCreateProject() {
@@ -110,32 +109,6 @@ export function useSetProjectTags() {
   return useMutation({
     mutationFn: ({ id, tagNames }: { id: number; tagNames: string[] }) =>
       api.put<{ project: ProjectDetail }>(`/projects/${id}/tags`, { tagNames }),
-    onSuccess: invalidate,
-  })
-}
-
-export function useAddNote() {
-  const invalidate = useInvalidate()
-  return useMutation({
-    mutationFn: ({ id, content }: { id: number; content: string }) =>
-      api.post<{ noteId: number }>(`/projects/${id}/notes`, { content }),
-    onSuccess: invalidate,
-  })
-}
-
-export function useUpdateNote() {
-  const invalidate = useInvalidate()
-  return useMutation({
-    mutationFn: ({ id, content }: { id: number; content: string }) =>
-      api.patch<{ ok: true }>(`/notes/${id}`, { content }),
-    onSuccess: invalidate,
-  })
-}
-
-export function useRemoveNote() {
-  const invalidate = useInvalidate()
-  return useMutation({
-    mutationFn: (id: number) => api.del<{ ok: true }>(`/notes/${id}`),
     onSuccess: invalidate,
   })
 }

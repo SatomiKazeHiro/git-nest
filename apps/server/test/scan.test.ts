@@ -228,16 +228,14 @@ describe('POST /api/projects/import', () => {
       payload: {
         name: 'epsilon-renamed',
         category: 'tools',
-        summary: '扫进来之后自己补的摘要',
-        sourceUrl: 'https://example.invalid/video',
+        record: '扫进来的，回头写写怎么找到的',
       },
     })
     expect(patched.statusCode).toBe(200)
     expect(patched.json().project).toMatchObject({
       name: 'epsilon-renamed',
       category: 'tools',
-      summary: '扫进来之后自己补的摘要',
-      sourceUrl: 'https://example.invalid/video',
+      record: '扫进来的，回头写写怎么找到的',
     })
 
     await app.inject({

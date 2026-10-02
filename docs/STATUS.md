@@ -78,7 +78,7 @@ apps/server/
 ├── src/lib/git.ts             git 层在 server 侧的入口（超时/并发读设置 + 3 秒短缓存）
 ├── src/lib/settings.ts        键值设置，支持 JSON 数组值
 ├── src/lib/tasks.ts           批量任务 + 事件缓冲（缓冲数组+游标，不是发布订阅）
-├── src/routes/                index(projects/notes/tags) + git / updates / scan / settings
+├── src/routes/                index(projects/tags) + git / updates / scan / settings
 └── test/*.test.ts             Fastify inject（app.inject，不起真端口）
 
 apps/web/src/
@@ -123,6 +123,15 @@ apps/web/src/
 11. **自动做的事必须留痕。** 自动 fetch 会自己联网，所以每一条 git 命令都进
    命令日志（`runner.ts` 的 `recentCommands`，带 `label` 标明发起者）。
    新增任何「自己会跑」的后台行为，都要能通过 `GET /api/commands` 查到。
+12. **元数据只有一条线：能从仓库自己读出来的不存，只有用户知道的才存。**
+   摘要是前者（README 现场读，只有扫描预览里出现、不落库），记录是后者
+   （`projects.record` **一个文本框**，链接写在正文里）。不要因为「结构化更整齐」
+   再拆出 notes 表、来源链接列、`kind` 字段那一类东西——那三样已经因为同一个原因
+   撤过一次，见设计文档第 13 节第 19 条。
+13. **一个编辑器，不是两个门。** 项目的可写字段（名称/路径/分类/标签/记录）全部只在
+   「编辑资料」弹窗里改；页面各处只做展示与只读渲染（记录在详情页只读，正文里的
+   URL 渲染成可点链接）。别再往页面或标签行旁边挂「快捷编辑」按钮——那不是捷径，
+   是第二个入口，已经因此返工两次（标签行内编辑器、详情页的记录文本框）。
 
 ## 待用户决定的事
 

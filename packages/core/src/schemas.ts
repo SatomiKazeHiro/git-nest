@@ -8,8 +8,8 @@ export const createProjectSchema = z.object({
   path: trimmed.min(1, '本地路径不能为空'),
   category: trimmed.max(60).default(''),
   remoteUrl: trimmed.max(500).nullish().transform((v) => v || null),
-  sourceUrl: trimmed.max(500).nullish().transform((v) => v || null),
-  summary: trimmed.max(2000).nullish().transform((v) => v || null),
+  // 「记录」是详情页那个文本框，添加项目时还写不到，所以默认空串
+  record: trimmed.max(20_000).default(''),
   sortOrder: z.number().int().optional(),
 })
 
@@ -23,10 +23,10 @@ export const updateProjectSchema = z
     category: trimmed.max(60).optional(),
     // .optional() 必须在 transform **外面**：transform 挂在外层时，zod 会对
     // 「根本没提交的键」也执行它，把 undefined 变成 null 并把键物化进输出，
-    // 于是只改 name 的 PATCH 会连带把这三列写成 NULL（下面的 refine 也会失效）。
+    // 于是只改 name 的 PATCH 会连带把 remoteUrl 写成 NULL（下面的 refine 也会失效）。
     remoteUrl: trimmed.max(500).nullish().transform((v) => v || null).optional(),
-    sourceUrl: trimmed.max(500).nullish().transform((v) => v || null).optional(),
-    summary: trimmed.max(2000).nullish().transform((v) => v || null).optional(),
+    // 记录是 NOT NULL 的列：清空 = 提交空串，不用 null 表示空。
+    record: trimmed.max(20_000).optional(),
     sortOrder: z.number().int().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: '没有要修改的字段' })
@@ -51,14 +51,6 @@ export type CreateTagInput = z.input<typeof createTagSchema>
 
 export const setProjectTagsSchema = z.object({
   tagNames: z.array(trimmed.min(1)).max(20),
-})
-
-export const createNoteSchema = z.object({
-  content: trimmed.min(1, '备注不能为空').max(10_000),
-})
-
-export const updateNoteSchema = z.object({
-  content: trimmed.min(1, '备注不能为空').max(10_000),
 })
 
 export const idParamSchema = z.coerce.number().int().positive()
