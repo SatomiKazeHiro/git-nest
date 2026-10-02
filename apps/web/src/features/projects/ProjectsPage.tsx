@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { groupBy, orderBy } from 'es-toolkit'
 import { useDebounce } from 'ahooks'
@@ -71,29 +71,35 @@ export function ProjectsPage() {
         ) : !projects || projects.length === 0 ? (
           <EmptyList filtering={Boolean(filters.category || filters.tag || filters.q)} />
         ) : (
-          <ul className="flex flex-col gap-5 pt-1">
+          /*
+            一整张表，**不是每个分区一张**。
+            原来是 groups.map 里各塞一个 `<ul>` + 各印一份 ColumnHeader，
+            于是分区一多就是好几张表上下叠着；而且每行用 flex + 固定宽度对齐，
+            跨分区的列根本对不齐。
+            现在表头只印一次，分组是表里的一行分隔（占满整行），
+            所有行共用同一套 grid 列定义（`LIST_COLUMNS`），列必然对齐。
+          */
+          <div className={`${LIST_COLUMNS} pt-1`}>
             <ColumnHeader />
             {groups.map((group) => (
-              <li key={group.name} className="branch">
+              <Fragment key={group.name}>
                 <GroupHeader
                   name={group.name}
                   count={group.items.length}
                   active={group.filterable && filters.category === group.name}
                   onFilter={group.filterable ? () => setCategory(group.name) : undefined}
                 />
-                <ul className="pl-6">
-                  {group.items.map((p) => (
-                    <ProjectRow
-                      key={p.id}
-                      project={p}
-                      status={statuses?.get(p.id)}
-                      onRemove={() => setPendingRemoval(p)}
-                    />
-                  ))}
-                </ul>
-              </li>
+                {group.items.map((p) => (
+                  <ProjectRow
+                    key={p.id}
+                    project={p}
+                    status={statuses?.get(p.id)}
+                    onRemove={() => setPendingRemoval(p)}
+                  />
+                ))}
+              </Fragment>
             ))}
-          </ul>
+          </div>
         )}
       </div>
 
@@ -128,22 +134,42 @@ function EmptyList({ filtering }: { filtering: boolean }) {
   )
 }
 
+/**
+ * 表格的列定义。**表头与每一行共用这一份**——这是「列能对齐」的全部秘密。
+ *
+ * 为什么用 grid 而不是 flex：原来每行是 `flex items-center gap-3` + 每个格子写死宽度，
+ * 表头一旦与某行断点不同（`lg:block` vs `sm:block`）就整体错位，
+ * 跨分区更对不齐。grid 的 `grid-template-columns` 在一行之内统一分配，不可能错。
+ *
+ * 窄屏时隐藏的列把宽度设成 `0`——不能只是 `display:none`：那样 grid 的列定义
+ * 和实际子元素数量就对不上了，后面的列会整体左移。
+ */
+const LIST_COLUMNS = [
+  'grid items-center gap-x-3',
+  // 选择框 · 名称 · 摘要 · 路径 · 标签 · 落后 · 作者更新 · 推荐 · 上次检查 · 备注 · 操作
+  'grid-cols-[0.875rem_13rem_0px_0px_5rem_0px_0px_0px_0px_0px_3.5rem]',
+  'lg:grid-cols-[0.875rem_13rem_minmax(0,1fr)_0px_5rem_0px_0px_0px_0px_0px_3.5rem]',
+  'xl:grid-cols-[0.875rem_13rem_minmax(0,1fr)_13rem_5rem_6rem_5rem_5rem_5rem_4rem_3.5rem]',
+  '2xl:grid-cols-[0.875rem_13rem_minmax(0,1fr)_13rem_5rem_6rem_5rem_5rem_5rem_4rem_3.5rem]',
+].join(' ')
+
+/** 表头。只印一次，粘在工具栏下面。 */
 function ColumnHeader() {
   return (
-    <li className="flex items-center gap-3 border-b border-line pb-1.5 text-[11px] text-ink-3">
-      <span className="w-3.5 shrink-0" />
-      <span className="min-w-0 flex-1 sm:w-40 sm:flex-none">名称</span>
-      <span className="hidden min-w-32 flex-1 lg:block">摘要</span>
-      <span className="hidden w-52 shrink-0 font-mono xl:block">本地路径</span>
-      <span className="w-20 shrink-0 sm:w-24">标签</span>
+    <div className="sticky top-[3.25rem] z-[5] border-b border-line bg-paper/95 py-1.5 text-[11px] text-ink-3 backdrop-blur">
+      <span />
+      <span>名称</span>
+      <span className="hidden lg:block">摘要</span>
+      <span className="hidden font-mono xl:block">本地路径</span>
+      <span>标签</span>
       {/* 这一列只回答「跟远程差多少」——不显示分支名，也不显示脏标记 */}
-      <span className="hidden w-24 shrink-0 md:block">落后</span>
-      <span className="hidden w-20 shrink-0 text-right xl:inline-block">作者更新</span>
-      <span className="hidden w-20 shrink-0 lg:block">推荐</span>
-      <span className="hidden w-20 shrink-0 text-right lg:inline-block">上次检查</span>
-      <span className="hidden w-16 shrink-0 text-right sm:inline-block">备注</span>
-      <span className="w-16 shrink-0" />
-    </li>
+      <span className="hidden md:block">落后</span>
+      <span className="hidden text-right xl:block">作者更新</span>
+      <span className="hidden lg:block">推荐</span>
+      <span className="hidden text-right lg:block">上次检查</span>
+      <span className="hidden text-right sm:block">备注</span>
+      <span />
+    </div>
   )
 }
 
@@ -225,6 +251,16 @@ function SelectionBar() {
   )
 }
 
+/**
+ * 分区标题——**它是表里的一行，不是一张新表**。
+ *
+ * 原来每个分区有一份自己的表头，于是多分区就成了「好几张表叠着」。
+ * 现在它是一个占满整行（`col-span-full`）的分隔条，分组名落在「名称」那一列上，
+ * 与下面的项目名左对齐。
+ *
+ * 那个 `branch-node` 小圆点去掉了：它画在 `pl-5` 的位置，与名称列的起点对不齐，
+ * 在单表布局里就是纯粹的错位。
+ */
 function GroupHeader({
   name,
   count,
@@ -237,8 +273,9 @@ function GroupHeader({
   onFilter?: () => void
 }) {
   return (
-    <div className="relative mb-1.5 pl-5">
-      <span className="branch-node" />
+    <div className="col-span-full mt-4 flex items-baseline gap-2 border-b border-line-soft pb-1">
+      {/* 空一格给选择框，让分组名与项目名对齐 */}
+      <span className="w-3.5 shrink-0" />
       {onFilter ? (
         <button
           onClick={onFilter}
@@ -251,7 +288,7 @@ function GroupHeader({
       ) : (
         <span className="font-mono text-[12px] tracking-wide text-ink-3">{name}</span>
       )}
-      <span className="ml-2 font-mono text-[12px] text-ink-3">{count}</span>
+      <span className="font-mono text-[12px] text-ink-3">{count}</span>
     </div>
   )
 }
@@ -272,8 +309,8 @@ function ProjectRow({
   const gone = status?.status === 'missing'
 
   return (
-    <li
-      className={`row-link group flex items-center gap-3 py-1.5 pr-2 ${gone ? 'opacity-50' : ''}`}
+    <div
+      className={`row-link group py-1.5 ${gone ? 'opacity-50' : ''}`}
       title={gone ? '目录不在了。点「编辑」可以把它指到新位置。' : undefined}
     >
       <input
@@ -285,17 +322,17 @@ function ProjectRow({
       />
       <Link
         to={`/projects/${p.id}`}
-        className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-ink hover:text-accent sm:w-40 sm:flex-none"
+        className="min-w-0 truncate text-[13.5px] font-medium text-ink hover:text-accent"
       >
         {p.name}
       </Link>
-      <span className="hidden min-w-32 flex-1 truncate text-[12.5px] text-ink-2 lg:block">
+      <span className="hidden min-w-0 truncate text-[12.5px] text-ink-2 lg:block">
         {p.summary ?? ''}
       </span>
-      <span className="hidden w-52 shrink-0 truncate font-mono text-[12px] text-ink-3 xl:block">
+      <span className="hidden min-w-0 truncate font-mono text-[12px] text-ink-3 xl:block">
         {shortenPath(p.path, 2)}
       </span>
-      <span className="flex w-20 shrink-0 flex-wrap gap-1 sm:w-24">
+      <span className="flex min-w-0 flex-wrap gap-1 overflow-hidden">
         {p.tags.map((t) => (
           <span
             key={t.id}
@@ -305,22 +342,22 @@ function ProjectRow({
           </span>
         ))}
       </span>
-      <span className="hidden w-24 shrink-0 md:block">
+      <span className="hidden min-w-0 md:block">
         <StatusCell status={status} checkedAt={p.latestCheck?.checkedAt ?? null} />
       </span>
       {/* 作者上次更新：远程最后一次提交的时间。用户明确要看这一条 */}
       <span
-        className="hidden w-20 shrink-0 text-right font-mono text-[12px] text-ink-3 xl:block"
+        className="hidden truncate text-right font-mono text-[12px] text-ink-3 xl:block"
         title={status?.lastCommit ? status.lastCommit.subject : undefined}
       >
         {status?.lastCommit ? formatRelative(status.lastCommit.date) : ''}
       </span>
       {/* 推荐更新：用户点名要的那一列。结论来自上次检查（见 RecommendationCell 的注释） */}
-      <span className="hidden w-20 shrink-0 lg:block">
+      <span className="hidden min-w-0 lg:block">
         <RecommendationCell recommendation={p.latestCheck?.recommendation ?? null} />
       </span>
       <span
-        className="hidden w-20 shrink-0 justify-end lg:flex"
+        className="hidden min-w-0 justify-end lg:flex"
         title={p.latestCheck ? `上次检查：${p.latestCheck.status}` : '还没点过「检查更新」'}
       >
         {p.latestCheck ? (
@@ -329,10 +366,10 @@ function ProjectRow({
           <Meta label="检查" value="没查过" placeholder />
         )}
       </span>
-      <span className="hidden w-16 shrink-0 text-right font-mono text-[12px] text-ink-3 sm:block">
+      <span className="hidden truncate text-right font-mono text-[12px] text-ink-3 sm:block">
         {p.notesCount > 0 ? `${p.notesCount} 条` : ''}
       </span>
-      <span className="flex w-16 shrink-0 justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+      <span className="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
         <button
           onClick={() => openEdit(p.id)}
           title="编辑"
@@ -350,7 +387,7 @@ function ProjectRow({
           <Trash2 size={13} aria-hidden />
         </button>
       </span>
-    </li>
+    </div>
   )
 }
 

@@ -1,7 +1,6 @@
 import { NavLink } from 'react-router'
 import type { ReactNode } from 'react'
-import { List, Settings } from 'lucide-react'
-import { NestMark } from './NestMark'
+import { GitBranch, List, Settings } from 'lucide-react'
 
 /**
  * 导航项的图标。
@@ -19,7 +18,8 @@ export function AppShell({ sidebar, children }: { sidebar?: ReactNode; children:
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-20 flex items-center gap-6 border-b border-line bg-panel px-6 py-2.5">
         <a href="/" className="flex items-center gap-2">
-          <NestMark />
+          {/* logo：原来是一段手写的 inline SVG（一小段提交图），现在与页面其余图标同源，都用 lucide */}
+          <GitBranch size={18} aria-hidden className="shrink-0 text-accent" />
           <span className="font-mono text-[15px] font-semibold tracking-tight text-ink">git-nest</span>
           <span className="hidden text-[12px] text-ink-3 sm:inline">本地仓库清单</span>
         </a>
