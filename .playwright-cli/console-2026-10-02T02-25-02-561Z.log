@@ -1,0 +1,42 @@
+[      70ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:22164
+[   13212ms] [ERROR] %o
+
+%s
+
+%s
+ ReferenceError: detailTitle is not defined
+    at StatusPanel (http://localhost:5173/src/pages/ProjectDetailPage.tsx?t=1790907915586:492:5)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:20259:20)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:5918:24)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:7763:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:8843:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:1133:72)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:13598:98)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:13461:43)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:13445:13)
+    at performWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:12861:37) The above error occurred in the <StatusPanel> component. React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:7275
+[   13213ms] [ERROR] 渲染出错： ReferenceError: detailTitle is not defined
+    at StatusPanel (http://localhost:5173/src/pages/ProjectDetailPage.tsx?t=1790907915586:492:5)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:20259:20)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:5918:24)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:7763:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:8843:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:1133:72)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:13598:98)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:13461:43)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:13445:13)
+    at performWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=990b6d4f:12861:37) 
+    at StatusPanel (http://localhost:5173/src/pages/ProjectDetailPage.tsx?t=1790907915586:352:3)
+    at div (<anonymous>)
+    at ProjectDetailPage (http://localhost:5173/src/pages/ProjectDetailPage.tsx?t=1790907915586:25:18)
+    at RenderedRoute (http://localhost:5173/node_modules/.vite/deps/react-router.js?v=990b6d4f:6734:26)
+    at Routes (http://localhost:5173/node_modules/.vite/deps/react-router.js?v=990b6d4f:7666:3)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.tsx:4:8)
+    at main (<anonymous>)
+    at div (<anonymous>)
+    at div (<anonymous>)
+    at AppShell (http://localhost:5173/src/components/AppShell.tsx:8:28)
+    at App (<anonymous>)
+    at Router (http://localhost:5173/node_modules/.vite/deps/react-router.js?v=990b6d4f:7605:13)
+    at BrowserRouter (http://localhost:5173/node_modules/.vite/deps/react-router.js?v=990b6d4f:10913:3)
+    at QueryClientProvider (http://localhost:5173/node_modules/.vite/deps/@tanstack_react-query.js?v=990b6d4f:21:30) @ http://localhost:5173/src/components/ErrorBoundary.tsx:9

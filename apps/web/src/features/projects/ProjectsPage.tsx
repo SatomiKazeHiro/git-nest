@@ -4,7 +4,7 @@ import { groupBy, orderBy } from 'es-toolkit'
 import { useDebounce } from 'ahooks'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
 import { Button, Dialog, EmptyState, ErrorNote, Input, Meta } from '@/components/ui'
-import { formatDate, formatRelative, hostOf, shortenPath } from '@/lib/format'
+import { formatRelative, shortenPath } from '@/lib/format'
 import { UNCATEGORIZED, useSelectedCount, useSelectedIds, useUiStore } from '@/store/ui'
 import { ProjectFormDialog } from './ProjectFormDialog'
 import { useProjects, useRemoveProject } from './queries'
@@ -132,14 +132,13 @@ function ColumnHeader() {
     <li className="flex items-center gap-3 border-b border-line pb-1.5 text-[11px] text-ink-3">
       <span className="w-3.5 shrink-0" />
       <span className="min-w-0 flex-1 sm:w-40 sm:flex-none">名称</span>
-      <span className="hidden w-52 shrink-0 font-mono lg:block">本地路径</span>
-      <span className="hidden min-w-32 flex-1 sm:block">摘要</span>
-      <span className="hidden w-24 shrink-0 font-mono 2xl:block">远程</span>
-      <span className="hidden w-48 shrink-0 md:block">状态</span>
+      <span className="hidden min-w-32 flex-1 lg:block">摘要</span>
+      <span className="hidden w-52 shrink-0 font-mono xl:block">本地路径</span>
       <span className="w-20 shrink-0 sm:w-24">标签</span>
+      {/* 这一列只回答「跟远程差多少」——不显示分支名，也不显示脏标记 */}
+      <span className="hidden w-24 shrink-0 md:block">落后</span>
+      <span className="hidden w-20 shrink-0 text-right lg:inline-block">上次检查</span>
       <span className="hidden w-16 shrink-0 text-right sm:inline-block">备注</span>
-      <span className="hidden w-20 shrink-0 text-right lg:inline-block">检查</span>
-      <span className="hidden w-20 shrink-0 text-right md:inline-block">加入</span>
       <span className="w-16 shrink-0" />
     </li>
   )
@@ -255,7 +254,6 @@ function ProjectRow({
   const selected = useUiStore((s) => s.selected.has(p.id))
   const toggleSelected = useUiStore((s) => s.toggleSelected)
   const openEdit = useUiStore((s) => s.openEdit)
-  const host = hostOf(p.remoteUrl)
   // 目录没了：置灰但保留入口，让用户能改路径或移除——不自动消失
   const gone = status?.status === 'missing'
 
@@ -277,19 +275,13 @@ function ProjectRow({
       >
         {p.name}
       </Link>
-      <span className="hidden w-52 shrink-0 truncate font-mono text-[12px] text-ink-3 lg:block">
-        {shortenPath(p.path, 2)}
-      </span>
-      <span className="hidden min-w-32 flex-1 truncate text-[12.5px] text-ink-2 sm:block">
+      <span className="hidden min-w-32 flex-1 truncate text-[12.5px] text-ink-2 lg:block">
         {p.summary ?? ''}
       </span>
-      <span className="hidden w-24 shrink-0 truncate font-mono text-[12px] text-ink-3 2xl:block">
-        {host ?? ''}
+      <span className="hidden w-52 shrink-0 truncate font-mono text-[12px] text-ink-3 xl:block">
+        {shortenPath(p.path, 2)}
       </span>
-      <span className="hidden w-48 shrink-0 md:block">
-        <StatusCell status={status} checkedAt={p.latestCheck?.checkedAt ?? null} />
-      </span>
-      <span className="w-20 shrink-0 flex-wrap gap-1 sm:w-24">
+      <span className="flex w-20 shrink-0 flex-wrap gap-1 sm:w-24">
         {p.tags.map((t) => (
           <span
             key={t.id}
@@ -299,8 +291,8 @@ function ProjectRow({
           </span>
         ))}
       </span>
-      <span className="hidden w-16 shrink-0 text-right font-mono text-[12px] text-ink-3 sm:block">
-        {p.notesCount > 0 ? `${p.notesCount} 条` : ''}
+      <span className="hidden w-24 shrink-0 md:block">
+        <StatusCell status={status} checkedAt={p.latestCheck?.checkedAt ?? null} />
       </span>
       <span
         className="hidden w-20 shrink-0 justify-end lg:flex"
@@ -312,8 +304,8 @@ function ProjectRow({
           <Meta label="检查" value="没查过" placeholder />
         )}
       </span>
-      <span className="hidden w-20 shrink-0 text-right font-mono text-[12px] text-ink-3 md:block">
-        {formatDate(p.addedAt)}
+      <span className="hidden w-16 shrink-0 text-right font-mono text-[12px] text-ink-3 sm:block">
+        {p.notesCount > 0 ? `${p.notesCount} 条` : ''}
       </span>
       <span className="flex w-16 shrink-0 justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
         <button

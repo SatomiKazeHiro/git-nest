@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import type { RepoStatus } from '@git-nest/core'
 import {
   STALE_AFTER_MS,
   Delta,
+  StatusCell,
   freshnessOf,
   textFor,
   toneFor,
@@ -93,7 +95,7 @@ describe('措辞与颜色：远程相关的结论必须看新鲜度', () => {
 })
 
 /**
- * `Delta` 是列表页状态列与更新面板结果行**共用**的那一份
+ * `Delta` 是清单页状态列与更新面板结果行**共用**的那一份
  * （原来 UpdatePanel 里另写了一份，容易只改一处）。这里钉住它的文案，
  * 免得两处又飘开。
  */
@@ -108,5 +110,76 @@ describe('Delta', () => {
     render(<Delta n={2411} dir="behind" />)
     expect(screen.getByText('↓2411')).toBeTruthy()
     expect(screen.getByTitle('落后 2411 个提交')).toBeTruthy()
+  })
+})
+
+/**
+ * 清单页那一格的**边界**：只回答「跟远程差多少」。
+ *
+ * 这里钉的是「不显示什么」——这类断言比「显示什么」更重要，
+ * 因为越界的东西总是以「顺便加上去」的方式溜回来：
+ * - 不显示分支名（git 客户端的事，设计文档第 1 节明确不做）
+ * - 不显示「有未提交改动」（仓库内部状态，只在更新前校验时才有意义；
+ *   挂在清单上的后果是跑过构建的目录永远报脏，报到没人再看）
+ */
+describe('清单页状态格只回答「跟远程差多少」', () => {
+  function makeStatus(overrides: Partial<RepoStatus> = {}): RepoStatus {
+    return {
+      path: 'D:/repos/x',
+      checkedAt: '2026-10-01T12:00:00+08:00',
+      isRepo: true,
+      branch: 'main',
+      detached: false,
+      dirty: false,
+      dirtyCount: 0,
+      upstream: 'origin/main',
+      upstreamGone: false,
+      ahead: 0,
+      behind: 9,
+      remoteUrl: 'git@github.com:a/b.git',
+      lastCommit: null,
+      status: 'behind',
+      error: null,
+      ...overrides,
+    }
+  }
+
+  it('落后时只突出 ↓N', () => {
+    render(<StatusCell status={makeStatus()} checkedAt={new Date().toISOString()} />)
+    expect(screen.getByText('↓9')).toBeTruthy()
+  })
+
+  /**
+   * 脏标记在清单页**根本没有依据**：列表走 lean 档，不读工作区，
+   * 所以 `status` 会是远程相对的那个值（这里是没有远程），不会是 'dirty'。
+   *
+   * 这条钉住的是：清单页不该出现任何跟未提交改动有关的字。
+   * 「有没有未提交改动」只在你要动工作区的那一刻（点更新）才有意义。
+   */
+  it('脏仓库在清单页不显示任何脏的痕迹，也不显示分支名', () => {
+    render(
+      <StatusCell
+        status={makeStatus({ dirty: true, dirtyCount: 7, status: 'no_remote', behind: 0, ahead: 0 })}
+        checkedAt={new Date().toISOString()}
+      />,
+    )
+    expect(screen.queryByText(/未提交|改动|脏/)).toBeNull()
+    expect(screen.queryByText(/7/)).toBeNull()
+    expect(screen.queryByText('main')).toBeNull()
+  })
+
+  it('数字不是刚查的，标一句「未确认」', () => {
+    render(<StatusCell status={makeStatus()} checkedAt={null} />)
+    expect(screen.getByText('未确认')).toBeTruthy()
+  })
+
+  it('没有远程 / 目录不在：给一句状态词，不给颜色', () => {
+    render(
+      <StatusCell
+        status={makeStatus({ isRepo: false, status: 'not_a_repo', behind: null, upstream: null })}
+        checkedAt={null}
+      />,
+    )
+    expect(screen.getByText('不是 git 仓库')).toBeTruthy()
   })
 })

@@ -12,7 +12,6 @@
   "dependencies": {
     "@git-nest/core": "workspace:*",
     "@tanstack/react-query": "^5.90.2",
-    "@tomplum/react-git-log": "^3.5.1",
     "ahooks": "^3.9.5",
     "es-toolkit": "^1.42.0",
     "react": "^19.2.0",

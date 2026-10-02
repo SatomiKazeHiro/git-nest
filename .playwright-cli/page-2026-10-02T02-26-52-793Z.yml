@@ -1,0 +1,25 @@
+- generic [ref=f7e3]:
+  - banner [ref=f7e4]:
+    - link "git-nest 本地仓库清单" [ref=f7e5] [cursor=pointer]:
+      - /url: /
+      - generic [ref=f7e11]: git-nest
+      - generic [ref=f7e12]: 本地仓库清单
+    - navigation [ref=f7e13]:
+      - link "清单" [ref=f7e14] [cursor=pointer]:
+        - /url: /
+      - link "设置" [ref=f7e15] [cursor=pointer]:
+        - /url: /settings
+  - generic [ref=f7e16]:
+    - complementary [ref=f7e17]:
+      - paragraph [ref=f7e18]: …
+    - main [ref=f7e19]:
+      - generic [ref=f7e20]:
+        - generic [ref=f7e21]:
+          - textbox "搜索项目" [ref=f7e23]:
+            - /placeholder: 按名称、路径、远程地址搜
+          - generic [ref=f7e24]: 0 个项目
+          - generic [ref=f7e25]:
+            - button "检查更新" [ref=f7e26]
+            - button "扫描目录" [ref=f7e27]
+            - button "添加项目" [ref=f7e28]
+        - paragraph [ref=f7e30]: 正在读清单…

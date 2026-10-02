@@ -1,14 +1,16 @@
 import type { RepoStatus, UpdateStatus } from '@git-nest/core'
 
 /**
- * 状态显示。
+ * 清单页那一格：**只回答「跟远程差多少」**。
  *
- * 一个必须诚实的前提：**ahead / behind 只反映上次 fetch 之后的事实**。
- * 状态接口不联网，所以一个从没检查过、或者上次检查是很久以前的仓库，
- * 它的「已是最新」是**没有依据的**——远程可能早就更新了。
+ * 这里刻意不显示分支名，也不显示「有未提交改动」：
+ * - 分支名是 git 客户端的事。设计文档第 1 节写明「不做 git 客户端」，
+ *   而用户从没问过「它在哪个分支」——他自己很清楚。
+ * - 脏不脏是仓库**内部**状态，这个软件管的是仓库**跟上游的关系**。
+ *   它只在「要动工作区」的那一刻才有用（更新前的校验），不该长期挂在清单上。
+ *   清单上挂它的后果是：跑过构建的目录几乎永远报脏，报到没人再看它。
  *
- * 办法：把「本地知道什么」和「什么时候知道的」分开显示。
- * 陈旧的状态不给颜色（不给颜色就是在说「这句我不敢担保」）。
+ * 剩下的三件事就是用户要的三件：落后了没、落后多少、能不能拉。
  */
 
 /** 超过这个时长就认为「远程情况可能已经变了」 */
@@ -31,7 +33,7 @@ export function freshnessOf({ checkedAt, now = Date.now() }: Freshness): Freshne
 
 /**
  * 这些状态是在拿远程做比较，没问过远程就不该说得那么肯定。
- * 其余状态（dirty / detached / 没有远程）是纯本地事实，任何时候都可信。
+ * 其余状态是纯本地事实，任何时候都可信。
  */
 const REMOTE_CLAIMS = new Set<UpdateStatus>(['up_to_date', 'behind', 'ahead', 'diverged'])
 
@@ -44,13 +46,9 @@ export function toneFor(status: UpdateStatus, freshness: FreshnessState): string
 /**
  * 远程相关的结论按新鲜度降级措辞。
  *
- * **限定词是附加在真实状态上的，不是替换它。** 以前这里对 `up_to_date` /
- * `behind` / `ahead` / `diverged` 一律返回「没查过远程」，把方向和数字都丢了 ——
- * 结果是同一个仓库、同一次渲染里，提示行说「落后远程 2411 个提交」，
- * 表格却说「没查过远程」，自相矛盾。
- *
- * 事实是：`ahead/behind` 来自本地 refs（也就是上次 fetch 的结果），方向是可靠的，
- * 不可靠的是「它现在还是不是这样」。所以数字照给，只标注「这是本地看到的」。
+ * **限定词是附加在真实状态上的，不是替换它。** behind / ahead / diverged 的
+ * 方向和数字来自本地 refs（也就是上次 fetch 的结果），方向是可靠的，
+ * 不可靠的只是「它现在还是不是这样」。所以数字照给，只标注来源。
  */
 export function textFor(status: UpdateStatus, freshness: FreshnessState): string {
   if (!REMOTE_CLAIMS.has(status)) return TEXT[status]
@@ -110,8 +108,6 @@ export function statusTitle(s: RepoStatus, freshness?: Freshness): string {
   const base = describe(s)
   if (!REMOTE_CLAIMS.has(s.status)) return base
 
-  // 有没有「本地 refs 里的 ahead/behind」这个数？有就说明它的来源，
-  // 没有（还没 fetch 出远程跟踪分支）才是真的无从谈起。
   const hasCounts = s.upstream !== null && (s.ahead !== null || s.behind !== null)
 
   if (state === 'never') {
@@ -156,7 +152,12 @@ function describe(s: RepoStatus): string {
   }
 }
 
-/** 列表页那一列：分支 + ahead/behind + 脏标记 + 一句话状态。 */
+/**
+ * 清单页那一格。
+ *
+ * 有落后就只显示「↓N」+ 落后的颜色——这是清单上唯一需要突出的信息；
+ * 其余情况给一句状态词。**不再显示分支名与脏标记**（理由见文件头）。
+ */
 export function StatusCell({
   status,
   checkedAt,
@@ -179,16 +180,26 @@ export function StatusCell({
     )
   }
 
+  // 落后多少是这个清单存在的理由，单独突出；顺带标一下这个数字有多旧
+  if (status.behind) {
+    return (
+      <span className="flex min-w-0 items-center gap-1.5" title={title}>
+        <Delta n={status.behind} dir="behind" />
+        {freshness !== 'fresh' ? (
+          <span className="font-mono text-[11px] text-ink-3" title="这个数字来自上次检查，之后没再问过远程">
+            未确认
+          </span>
+        ) : null}
+      </span>
+    )
+  }
+
   return (
-    <span className="flex min-w-0 items-center gap-1.5" title={title}>
-      <span className="max-w-24 truncate font-mono text-[12px] text-ink">
-        {status.branch ?? (status.detached ? 'detached' : '—')}
-      </span>
-      {status.ahead ? <Delta n={status.ahead} dir="ahead" /> : null}
-      {status.behind ? <Delta n={status.behind} dir="behind" /> : null}
-      <span className={`truncate text-[12px] ${toneFor(status.status, freshness)}`}>
-        {textFor(status.status, freshness)}
-      </span>
+    <span
+      className={`truncate text-[12px] ${toneFor(status.status, freshness)}`}
+      title={title}
+    >
+      {textFor(status.status, freshness)}
     </span>
   )
 }
@@ -196,7 +207,7 @@ export function StatusCell({
 /**
  * `↑N` / `↓N`（领先/落后几个提交）。
  *
- * 列表页的状态列与更新面板的结果行都要这个，文案、箭头、颜色必须一致，
+ * 清单页与更新面板的结果行都要这个，文案、箭头、颜色必须一致，
  * 所以只有这一份实现。原来 UpdatePanel 里另写了一份——两个地方各改一次很容易
  * 只改一处（比如只给一边加了 title）。
  */

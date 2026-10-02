@@ -161,6 +161,8 @@ async function inspect(path: string, options: ReadStatusOptions): Promise<RepoSt
     behind: upstreamGone ? null : (divergence?.behind ?? null),
     upstreamGone,
     hasRemote: facts.remoteUrl !== null,
+    // lean 档没读工作区，就不该对「有没有未提交改动」发表意见。理由见 DeriveInput。
+    skipDirty: profile === 'lean',
   }
 
   return {

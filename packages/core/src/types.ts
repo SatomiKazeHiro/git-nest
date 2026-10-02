@@ -102,6 +102,60 @@ export function isRemoteCheckStatus(status: UpdateStatus): boolean {
   return (REMOTE_CHECK_STATUSES as readonly UpdateStatus[]).includes(status)
 }
 
+/**
+ * 状态机的输入。
+ *
+ * 放在这里（浏览器安全的 barrel）而不是 git 层，是因为**前端也要用同一份**：
+ * 详情页摘要要让「跟远程差多少」当主角、把脏标记降级成旁边一句，
+ * 那就得自己按同一套优先级重算一遍结论。两处各写一份必然飘开。
+ */
+export interface DeriveInput {
+  isRepo: boolean
+  dirty: boolean
+  detached: boolean
+  hasCommits: boolean
+  upstream: boolean
+  ahead: number | null
+  behind: number | null
+  upstreamGone: boolean
+  hasRemote: boolean
+  /**
+   * 跳过脏标记这一档。**只有「没有读工作区」的调用方才能传 true**。
+   *
+   * 两个真实的调用方：
+   * - 清单页（读状态走 lean 档，不读工作区）—— 那里压根没有脏的依据
+   * - 详情页摘要 —— 它有脏的数据，但主角要让给「跟远程差多少」
+   *
+   * 传 true 是把前提写明，而不是依赖 `dirty` 恰好是 false。
+   */
+  skipDirty?: boolean
+}
+
+/**
+ * 状态机。注意：这些不是异常分支，是仓库的常态——
+ * 「没有上游」「detached HEAD」「远程分支已删」都是正常存在的情况。
+ *
+ * 优先级从上到下，先命中的赢。排在前面的都是「更本地、更当下」的事实：
+ * 先说你工作区没提交，再说你没有上游——后者才是下一步要去修的东西。
+ */
+export function deriveStatus(input: DeriveInput): UpdateStatus {
+  if (!input.isRepo) return 'not_a_repo'
+  if (!input.hasCommits) return 'no_commits'
+  if (!input.skipDirty && input.dirty) return 'dirty'
+  if (input.detached) return 'detached'
+  // 「上游被远程删了」要单独说：它的下一步动作和「从来没配过上游」完全不同
+  // （前者重新 push -u 或删掉本地分支，后者才需要设上游）
+  if (input.upstreamGone) return 'gone'
+  if (!input.upstream) return input.hasRemote ? 'no_upstream' : 'no_remote'
+
+  const ahead = input.ahead ?? 0
+  const behind = input.behind ?? 0
+  if (ahead > 0 && behind > 0) return 'diverged'
+  if (behind > 0) return 'behind'
+  if (ahead > 0) return 'ahead'
+  return 'up_to_date'
+}
+
 /** 列表页的一行：项目 + tag + 最近一次检查摘要 + 备注条数。 */
 export interface ProjectListItem extends Project {
   tags: Tag[]

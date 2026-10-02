@@ -157,12 +157,20 @@ export function pull(path: string) {
   return pullRepo(path, { timeoutMs: gitTimeoutMs, scheduler })
 }
 
+/**
+ * 当前分支的提交记录。
+ *
+ * 一阶段界面不再显示提交图（见 `routes/git.ts` 里 `/log` 的注释），但这个取数
+ * 留着：二阶段 Agent 解析仓库时要用，且测试已覆盖。留着不等于要显示。
+ */
 export function repoLog(path: string, max: number, branch = 'HEAD') {
   const { gitTimeoutMs } = current()
   return getLog(path, { maxCount: max, branch, timeoutMs: gitTimeoutMs, scheduler })
 }
 
-/** 扫目录：同样必须走这一个 scheduler，否则扫描会绕开并发上限。 */
+/**
+ * 扫目录：同样必须走这一个 scheduler，否则扫描会绕开并发上限。
+ */
 export function scan(dir: string, options: { maxDepth?: number; trackedPaths?: Iterable<string> }): Promise<ScanResult> {
   const { gitTimeoutMs } = current()
   return scanDirectory(dir, {

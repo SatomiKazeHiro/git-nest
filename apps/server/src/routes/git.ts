@@ -42,6 +42,14 @@ export const gitRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
     return { status: await repoStatus(path, { fresh: query.fresh === 'true' }) }
   })
 
+  /**
+   * 当前检出分支的提交记录。
+   *
+   * **一阶段界面上不再有提交图**（那是个上千节点的 HTML 网格，为 120 条提交
+   * 渲染出成百上千个按钮），但这个接口留着：它是「读提交历史」这个能力的
+   * 唯一出口，二阶段的 Agent 要解析/学习仓库时直接用得上，而且它已经
+   * 被测试覆盖着。留着不等于要显示。
+   */
   fastify.get('/projects/:id/log', async (req) => {
     const { id } = req.params as { id: string }
     const path = requirePath(db, idParamSchema.parse(id))
@@ -60,8 +68,6 @@ export const gitRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
     const requested = Number(query.max)
     const max = Number.isFinite(requested) && requested > 0 ? Math.min(Math.floor(requested), 1000) : 200
 
-    // 提交图看的是当前检出分支那条线（不取 --all）：图组件按 branch 组织，
-    // 混入别的分支会让提交的分支归属说不清。detached 时退回 HEAD。
     const branch = status.branch ?? 'HEAD'
     return { entries: await repoLog(path, max, branch), branch }
   })

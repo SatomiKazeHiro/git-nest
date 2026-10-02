@@ -56,7 +56,7 @@ git-nest/
 
 | 库 | 用途 |
 |---|---|
-| TanStack Query | 所有服务端状态：清单、详情、标签、批量 git 状态、提交图 |
+| TanStack Query | 所有服务端状态：清单、详情、标签、批量 git 状态 |
 | Zustand | 纯 UI 状态：筛选条件、行选中、编辑弹窗 |
 | Zod | 前后端共用同一份 schema（`packages/core/src/schemas.ts`），前端提交前先校验，错误逐字段显示 |
 | ahooks | `useDebounce` 搜索防抖 |
@@ -107,7 +107,7 @@ PATCH  /api/projects/:id           部分更新：只提交的字段会被改（
 DELETE /api/projects/:id           只删 DB 记录，绝不动磁盘仓库
 
 GET    /api/projects/:id/status    实时 git 状态（?fresh=true 绕开服务端 3 秒短缓存）
-GET    /api/projects/:id/log?max=  当前检出分支的提交记录（提交图用；max 上限 1000，默认 200）
+GET    /api/projects/:id/log?max=  当前检出分支的提交记录（一阶段界面不显示，留给二阶段 Agent；max 上限 1000，默认 200）
 GET    /api/status?ids=1,2,3       批量状态，列表页一次拿全（一次最多 200 个）
 
 PUT    /api/projects/:id/tags      整体替换项目的标签集合（不存在的标签名按需创建）
@@ -152,8 +152,10 @@ fetch 十几个仓库，不能让一个 HTTP 请求一直挂着。任务状态�
 请求体验证统一走 zod，失败返回 422 + 逐字段说明。
 
 **M2 git 状态** — `packages/core` 的 git 执行层（status / log / pull / scan / scheduler /
-错误归因）、清单页状态列、详情页 git 状态面板与提交图（用 `@tomplum/react-git-log`，
-封装在 `features/gitgraph/` 一个文件里）。
+错误归因）、清单页状态列、详情页 git 状态摘要。
+（提交图曾用 `@tomplum/react-git-log`，**一阶段已从界面撤掉**：它是个不虚拟化的 HTML
+网格，为 120 条提交就渲染出成百上千个节点。`GET /api/projects/:id/log` 这个接口留着，
+二阶段 Agent 解析仓库要用；留着不等于要显示。）
 
 **M3 更新模块** — 批量检查更新 → 逐仓库分析报告（新增 commit / 新 tag / ahead-behind）→
 勾选 → ff-only 更新 → 结果汇总，全程 SSE 推进度。设置页可调 personal 是否参与检查、

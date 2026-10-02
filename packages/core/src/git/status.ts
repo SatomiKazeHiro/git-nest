@@ -2,7 +2,7 @@ import { toGitError, runGit, type RunOptions } from './runner.ts'
 import type { Scheduler } from './scheduler.ts'
 import { readRepoFacts } from './inspect/via-lib.ts'
 import { readRepoStatus, readRepoStatuses, type ReadStatusOptions, type StatusProfile } from './inspect/index.ts'
-import type { RepoStatus, UpdateStatus } from './types.ts'
+import type { RepoStatus } from './types.ts'
 
 export type { StatusProfile }
 
@@ -36,42 +36,12 @@ export async function getRepoStatuses(
   return readRepoStatuses(paths, options as ReadOptions)
 }
 
-export interface DeriveInput {
-  isRepo: boolean
-  dirty: boolean
-  detached: boolean
-  hasCommits: boolean
-  upstream: boolean
-  ahead: number | null
-  behind: number | null
-  upstreamGone: boolean
-  hasRemote: boolean
-}
-
 /**
- * 状态机。注意：这些不是异常分支，是仓库的常态——
- * 「没有上游」「detached HEAD」「远程分支已删」都是正常存在的情况。
- *
- * 优先级从上到下，先命中的赢。排在前面的都是「更本地、更当下」的事实：
- * 先说你工作区没提交，再说你没有上游——后者才是下一步要去修的东西。
+ * 状态机本身搬到了 `types.ts`（浏览器安全的 barrel）：详情页摘要要用**同一份**
+ * 优先级重算结论（让「跟远程差多少」当主角、脏标记降级），两处各写一份必然飘开。
+ * 这里原样再导出，保持 `@git-nest/core/git` 的对外形状不变。
  */
-export function deriveStatus(input: DeriveInput): UpdateStatus {
-  if (!input.isRepo) return 'not_a_repo'
-  if (!input.hasCommits) return 'no_commits'
-  if (input.dirty) return 'dirty'
-  if (input.detached) return 'detached'
-  // 「上游被远程删了」要单独说：它的下一步动作和「从来没配过上游」完全不同
-  // （前者重新 push -u 或删掉本地分支，后者才需要设上游）
-  if (input.upstreamGone) return 'gone'
-  if (!input.upstream) return input.hasRemote ? 'no_upstream' : 'no_remote'
-
-  const ahead = input.ahead ?? 0
-  const behind = input.behind ?? 0
-  if (ahead > 0 && behind > 0) return 'diverged'
-  if (behind > 0) return 'behind'
-  if (ahead > 0) return 'ahead'
-  return 'up_to_date'
-}
+export { deriveStatus, type DeriveInput } from '../types.ts'
 
 /**
  * 只读 origin 地址。清单里的 remote_url 在添加项目时用它自动填。

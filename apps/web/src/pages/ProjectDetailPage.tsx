@@ -1,14 +1,13 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { orderBy } from 'es-toolkit'
-import { isRemoteCheckStatus, type RepoStatus, type UpdateStatus } from '@git-nest/core'
+import { isRemoteCheckStatus, deriveStatus, type RepoStatus, type UpdateStatus } from '@git-nest/core'
 import { Button, ErrorNote, Meta, Textarea } from '@/components/ui'
 import { formatRelative } from '@/lib/format'
 import { useUiStore } from '@/store/ui'
 import { ProjectFormDialog } from '@/features/projects/ProjectFormDialog'
-import { GitGraph } from '@/features/gitgraph/GitGraph'
 import { useProjectStatus } from '@/features/status/queries'
-import { statusTitle, textFor, freshnessOf } from '@/features/status/StatusCell'
+import { Delta, statusTitle, textFor, toneFor, freshnessOf } from '@/features/status/StatusCell'
 import { UpdatePanel } from '@/features/updates/UpdatePanel'
 import {
   useAddNote,
@@ -176,27 +175,21 @@ export function ProjectDetailPage() {
         <Notes projectId={project.id} notes={project.notes} />
       </section>
 
-      <section>
-        <h2 className="mb-2 text-[15px] font-semibold text-ink">提交图</h2>
-        <div className="border border-line-soft bg-panel px-2 py-1">
-          <GitGraph projectId={project.id} />
-        </div>
-      </section>
-
-      <section className="border border-dashed border-line px-4 py-3">
-        <h2 className="text-[13px] font-semibold text-ink">这一页只读</h2>
-        <p className="mt-1 text-[13px] text-ink-2">
-          提交、合并、rebase 不在这里做——它们会改写仓库，交给工具就等于越界。
-          要操作就去终端，完了回来点「重新读取」。
-        </p>
-      </section>
-
       <ProjectFormDialog />
     </div>
   )
 }
 
-/** git 状态面板：分支、上下游、最后提交。「重新读取」强制绕开短缓存并绕开服务端缓存。 */
+/**
+ * git 状态摘要。
+ *
+ * 原来是 6 行仪表盘（状态 / 当前分支 / 上游分支 / 领先落后 / 远程地址 / 最后提交），
+ * 但那里面混了三种东西：**这个软件要回答的**（跟远程差多少）、**git 客户端的事**
+ * （当前分支）、**别处已经有的**（远程地址在下面的 dl 里就写着）。
+ *
+ * 收敛成一行：结论 + 上游分支 + 上游最后一次提交时间。
+ * 分支名不再显示——设计文档第 1 节写明不做 git 客户端，用户也从没问过自己在哪个分支。
+ */
 export function StatusPanel({
   status,
   isFetching,
@@ -218,30 +211,31 @@ export function StatusPanel({
   const hasRemoteCheck = Boolean(lastCheckStatus && isRemoteCheckStatus(lastCheckStatus))
   const freshness = hasRemoteCheck ? freshnessOf({ checkedAt: lastCheckAt }) : 'never'
 
-  const rows: [string, string][] = [
-    ['状态', textFor(status.status, freshness)],
-    ['当前分支', status.branch ?? (status.detached ? 'detached HEAD' : '—')],
-    ['上游分支', status.upstream ?? '—'],
-    [
-      '领先 / 落后',
-      status.upstream ? `${status.ahead ?? 0} / ${status.behind ?? 0}` : '—（没有上游可比）',
-    ],
-    ['远程地址', status.remoteUrl ?? '—'],
-    [
-      '最后提交',
-      status.lastCommit ? `${status.lastCommit.hash} ${status.lastCommit.subject}` : '—',
-    ],
-  ]
+  // 摘要要回答的是「跟远程差多少、该不该拉」，所以**脏标记不当主角**：
+  // `deriveStatus` 的优先级会把 dirty 顶到最前面（那对「最紧急的一件事」是对的），
+  // 但在这里它只是「拉了会不会踩到你」的一个提醒，降级成旁边一句灰字。
+  const verdict = deriveStatus({
+    isRepo: status.isRepo,
+    dirty: status.dirty,
+    detached: status.detached,
+    hasCommits: status.status !== 'no_commits',
+    upstream: status.upstream !== null,
+    ahead: status.ahead,
+    behind: status.behind,
+    upstreamGone: status.upstreamGone,
+    hasRemote: status.remoteUrl !== null,
+    skipDirty: true,
+  })
+
+  const detailTitle = statusTitle(
+    { ...status, status: verdict },
+    { checkedAt: hasRemoteCheck ? lastCheckAt : null },
+  )
 
   return (
     <section>
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <h2 className="text-[15px] font-semibold text-ink">git 状态</h2>
-        <Meta
-          label="本地状态"
-          value={`${formatRelative(status.checkedAt)}读取`}
-          title="刚刚只读本地跑了一遍 git，没有联网"
-        />
         {hasRemoteCheck ? (
           <Meta
             label="远程检查"
@@ -261,24 +255,42 @@ export function StatusPanel({
         </Button>
       </div>
 
-      <p
-        className="mb-2 text-[12.5px] text-ink-2"
-        title={statusTitle(status, { checkedAt: hasRemoteCheck ? lastCheckAt : null })}
+      <div
+        data-testid="status-summary"
+        className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-y border-line-soft py-3"
       >
-        {statusTitle(status, { checkedAt: hasRemoteCheck ? lastCheckAt : null })}
-      </p>
-      <p className="mb-2 text-[12px] text-ink-3">
-        「重新读取」只读本地，不会联网。想知道远程有没有新东西，点上面的「检查更新」。
-      </p>
+        <span className={`text-[15px] font-medium ${toneFor(verdict, freshness)}`}>
+          {textFor(verdict, freshness)}
+        </span>
+        {status.behind ? <Delta n={status.behind} dir="behind" /> : null}
+        {status.ahead ? <Delta n={status.ahead} dir="ahead" /> : null}
+        {status.upstream ? (
+          <span className="font-mono text-[12px] text-ink-3">上游 {status.upstream}</span>
+        ) : null}
+        {status.lastCommit ? (
+          <span className="font-mono text-[12px] text-ink-3">
+            上游最后提交 {formatRelative(status.lastCommit.date)}
+          </span>
+        ) : null}
+        {status.dirty ? (
+          <span
+            className="font-mono text-[12px] text-ink-3"
+            title={`工作区有 ${status.dirtyCount} 处未提交改动；更新时可能会踩到它们`}
+          >
+            · 有未提交改动
+          </span>
+        ) : null}
+      </div>
 
-      <dl className="grid grid-cols-[7rem_1fr] gap-y-2 border-y border-line-soft py-3 text-[13px]">
-        {rows.map(([label, value]) => (
-          <div key={label} className="contents">
-            <dt className="text-ink-3">{label}</dt>
-            <dd className="min-w-0 truncate font-mono text-[12.5px] text-ink">{value}</dd>
-          </div>
-        ))}
-      </dl>
+      {/*
+        说明行只在**真的有额外信息**时才显示（比如「这是本地看到的，没联网确认」）。
+        新鲜度刚查过时 statusTitle 返回的就是上面那行结论本身，再印一遍纯属噪音。
+      */}
+      {detailTitle === textFor(verdict, freshness) ? null : (
+        <p className="mt-2 text-[12.5px] text-ink-2" title={detailTitle}>
+          {detailTitle}
+        </p>
+      )}
     </section>
   )
 }
