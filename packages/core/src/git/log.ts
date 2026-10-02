@@ -1,5 +1,7 @@
 import { probe, runGit, toGitError, type RunOptions } from './runner.ts'
 import { defaultScheduler, type Scheduler } from './scheduler.ts'
+import { applyVerdict } from './inspect/recommend.ts'
+import { readHasCommonAncestor, readIsAncestor } from './inspect/via-cli.ts'
 import type { GitLogEntry, UpdateReport, UpdateReportEntry, UpdateStatus } from './types.ts'
 
 /**
@@ -37,6 +39,11 @@ export interface LogOptions extends Partial<RunOptions> {
    * 这个视图看的就是当前检出的那条线。
    */
   branch?: string
+  /**
+   * 上次检查时上游指向的 SHA，用来判「作者有没有改写历史」。
+   * 由调用方从 `update_checks` 历史里读出来传进来——core 不知道数据库。
+   */
+  lastUpstreamSha?: string | null
 }
 
 /** 解析 `git log --pretty` 的输出，喂给泳道图组件。 */
@@ -122,6 +129,19 @@ export async function analyzeUpdates(path: string, options: LogOptions = {}): Pr
 
     const localTagsBefore = new Set(await listTags(cwd))
 
+    /**
+     * 「上次见到的上游」——判「作者改写历史」的基线。
+     *
+     * 优先用调用方从 `update_checks` 历史里读出来的那个值；没有就用**本地 refs
+     * 现在指的上游**。后者是先前的 fetch 留下的，同样是「我们上次见过的远程状态」，
+     * 而且它有个历史记录没有的好处：一次 pull 会写一条新的检查记录，
+     * 那条记录里没有上游 SHA（pull 之后不该再谈「推荐」），
+     * 用本地 ref 兜底就不会因此丢掉基线。
+     *
+     * **必须在 fetch 之前读**——fetch 会就地更新 `@{u}`，之后就问不出「原来是什么」了。
+     */
+    const baselineSha = options.lastUpstreamSha ?? (await readUpstreamSha(cwd))
+
     // 只动 refs/remotes/*，不碰工作区
     const fetch = await runGit(['fetch', '--prune', 'origin'], cwd)
     if (fetch.code !== 0) {
@@ -168,6 +188,33 @@ export async function analyzeUpdates(path: string, options: LogOptions = {}): Pr
     const localTagsAfter = new Set(await listTags(cwd))
     const newTags = [...localTagsAfter].filter((t) => !localTagsBefore.has(t))
 
+    // 「推不推荐更新」——用户点名要的那条。此刻 refs 刚被 fetch 刷新过，
+    // 所以这是**问过远程之后**的结论（`applyVerdict` 的判据依赖这一点：
+    // 拿旧的 refs 去判 force push 会得出错的答案）。
+    //
+    // 复用：ahead/behind 上面已经算出来了，这里只额外问三件事。
+    const upstreamSha = await readUpstreamSha(cwd)
+    const headIsAncestor = await readIsAncestor(path, 'HEAD', '@{u}', { timeoutMs: options.timeoutMs })
+    // 本地是上游的祖先 ⇒ 一定有共同祖先，不必再问一次
+    const upstreamIsAncestor =
+      headIsAncestor === true
+        ? false
+        : await readIsAncestor(path, '@{u}', 'HEAD', { timeoutMs: options.timeoutMs })
+    const recommendation = applyVerdict({
+      hasCommonAncestor:
+        headIsAncestor === true || upstreamIsAncestor === true
+          ? true
+          : await readHasCommonAncestor(path, { timeoutMs: options.timeoutMs }),
+      headIsAncestor,
+      upstreamIsAncestor,
+      ahead,
+      behind,
+      // 作者改写历史的唯一判据：`baselineSha` 那个提交还在新历史里吗
+      baselineStillPresent: baselineSha
+        ? await readIsAncestor(path, baselineSha, '@{u}', { timeoutMs: options.timeoutMs })
+        : null,
+    })
+
     return {
       status: statusFromCounts(ahead, behind),
       ahead,
@@ -175,9 +222,18 @@ export async function analyzeUpdates(path: string, options: LogOptions = {}): Pr
       incoming,
       outgoing,
       tags: newTags,
+      recommendation,
+      upstreamSha,
       error: null,
     }
   })
+}
+
+/** 这次 fetch 之后上游指向的 SHA。落库给下次检查用（判历史改写）。 */
+async function readUpstreamSha(cwd: { cwd: string; timeoutMs?: number }): Promise<string | null> {
+  const result = await probe(['rev-parse', '--verify', '-q', '@{u}'], cwd)
+  const sha = result.ok ? result.stdout.trim() : ''
+  return sha.length > 0 ? sha : null
 }
 
 /**
@@ -211,6 +267,9 @@ function emptyReport(status: UpdateReport['status']): UpdateReport {
     incoming: [],
     outgoing: [],
     tags: [],
+    // 没读到什么东西的时候，绝不编一条推荐出来
+    recommendation: null,
+    upstreamSha: null,
     error: null,
   }
 }

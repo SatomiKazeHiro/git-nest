@@ -9,7 +9,7 @@ import {
   type UpdateReport,
 } from '../lib/git.ts'
 import { readSettings } from '../lib/settings.ts'
-import { recordUpdateCheck } from '../repos/updates.ts'
+import { lastUpstreamSha, recordUpdateCheck } from '../repos/updates.ts'
 import {
   createTask,
   eventsSince,
@@ -157,7 +157,9 @@ async function runCheck(db: DB, task: Task, targets: Target[]) {
     targets.map(async (target) => {
       markRunning(task, target.id)
       try {
-        const report = await analyze(target.path)
+        // 上次见过的上游 SHA 从历史里读——core 不认识数据库。
+        // 没有它，「作者 force push 改写了历史」是判不出来的。
+        const report = await analyze(target.path, lastUpstreamSha(db, target.id))
         reports.push(report)
         recordUpdateCheck(db, target.id, report)
         markDone(task, target.id, report)
@@ -199,6 +201,10 @@ async function runApply(db: DB, task: Task, targets: Target[]) {
         incoming: [],
         outgoing: [],
         tags: [],
+        // pull 之后不重新算推荐：这一刻真正的答案是「刚刚拉过了」，
+        // 下一次检查会给出新的结论。这里给 null 比给一条旧结论诚实。
+        recommendation: null,
+        upstreamSha: null,
         error: result.error,
       })
       markDone(task, target.id, result)

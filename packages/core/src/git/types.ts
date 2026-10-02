@@ -1,5 +1,9 @@
 /** git 层的类型。纯数据结构，不依赖 HTTP / UI，server 与未来的 Agent 都能直接用。 */
 
+import type { UpdateRecommendation } from '../types.ts'
+
+export type { UpdateRecommendation, UpdateVerdict } from '../types.ts'
+
 export type UpdateStatus =
   | 'up_to_date'
   | 'behind'
@@ -61,6 +65,14 @@ export interface RepoStatus {
   behind: number | null
   remoteUrl: string | null
   lastCommit: GitCommitRef | null
+  /**
+   * 推不推荐更新。**只有 full 档才读**（要问「能不能快进」，是几次进程；
+   * 而且它必须先知道有没有共同祖先，那是本地 refs 就够，不必联网）。
+   *
+   * `lean` 档下恒为 null——清单页的推荐不从这里来，而是从**上次检查**的结果里读
+   * （见 `UpdateCheckSummary.recommendation` 的注释）。
+   */
+  recommendation: UpdateRecommendation | null
   status: UpdateStatus
   error: GitError | null
 }
@@ -102,6 +114,17 @@ export interface UpdateReport {
   incoming: UpdateReportEntry[]
   /** fetch 之后新出现的本地 tag */
   tags: string[]
+  /**
+   * 推不推荐更新。**这是这个软件一阶段最要紧的一条输出**：
+   * 它回答「拉了会不会出事」，而不只是「落后几个提交」。
+   * 见 `inspect/recommend.ts`。
+   */
+  recommendation: UpdateRecommendation | null
+  /**
+   * 这次看到的上游 SHA。要落库，下次检查时拿它判「作者有没有改写历史」——
+   * 那是 `rewritten` 唯一的判据（见 `recommend.ts` 文件头的限制说明）。
+   */
+  upstreamSha: string | null
   error: GitError | null
 }
 

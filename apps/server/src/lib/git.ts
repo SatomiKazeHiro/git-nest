@@ -12,6 +12,7 @@ import {
 } from '@git-nest/core/git'
 import type { DB } from '../db/index.ts'
 import { readSettings } from './settings.ts'
+import { lastUpstreamSha } from '../repos/updates.ts'
 
 export { analyzeUpdates, getLog, getRepoStatus, pullRepo }
 export type { UpdateReport } from '@git-nest/core/git'
@@ -77,19 +78,31 @@ function current() {
 /** 单仓库的完整状态（详情页、pull 前置检查用）。带脏标记与最后提交，**不便宜**。 */
 export async function repoStatus(
   path: string,
-  options: { fresh?: boolean } = {},
+  options: { fresh?: boolean; projectId?: number } = {},
 ): Promise<RepoStatus> {
   const { gitTimeoutMs } = current()
   scheduler.setLimit(current().concurrency)
 
+  // 上次检查时上游指向哪 —— full 档算「推不推荐更新」要用它判「作者改写历史」。
+  // 读不出来（没查过、或旧记录没这个字段）就当没有：宁可判不出，不要瞎判。
+  const lastSha =
+    options.projectId !== undefined && db ? lastUpstreamSha(db, options.projectId) : null
+  const read = () =>
+    getRepoStatus(path, {
+      timeoutMs: gitTimeoutMs,
+      scheduler,
+      profile: 'full',
+      lastUpstreamSha: lastSha,
+    })
+
   if (options.fresh) {
     statusCache.delete(path)
-    return getRepoStatus(path, { timeoutMs: gitTimeoutMs, scheduler, profile: 'full' })
+    return read()
   }
   const hit = statusCache.get(path)
   if (hit && Date.now() - hit.at < STATUS_TTL_MS) return hit.value
 
-  const value = await getRepoStatus(path, { timeoutMs: gitTimeoutMs, scheduler, profile: 'full' })
+  const value = await read()
   statusCache.set(path, { at: Date.now(), value })
   return value
 }
@@ -141,15 +154,22 @@ function unreadableStatus(path: string): RepoStatus {
     behind: null,
     remoteUrl: null,
     lastCommit: null,
+    recommendation: null,
     status: 'error',
     error: { kind: 'unknown', message: '状态没读出来，重试一次' },
   }
 }
 
-/** 读完状态想知道「刚才那条路要拉什么」时用这个 */
-export function analyze(path: string) {
+/**
+ * 读完状态想知道「刚才那条路要拉什么」时用这个。
+ *
+ * `lastUpstreamSha` 由调用方从 `update_checks` 历史里读出来传进来——
+ * 那是判「作者有没有改写上游历史」的**唯一**依据（见 core 的 `inspect/recommend.ts`）。
+ * core 不认识数据库，所以这个事实必须由 server 侧提供。
+ */
+export function analyze(path: string, lastUpstreamSha: string | null = null) {
   const { gitTimeoutMs } = current()
-  return analyzeUpdates(path, { timeoutMs: gitTimeoutMs, scheduler })
+  return analyzeUpdates(path, { timeoutMs: gitTimeoutMs, scheduler, lastUpstreamSha })
 }
 
 export function pull(path: string) {

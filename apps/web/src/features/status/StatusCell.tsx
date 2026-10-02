@@ -1,4 +1,4 @@
-import type { RepoStatus, UpdateStatus } from '@git-nest/core'
+import { VERDICT_LABEL, type RepoStatus, type UpdateRecommendation, type UpdateStatus, type UpdateVerdict } from '@git-nest/core'
 
 /**
  * 清单页那一格：**只回答「跟远程差多少」**。
@@ -12,7 +12,6 @@ import type { RepoStatus, UpdateStatus } from '@git-nest/core'
  *
  * 剩下的三件事就是用户要的三件：落后了没、落后多少、能不能拉。
  */
-
 /** 超过这个时长就认为「远程情况可能已经变了」 */
 export const STALE_AFTER_MS = 12 * 60 * 60 * 1000
 
@@ -118,7 +117,9 @@ export function statusTitle(s: RepoStatus, freshness?: Freshness): string {
   if (state === 'stale') {
     return `${base}。这个数字来自上次检查时的 fetch，之后没再查过`
   }
-  return base
+  // 新鲜（刚查过）时不再重复上面的结论，改成说清**这两个数字的来源**——
+  // 否则这一行就是上面那行结论的复制品，纯噪音。
+  return `${base}。数字来自上次检查 fetch 到的远程跟踪分支；它不联网，所以只反映那一刻的远程。`
 }
 
 function describe(s: RepoStatus): string {
@@ -219,6 +220,51 @@ export function Delta({ n, dir }: { n: number; dir: 'ahead' | 'behind' }) {
     >
       {dir === 'ahead' ? '↑' : '↓'}
       {n}
+    </span>
+  )
+}
+
+/**
+ * 判决 → 颜色。**只有「可更新」给绿色，「别拉」给红色**——
+ * 其余都是「你得自己看一眼」，那就别用颜色替用户下结论。
+ */
+const VERDICT_TONE: Record<UpdateVerdict, string> = {
+  safe: 'text-signal-ok',
+  diverged: 'text-signal-ahead',
+  rewritten: 'text-signal-bad',
+  unrelated: 'text-signal-bad',
+  gone: 'text-ink-3',
+  no_upstream: 'text-ink-3',
+}
+
+/**
+ * 清单页的「推荐」列——**这是这个软件一阶段最要紧的一格**。
+ *
+ * 它回答的是「拉了会不会出事」，而不是「落后几个」。两种「别拉」要区分开：
+ * - `rewritten`：作者 force push 了，直接拉会分叉/失败
+ * - `unrelated`：作者把仓库整个换掉了（删库重建），拉等于换一个仓库
+ *
+ * ⚠️ 它显示的是**上次检查时**的结论（`reason` 在 title 里，鼠标停一下能看全）。
+ * 没查过就是没有结论——那种情况给「没查过」，绝不给一个绿色的「可更新」。
+ */
+export function RecommendationCell({
+  recommendation,
+}: {
+  recommendation: UpdateRecommendation | null
+}) {
+  if (!recommendation) {
+    return (
+      <span
+        className="font-mono text-[12px] text-ink-3"
+        title="还没点过「检查更新」。推不推荐更新必须先问过远程才算得出来——本地看不出作者有没有改写历史。"
+      >
+        没查过
+      </span>
+    )
+  }
+  return (
+    <span className={`truncate text-[12px] ${VERDICT_TONE[recommendation.verdict]}`} title={recommendation.reason}>
+      {VERDICT_LABEL[recommendation.verdict]}
     </span>
   )
 }

@@ -59,10 +59,11 @@ packages/core/                 纯能力层，浏览器打不到（无 UI / 无 
 ├── src/git/inspect/           ★ 读状态的两档与两条路（列表页 vs 详情页）
 │   ├── types.ts               事实的形状 + 「每条事实只有一个提供方」的约定
 │   ├── via-lib.ts             ref/config 走 isomorphic-git（不 spawn 进程）
-│   ├── via-cli.ts             工作区 / ahead-behind / 最后提交走真 git
-│   └── index.ts               lean（列表页，每仓库 1 进程）/ full（详情页，3 进程）
+│   ├── via-cli.ts             工作区 / ahead-behind / 祖先关系 / 最后提交走真 git
+│   ├── recommend.ts           ★ 推不推荐更新：读事实（CLI）+ 下判决（纯函数）
+│   └── index.ts               lean（列表页，1 进程）/ full（详情页，4 进程）
 ├── src/git/status.ts          12 种状态分支 + 状态机优先级（对外那层壳）
-├── src/git/log.ts             提交图数据 + analyzeUpdates（fetch 后比差异）
+├── src/git/log.ts             analyzeUpdates：fetch 后比差异 + 出推荐结论
 ├── src/git/pull.ts            只允许 --ff-only；前置检查 + 失败后归因
 ├── src/git/scan.ts            扫一层子目录找仓库
 ├── src/git/errors.ts          错误分类（网络/认证/锁/路径过长/找不到远程…）
@@ -110,6 +111,15 @@ apps/web/src/
    `lastCommit` 恒为 null（列表列不显示这两条）；详情页走 full 档，两者都真读。
    混用缓存会让详情页在几秒内谎报「干净」——而脏标记是第 1 条那个安全闸的判据。
    同理，`pull` 的前置检查只认 full 档。
+9. **「推不推荐更新」只在真正问过远程之后才算**，而且结论**要落库**
+   （`update_checks.detail` 里的 `verdict`）。清单页那条列读的是**上次检查的结论**，
+   不是现算的——现算要先 fetch，而列表是纯本地读，拿旧 refs 算出来的正是
+   「没有依据的肯定」。没查过就显示「没查过」，绝不给绿色的「可更新」。
+10. **判「作者改写历史」必须靠基线**（上次见到的上游 SHA）。只看本地 refs 是
+   判不出来的：force push 掉本地从没读过的提交时，本地 HEAD 仍是新历史的祖先，
+   git 自己也会正常快进。基线来自两处，前者优先：`update_checks` 里记的、
+   或 fetch 前本地 refs 指的那个（一次 pull 会写一条没有 SHA 的新记录，
+   所以需要本地 ref 兜底）。**读基线必须在 fetch 之前**。
 
 ## 待用户决定的事
 

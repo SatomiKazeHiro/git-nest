@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { orderBy } from 'es-toolkit'
-import { isRemoteCheckStatus, deriveStatus, type RepoStatus, type UpdateStatus } from '@git-nest/core'
+import { isRemoteCheckStatus, deriveStatus, VERDICT_LABEL, type RepoStatus, type UpdateRecommendation, type UpdateStatus } from '@git-nest/core'
 import { Button, ErrorNote, Meta, Textarea } from '@/components/ui'
 import { formatRelative } from '@/lib/format'
 import { useUiStore } from '@/store/ui'
@@ -181,6 +181,35 @@ export function ProjectDetailPage() {
 }
 
 /**
+ * 「推不推荐更新」在详情页的样子：判决 + 完整理由。
+ *
+ * 清单页只有一格宽度，所以那边只给短标签、理由放 title；这里地方够，把话说全——
+ * **尤其是 `rewritten` / `unrelated` 这两种「别拉」**，用户需要知道为什么，
+ * 否则只会觉得这软件在拦他。
+ */
+function Recommendation({ recommendation }: { recommendation: UpdateRecommendation | null }) {
+  if (!recommendation) {
+    return (
+      <p className="mt-2 text-[12.5px] text-ink-3">
+        还没检查过更新，所以给不出「推不推荐」——作者有没有改写历史，本地是看不出来的。
+      </p>
+    )
+  }
+  const bad = recommendation.verdict === 'rewritten' || recommendation.verdict === 'unrelated'
+  return (
+    <div
+      className={`mt-2 border-l-2 pl-3 ${bad ? 'border-signal-bad' : 'border-line-soft'}`}
+      data-testid="recommendation"
+    >
+      <p className={`text-[13px] font-medium ${bad ? 'text-signal-bad' : 'text-ink'}`}>
+        推不推荐更新：{VERDICT_LABEL[recommendation.verdict]}
+      </p>
+      <p className="mt-0.5 max-w-prose text-[12.5px] text-ink-2">{recommendation.reason}</p>
+    </div>
+  )
+}
+
+/**
  * git 状态摘要。
  *
  * 原来是 6 行仪表盘（状态 / 当前分支 / 上游分支 / 领先落后 / 远程地址 / 最后提交），
@@ -281,6 +310,12 @@ export function StatusPanel({
           </span>
         ) : null}
       </div>
+
+      {/*
+        「推不推荐更新」单独一行——它比上面那串事实更需要被看见，
+        而且它的依据（上次检查）和上面那些本地 refs 不是一回事，混在一行会说不清。
+      */}
+      <Recommendation recommendation={status.recommendation} />
 
       {/*
         说明行只在**真的有额外信息**时才显示（比如「这是本地看到的，没联网确认」）。

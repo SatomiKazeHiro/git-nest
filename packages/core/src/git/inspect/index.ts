@@ -16,9 +16,16 @@
 import fs from 'node:fs'
 import { defaultScheduler, type Scheduler } from '../scheduler.ts'
 import { deriveStatus, type DeriveInput } from '../status.ts'
-import type { GitError, RepoStatus } from '../types.ts'
+import type { GitError, RepoStatus, UpdateRecommendation } from '../types.ts'
 import { readRepoFacts } from './via-lib.ts'
-import { readDivergence, readLastCommit, readWorktree } from './via-cli.ts'
+import {
+  readDivergence,
+  readHasCommonAncestor,
+  readIsAncestor,
+  readLastCommit,
+  readWorktree,
+} from './via-cli.ts'
+import { applyVerdict } from './recommend.ts'
 import type { GitFactsError, InspectOptions } from './types.ts'
 
 export type { RepoFacts, WorktreeFacts, DivergenceFacts, CommitFacts } from './types.ts'
@@ -35,6 +42,12 @@ export type StatusProfile = 'lean' | 'full'
 export interface ReadStatusOptions extends InspectOptions {
   scheduler?: Scheduler
   profile?: StatusProfile
+  /**
+   * 上次检查时上游指向的 SHA（来自 `update_checks`）。
+   * **只有 full 档用得上**：它是判「作者 force push 改写了历史」的唯一依据。
+   * core 不认识数据库，所以这个事实必须由调用方提供。
+   */
+  lastUpstreamSha?: string | null
 }
 
 /**
@@ -66,6 +79,7 @@ function blank(path: string): RepoStatus {
     behind: null,
     remoteUrl: null,
     lastCommit: null,
+    recommendation: null,
     status: 'error',
     error: null,
   }
@@ -149,6 +163,33 @@ async function inspect(path: string, options: ReadStatusOptions): Promise<RepoSt
   }
 
   const dirty = worktree?.dirty ?? false
+  // 「推不推荐更新」：只有 full 档算。
+  //
+  // 关键是**复用**：ahead/behind 上面已经读过了（`readDivergence`）。判决只额外
+  // 问两次「谁是祖先」，而这两次就够定出绝大部分仓库的结论。
+  // 第一版让它自己重跑一遍所有查询，每仓库多花 4 次进程（上限测试立刻从 3 涨到 7）。
+  let recommendation: UpdateRecommendation | null = null
+  if (profile === 'full' && facts.hasCommits && divergence) {
+    const headIsAncestor = await readIsAncestor(path, 'HEAD', '@{u}', options)
+    const upstreamIsAncestor =
+      headIsAncestor === true ? false : await readIsAncestor(path, '@{u}', 'HEAD', options)
+    recommendation = applyVerdict({
+      // 任一方是另一方的祖先 ⇒ 一定有共同祖先，不必再跑一次 `merge-base`。
+      // 只有两边互不为祖先（可能分叉、也可能历史不相干）时才花那一次。
+      hasCommonAncestor:
+        headIsAncestor === true || upstreamIsAncestor === true
+          ? true
+          : await readHasCommonAncestor(path, options),
+      headIsAncestor,
+      upstreamIsAncestor,
+      ahead: divergence.ahead ?? 0,
+      behind: divergence.behind ?? 0,
+      baselineStillPresent: options.lastUpstreamSha
+        ? await readIsAncestor(path, options.lastUpstreamSha, '@{u}', options)
+        : null,
+    })
+  }
+
   const derive: DeriveInput = {
     isRepo: true,
     dirty,
@@ -176,6 +217,7 @@ async function inspect(path: string, options: ReadStatusOptions): Promise<RepoSt
     lastCommit: lastCommit
       ? { hash: lastCommit.hash, subject: lastCommit.subject, author: lastCommit.author, date: lastCommit.date }
       : null,
+    recommendation,
     status: deriveStatus(derive),
   }
 }

@@ -67,6 +67,15 @@ export interface CommitFacts {
   date: string
 }
 
+/**
+ * 「推不推荐更新」的类型定义在 `../../types.ts`（浏览器安全的 barrel）：
+ * 清单页要显示它，而它随检查结果落库、由列表接口读出来。
+ * 这里原样转出，让 git 层的调用方仍然只 import 一处。
+ *
+ * 判据的实现在 `recommend.ts`——那里的文件头写了完整语义与一个诚实的限制。
+ */
+export type { UpdateRecommendation, UpdateVerdict } from '../../types.ts'
+
 /** 读仓库元信息（ref/config）。**不 spawn 进程**。 */
 export type RepoInspector = (path: string, options: InspectOptions) => Promise<RepoFacts>
 

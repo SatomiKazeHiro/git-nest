@@ -8,7 +8,7 @@ import { formatRelative, shortenPath } from '@/lib/format'
 import { UNCATEGORIZED, useSelectedCount, useSelectedIds, useUiStore } from '@/store/ui'
 import { ProjectFormDialog } from './ProjectFormDialog'
 import { useProjects, useRemoveProject } from './queries'
-import { StatusCell } from '@/features/status/StatusCell'
+import { RecommendationCell, StatusCell } from '@/features/status/StatusCell'
 import { useStatuses } from '@/features/status/queries'
 import { UpdatePanel } from '@/features/updates/UpdatePanel'
 
@@ -137,6 +137,7 @@ function ColumnHeader() {
       <span className="w-20 shrink-0 sm:w-24">标签</span>
       {/* 这一列只回答「跟远程差多少」——不显示分支名，也不显示脏标记 */}
       <span className="hidden w-24 shrink-0 md:block">落后</span>
+      <span className="hidden w-20 shrink-0 lg:block">推荐</span>
       <span className="hidden w-20 shrink-0 text-right lg:inline-block">上次检查</span>
       <span className="hidden w-16 shrink-0 text-right sm:inline-block">备注</span>
       <span className="w-16 shrink-0" />
@@ -293,6 +294,10 @@ function ProjectRow({
       </span>
       <span className="hidden w-24 shrink-0 md:block">
         <StatusCell status={status} checkedAt={p.latestCheck?.checkedAt ?? null} />
+      </span>
+      {/* 推荐更新：用户点名要的那一列。结论来自上次检查（见 RecommendationCell 的注释） */}
+      <span className="hidden w-20 shrink-0 lg:block">
+        <RecommendationCell recommendation={p.latestCheck?.recommendation ?? null} />
       </span>
       <span
         className="hidden w-20 shrink-0 justify-end lg:flex"

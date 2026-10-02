@@ -38,6 +38,7 @@ function makeStatus(overrides: Partial<RepoStatus> = {}): RepoStatus {
     behind: 2411,
     remoteUrl: 'git@github.com:deepseek-ai/deepseek-harness.git',
     lastCommit: { hash: '6b1808f', subject: 'release(dsh): 0.1.6-alpha.2', author: 'me', date: '2026-09-28T10:00:00+08:00' },
+    recommendation: null,
     status: 'behind',
     error: null,
     ...overrides,

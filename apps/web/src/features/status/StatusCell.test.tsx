@@ -138,6 +138,7 @@ describe('清单页状态格只回答「跟远程差多少」', () => {
       behind: 9,
       remoteUrl: 'git@github.com:a/b.git',
       lastCommit: null,
+      recommendation: null,
       status: 'behind',
       error: null,
       ...overrides,

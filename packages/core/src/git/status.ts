@@ -11,6 +11,12 @@ export interface StatusOptions {
   scheduler?: Scheduler
   /** 读多少，见 `inspect/index.ts`。缺省 `full`（行为同改造前）。 */
   profile?: StatusProfile
+  /**
+   * 上次检查时上游指向的 SHA（来自 `update_checks`）。
+   * full 档靠它判「作者 force push 改写了历史」——core 不认识数据库，
+   * 这个事实只能由调用方提供。见 `inspect/recommend.ts` 文件头的限制说明。
+   */
+  lastUpstreamSha?: string | null
 }
 
 type ReadOptions = ReadStatusOptions

@@ -60,6 +60,67 @@ export interface Project {
   sortOrder: number
 }
 
+/**
+ * 「推不推荐更新」的判据。
+ *
+ * 这是这个软件一阶段最要紧的一件事：**在拉之前就告诉用户会不会出事**。
+ * 四种情况要分开说，因为下一步动作完全不同：
+ *
+ * | verdict | 什么情况 | 该说什么 |
+ * |---|---|---|
+ * | `safe` | 本地 HEAD 是上游的祖先 | 能快进，放心拉 |
+ * | `diverged` | 两边都有提交，但有共同祖先 | 真分叉，要你自己决定 |
+ * | `rewritten` | 上次见过的上游提交**不再是**上游的祖先 | 作者 force push 了，别直接拉 |
+ * | `unrelated` | 两个历史**没有共同祖先** | 这多半是作者重置/重建了仓库，拉等于换一个仓库 |
+ *
+ * `unrelated` 就是用户点名要防的那个情况（"避免更新到作者删库或者重置仓库"）。
+ * 定义放在这个浏览器安全的 barrel 里，因为清单页要显示它（它是随检查结果落库的）。
+ */
+export type UpdateVerdict = 'safe' | 'diverged' | 'rewritten' | 'unrelated' | 'gone' | 'no_upstream'
+
+export interface UpdateRecommendation {
+  verdict: UpdateVerdict
+  /** 本地有、上游没有的提交数 */
+  ahead: number | null
+  /** 上游有、本地没有的提交数 */
+  behind: number | null
+  /** 能不能直接拉：只有 safe 且确实落后时才是 true */
+  canPull: boolean
+  /** 给人看的一句话（中文，可直接显示） */
+  reason: string
+}
+
+/**
+ * 各判决的固定说法。放在这里（而不是只在 `recommend.ts` 里）是因为
+ * **结论要落库、之后要能原样重建**：`update_checks.detail` 只存 `verdict` 这个短码，
+ * 清单页读出来之后需要用它拼回完整的话。两处各写一份必然飘开。
+ */
+export const VERDICT_REASON: Record<UpdateVerdict, string> = {
+  safe: '可以直接快进。',
+  diverged: '上游和本地都往前走了，不能快进，需要你自己决定怎么合。',
+  rewritten:
+    '上游历史被改写过（上次见过的那个提交已经不在远程分支上了，作者可能 force push 或回退了）。直接拉会分叉或失败，先确认作者为什么改，必要时先备份本地改动。',
+  unrelated:
+    '本地和远程的历史没有共同祖先——这不是「更新」，是换了一个仓库（作者多半删库重建过，或者把历史整个替换了）。强烈建议先弄清情况，别直接拉。',
+  gone: '上游分支已经被远程删掉了。',
+  no_upstream: '当前分支没有配上游，没有可比的对象。',
+}
+
+/** 判决的短标签，给清单页那一列用（那里宽度有限）。 */
+export const VERDICT_LABEL: Record<UpdateVerdict, string> = {
+  safe: '可更新',
+  diverged: '要你决定',
+  rewritten: '别拉',
+  unrelated: '别拉',
+  gone: '上游没了',
+  no_upstream: '没上游',
+}
+
+/** 从短码重建一条推荐（`reason` 用上面那份固定说法）。 */
+export function recommendationFrom(verdict: UpdateVerdict): UpdateRecommendation {
+  return { verdict, ahead: null, behind: null, canPull: false, reason: VERDICT_REASON[verdict] }
+}
+
 /** update_checks.status 的取值见 git/types.ts 的 UpdateStatus（同一份定义）。 */
 export interface UpdateCheck {
   id: number
@@ -77,6 +138,15 @@ export interface UpdateCheckSummary {
   status: UpdateStatus
   aheadCount: number | null
   behindCount: number | null
+  /**
+   * 上次检查时算出的「推不推荐更新」。
+   *
+   * **为什么它要落库而不是现算**：算它必须先 fetch（要问远程），
+   * 而清单页读状态是纯本地的、不联网的。现算会得到「本地 refs 里的旧结论」，
+   * 那正好是这个软件最不该做的事——拿没依据的数字冒充依据。
+   * 所以结论只在真正检查过的那一刻产生，之后原样显示，并标出它是什么时候得出的。
+   */
+  recommendation: UpdateRecommendation | null
 }
 
 /** 能作为「问过远程」依据的状态（与 isRemoteCheckStatus 同一份定义）。 */

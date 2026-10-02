@@ -38,8 +38,11 @@ export const gitRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
   fastify.get('/projects/:id/status', async (req) => {
     const { id } = req.params as { id: string }
     const query = (req.query ?? {}) as { fresh?: string }
-    const path = requirePath(db, idParamSchema.parse(id))
-    return { status: await repoStatus(path, { fresh: query.fresh === 'true' }) }
+    const projectId = idParamSchema.parse(id)
+    const path = requirePath(db, projectId)
+    return {
+      status: await repoStatus(path, { fresh: query.fresh === 'true', projectId }),
+    }
   })
 
   /**
@@ -111,6 +114,7 @@ function missingStatus(path: string): RepoStatus {
     behind: null,
     remoteUrl: null,
     lastCommit: null,
+    recommendation: null,
     status: 'missing',
     error: { kind: 'missing', message: '清单里没有这个项目' },
   }

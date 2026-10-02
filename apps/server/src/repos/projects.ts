@@ -1,13 +1,17 @@
 import type { DB } from '../db/index.ts'
 import {
   REMOTE_CHECK_STATUSES,
+  VERDICT_LABEL,
   isRemoteCheckStatus,
+  recommendationFrom,
   type Note,
   type Project,
   type ProjectDetail,
   type ProjectListItem,
   type Tag,
   type UpdateCheckSummary,
+  type UpdateRecommendation,
+  type UpdateVerdict,
 } from '@git-nest/core'
 import { listNotes as listNotesImpl } from './notes.ts'
 
@@ -210,26 +214,52 @@ function latestChecksByProject(db: DB, ids: number[]): Map<number, UpdateCheckSu
   // 「不是仓库 / 没有远程」这类本地状态都不算问过远程，不能拿来刷新新鲜度
   // ——否则断网后点一次检查，界面反而显示刚确认过的绿色「已是最新」。
   // 过滤条件用 isRemoteCheckStatus 的同一份取值，避免两处漂移。
-  const qualified = (['up_to_date', 'behind', 'ahead', 'diverged'] as const)
-    .map(() => '?')
-    .join(', ')
+  const qualified = REMOTE_CHECK_STATUSES.map(() => '?').join(', ')
   const rows = db
     .prepare(
       `SELECT project_id AS projectId, checked_at AS checkedAt, status, ahead_count AS aheadCount,
-              behind_count AS behindCount
+              behind_count AS behindCount, detail
        FROM update_checks WHERE id IN (
          SELECT MAX(id) FROM update_checks
          WHERE project_id IN (${ids.map(() => '?').join(',')}) AND status IN (${qualified})
          GROUP BY project_id
        )`,
     )
-    .all(...ids, ...REMOTE_CHECK_STATUSES) as (UpdateCheckSummary & { projectId: number })[]
+    .all(...ids, ...REMOTE_CHECK_STATUSES) as (UpdateCheckSummary & {
+    projectId: number
+    detail: string | null
+  })[]
   for (const r of rows) {
-    const { projectId, ...summary } = r
+    const { projectId, detail, ...summary } = r
     if (!isRemoteCheckStatus(summary.status)) continue
-    map.set(projectId, summary)
+    // 「推不推荐更新」只在真正检查过的那一刻才产生，所以这里是从历史里**读出来**的，
+    // 不是现算的。现算要先 fetch，而列表页是纯本地的——那会拿旧 refs 冒充结论。
+    map.set(projectId, { ...summary, recommendation: recommendationFromDetail(detail) })
   }
   return map
+}
+
+/**
+ * 从 `update_checks.detail` 里取回上次算出的推荐结论。
+ *
+ * 只存了 `verdict` 这个短码，其余（原因、能不能拉）用 core 的 `recommendationFrom`
+ * 重建——**不在 server 里另写一份文案**，那必然与 core 漂开。
+ * 旧记录没有 `verdict`（这个字段之前不存在），返回 null：宁可没有，也不要编一条。
+ */
+function recommendationFromDetail(detail: string | null): UpdateRecommendation | null {
+  if (!detail) return null
+  try {
+    const parsed = JSON.parse(detail) as { verdict?: unknown }
+    const verdict = parsed.verdict
+    if (typeof verdict !== 'string' || !isVerdict(verdict)) return null
+    return recommendationFrom(verdict)
+  } catch {
+    return null
+  }
+}
+
+function isVerdict(value: string): value is UpdateVerdict {
+  return Object.hasOwn(VERDICT_LABEL, value)
 }
 
 function noteCountsByProject(db: DB, ids: number[]): Map<number, number> {

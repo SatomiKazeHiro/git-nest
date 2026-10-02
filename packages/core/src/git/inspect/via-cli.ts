@@ -95,6 +95,46 @@ export const readLastCommit: CommitInspector = async (
   return { hash, subject: subject ?? '', author: author ?? '', date: date ?? '' }
 }
 
+/**
+ * `git merge-base --is-ancestor <a> <b>`：a 是不是 b 的祖先？
+ *
+ * 退出码语义（实测确认）：0 = 是，1 = 不是，其它 = 出错。
+ * 只有 1 才是「确定不是」，其它失败返回 null——**不敢下结论时不下结论**。
+ *
+ * 这一条与 `readHasCommonAncestor` 就是「推不推荐更新」的全部额外成本：
+ * ahead/behind 由 `readDivergence` 提供，判决本身是纯函数（`recommend.ts` 的
+ * `applyVerdict`），不再重复起进程。
+ */
+export async function readIsAncestor(
+  path: string,
+  ancestor: string,
+  descendant: string,
+  options: InspectOptions,
+): Promise<boolean | null> {
+  const result = await probe(
+    ['merge-base', '--is-ancestor', ancestor, descendant],
+    cwd(path, options),
+  )
+  if (result.ok) return true
+  return result.result.code === 1 ? false : null
+}
+
+/**
+ * 两个历史还有没有共同祖先？`merge-base` 输出为空 = 没有。
+ *
+ * 这是「作者重置/重建了仓库」的判据：本地那棵树和上游那棵树**一点关系都没有**，
+ * 拉进来等于换一个仓库，本地的东西全成孤儿。
+ */
+export async function readHasCommonAncestor(
+  path: string,
+  options: InspectOptions,
+): Promise<boolean | null> {
+  const result = await probe(['merge-base', 'HEAD', '@{u}'], cwd(path, options))
+  if (result.ok) return result.stdout.trim().length > 0
+  // exit 1 是 git 表达「没有共同祖先」的方式，不是错误
+  return result.result.code === 1 ? false : null
+}
+
 function cwd(path: string, options: InspectOptions): RunOptions {
   return { cwd: path, timeoutMs: options.timeoutMs }
 }
