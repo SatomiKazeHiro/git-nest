@@ -204,7 +204,7 @@ function TaskRow({
                 : '这个状态不能安全快进，勾了也没用'
             }
             aria-label={`选择 ${item.name}`}
-            className={`size-3.5 shrink-0 accent-[#14506e] ${
+            className={`list-check shrink-0 ${
               UPDATABLE.has(item.result.status) ? '' : 'cursor-not-allowed opacity-40'
             }`}
           />

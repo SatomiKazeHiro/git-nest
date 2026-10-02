@@ -86,6 +86,44 @@
 }
 
 /*
+  自己画勾选框，**不用浏览器原生渲染**（`appearance: none`）。
+
+  起因：清单行里 checkbox 后面会冒出两个点（`..`），删掉 `<input>` 就消失。
+  查过 DOM —— 表格那一行的 10 个格子里 `textContent` 全是干净的
+  （checkbox 格是空串、名称格是 `canvas-editor`），所以那两点既不是文本节点
+  也不是我的 CSS 画的，是**浏览器渲染原生 checkbox 时画出来的东西**。
+
+  既然控制不了它画什么，就别让它画：`appearance: none` 之后这个框完全由
+  下面的规则决定——一个 1px 边框的方框，选中时填充并显示一个对勾（用
+  `background-image` 的 SVG，不依赖字体）。原生那套渲染整个绕开。
+*/
+.list-check {
+  appearance: none;
+  width: 0.875rem;
+  height: 0.875rem;
+  margin: 0;
+  border: 1px solid var(--color-line);
+  border-radius: 2px;
+  background-color: var(--color-panel);
+  cursor: pointer;
+  vertical-align: middle;
+}
+.list-check:hover {
+  border-color: var(--color-ink-3);
+}
+.list-check:checked {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent);
+  /* 对勾：白描边 SVG，不依赖任何字体 */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3 6-7'/%3E%3C/svg%3E");
+  background-size: 100% 100%;
+}
+.list-check:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/*
   清单表。**一个表头 + 平铺的行，表里没有「分区」这回事。**
 
   分组曾经被渲染成表里的一整行分隔条（`colSpan` 的 `<tr>`），
@@ -101,13 +139,26 @@
   border-collapse: collapse;
   margin-top: 0.25rem;
 }
+/*
+  ⚠️ 这里**故意不写 `text-overflow: ellipsis`**。
+
+  它是那两个点的来源：给 `th, td` 全局加 ellipsis 之后，checkbox 那一格也套上了，
+  于是浏览器在那一格里画了省略号——看起来就像 checkbox 后面跟着 `..`。
+  只有真的会溢出的文本列才需要省略号，写在下面那几个 `.col-*` 上。
+*/
 .list-table th,
 .list-table td {
   padding: 0.375rem 0.5rem;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: middle;
+}
+/* 会截断的文本列：只有这几列允许出省略号 */
+.list-table .col-name,
+.list-table .col-path,
+.list-table .col-author,
+.list-table .col-checked {
+  text-overflow: ellipsis;
 }
 /* 表头铺满底色，滚动时数据不会从它背后透出来 */
 .tr-tint {
@@ -124,6 +175,10 @@
 .col-name {
   width: 13rem;
 }
+/* 路径要能念出来，所以给得宽一些；再长的部分靠 tooltip */
+.col-path {
+  width: auto;
+}
 .col-tags {
   width: 6rem;
 }
@@ -131,27 +186,17 @@
   width: 5.5rem;
 }
 .col-author {
-  width: 5.5rem;
+  width: 6rem;
 }
 .col-recommend {
   width: 5rem;
 }
 .col-checked {
-  width: 5.5rem;
-}
-.col-notes {
-  width: 4rem;
+  width: 6rem;
 }
 .col-actions {
   width: 3.75rem;
   text-align: right;
-}
-/* 摘要与路径分享剩下的宽度 */
-.col-path {
-  width: 13rem;
-}
-.col-summary {
-  width: auto;
 }
 @media (width < 80rem) {
   .col-author {
@@ -159,7 +204,6 @@
   }
 }
 @media (width < 64rem) {
-  .col-summary,
   .col-path {
     display: none;
   }

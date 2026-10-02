@@ -141,7 +141,7 @@ function Toggle({
         checked={checked}
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
-        className="mt-0.5 size-3.5 shrink-0 accent-[#14506e]"
+        className="list-check mt-0.5 shrink-0"
       />
       <span>
         <span className="text-[13px] text-ink">{label}</span>

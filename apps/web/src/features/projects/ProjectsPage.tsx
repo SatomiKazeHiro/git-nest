@@ -4,7 +4,7 @@ import { groupBy, orderBy } from 'es-toolkit'
 import { useDebounce } from 'ahooks'
 import { Eraser, FolderSearch, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
-import { Button, Dialog, EmptyState, ErrorNote, Input, Meta } from '@/components/ui'
+import { Button, Dialog, EmptyState, ErrorNote, Input } from '@/components/ui'
 import { formatRelative, shortenPath } from '@/lib/format'
 import { UNCATEGORIZED, useSelectedCount, useSelectedIds, useUiStore } from '@/store/ui'
 import { ProjectFormDialog } from './ProjectFormDialog'
@@ -142,6 +142,15 @@ function EmptyList({ filtering }: { filtering: boolean }) {
  * 列宽全在 `.col-*` 上（`index.css`），**数据行用的是同一套类**——
  * 但真正保证对齐的是 `table-fixed`：浏览器按第一行的列宽统一分配，
  * 表头与数据行不需要「手工保持一致」。
+ *
+ * 列的取舍（都是用户提的）：
+ * - **没有「摘要」「备注」列**：摘要基本是空的，备注最多显示「3 条」这种没信息量的字。
+ *   两者在详情页都能看，塞进表里只添乱。
+ * - **「作者更新」改成「远程更新」**：原来那个名字说不清是"我还是作者"更新的。
+ *   它和「落后」「推荐」是同一组——都是远程那边的事实；
+ *   而"你什么时候看的"是「上次检查」，两回事。
+ * - 右边这几列（落后 / 远程更新 / 推荐 / 上次检查）**统一右对齐**：
+ *   它们都是"一个短值"，混着左右对齐看着就乱。
  */
 function ColumnHeader() {
   return (
@@ -149,15 +158,13 @@ function ColumnHeader() {
       <tr className="border-b border-line text-[11px] text-ink-3">
         <th className="col-check" />
         <th className="col-name">名称</th>
-        <th className="col-summary">摘要</th>
         <th className="col-path font-mono">本地路径</th>
         <th className="col-tags">标签</th>
         {/* 这一列只回答「跟远程差多少」——不显示分支名，也不显示脏标记 */}
-        <th className="col-behind">落后</th>
-        <th className="col-author text-right">作者更新</th>
-        <th className="col-recommend">推荐</th>
+        <th className="col-behind text-right">落后</th>
+        <th className="col-author text-right">远程更新</th>
+        <th className="col-recommend text-right">推荐</th>
         <th className="col-checked text-right">上次检查</th>
-        <th className="col-notes text-right">备注</th>
         <th className="col-actions" />
       </tr>
     </thead>
@@ -268,7 +275,7 @@ function ProjectRow({
           checked={selected}
           onChange={() => toggleSelected(p.id)}
           aria-label={`选择 ${p.name}`}
-          className="size-3.5 accent-[#14506e]"
+          className="list-check"
         />
       </td>
       <td className="col-name">
@@ -279,8 +286,9 @@ function ProjectRow({
           {p.name}
         </Link>
       </td>
-      <td className="col-summary truncate text-[12.5px] text-ink-2">{p.summary ?? ''}</td>
-      <td className="col-path truncate font-mono text-[12px] text-ink-3">
+      {/* 路径：留着（这是"哪一份"的唯一凭据），但完整路径放 tooltip——
+          列里截断成 D:/…/knowledge-base/canvas-e 这种断头话没什么用 */}
+      <td className="col-path font-mono text-[12px] text-ink-3" title={p.path}>
         {shortenPath(p.path, 2)}
       </td>
       <td className="col-tags">
@@ -295,10 +303,10 @@ function ProjectRow({
           ))}
         </span>
       </td>
-      <td className="col-behind">
+      <td className="col-behind text-right">
         <StatusCell status={status} checkedAt={p.latestCheck?.checkedAt ?? null} />
       </td>
-      {/* 作者上次更新：远程最后一次提交的时间。用户明确要看这一条 */}
+      {/* 远程更新：那个仓库的作者最后一次提交是什么时候（不是"你什么时候检查的"） */}
       <td
         className="col-author truncate text-right font-mono text-[12px] text-ink-3"
         title={status?.lastCommit ? status.lastCommit.subject : undefined}
@@ -306,21 +314,16 @@ function ProjectRow({
         {status?.lastCommit ? formatRelative(status.lastCommit.date) : ''}
       </td>
       {/* 推荐更新：用户点名要的那一列。结论来自上次检查（见 RecommendationCell 的注释） */}
-      <td className="col-recommend">
+      <td className="col-recommend text-right">
         <RecommendationCell recommendation={p.latestCheck?.recommendation ?? null} />
       </td>
+      {/* 上次检查：**你（或自动 fetch）上一次问远程是什么时候**。
+          不再套 Meta 的「检查」前缀——列头已经写着「上次检查」，重复一遍只是噪音。 */}
       <td
-        className="col-checked text-right"
-        title={p.latestCheck ? `上次检查：${p.latestCheck.status}` : '还没点过「检查更新」'}
+        className="col-checked truncate text-right font-mono text-[12px] text-ink-3"
+        title={p.latestCheck ? `上次检查结果：${p.latestCheck.status}` : '还没检查过'}
       >
-        {p.latestCheck ? (
-          <Meta label="检查" value={formatRelative(p.latestCheck.checkedAt)} />
-        ) : (
-          <Meta label="检查" value="没查过" placeholder />
-        )}
-      </td>
-      <td className="col-notes truncate text-right font-mono text-[12px] text-ink-3">
-        {p.notesCount > 0 ? `${p.notesCount} 条` : ''}
+        {p.latestCheck ? formatRelative(p.latestCheck.checkedAt) : '没查过'}
       </td>
       <td className="col-actions">
         <span className="row-actions flex justify-end gap-1">

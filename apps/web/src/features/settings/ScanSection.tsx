@@ -382,7 +382,7 @@ function ScanRow({
           checked={picked}
           onChange={onToggle}
           aria-label={`选择 ${repo.name}`}
-          className="size-3.5 shrink-0 accent-[#14506e]"
+          className="list-check shrink-0"
         />
       )}
 

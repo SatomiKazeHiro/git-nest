@@ -22,7 +22,7 @@ import {
   readDivergence,
   readHasCommonAncestor,
   readIsAncestor,
-  readLastCommit,
+  readUpstreamTipCommit,
   readWorktree,
 } from './via-cli.ts'
 import { applyVerdict } from './recommend.ts'
@@ -158,10 +158,11 @@ async function inspect(path: string, options: ReadStatusOptions): Promise<RepoSt
   const worktree = profile === 'full' ? await readWorktree(path, options) : null
   // 最后提交：**两档都读**。
   //
-  // 它回答的是用户明确要看的一件事——「这个项目作者上次更新是什么时候」。
-  // 一开始为了省一次进程把它从列表拿掉了，那是错的：用户要的就是这一条。
-  // 代价是列表页每仓库多一次 `log -1`（约 70ms），换来的是那一列有内容。
-  const lastCommit = facts.hasCommits ? await readLastCommit(path, options) : null
+  // 读的是**上游分支**（`@{u}`）的最后一次提交，也就是「那个仓库的作者最后一次提交」。
+  // 曾经写成读本地 `HEAD` 且带 `--no-merges`，于是清单上那个日期是**你自己本地**
+  // 的提交时间、还会跳过 merge 提交——用户当场就看出不对（"远程今天明明有人更新"）。
+  // 详见 `via-cli.ts` 的 `readUpstreamTipCommit`。
+  const lastCommit = facts.hasCommits ? await readUpstreamTipCommit(path, options) : null
 
   // 脏标记读不出来时，**不能**当作「干净」往下走：pull 会据此决定要不要动工作区。
   if (profile === 'full' && facts.hasCommits && worktree === null) {

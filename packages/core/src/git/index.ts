@@ -47,7 +47,7 @@ export {
   type CommitFacts,
 } from './inspect/index.ts'
 export { readRepoFacts } from './inspect/via-lib.ts'
-export { readWorktree, readDivergence, readLastCommit } from './inspect/via-cli.ts'
+export { readWorktree, readDivergence, readUpstreamTipCommit } from './inspect/via-cli.ts'
 export {
   getLog,
   parseGitLog,

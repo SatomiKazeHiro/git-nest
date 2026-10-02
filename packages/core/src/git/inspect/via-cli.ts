@@ -16,7 +16,6 @@
 import { probe, type RunOptions } from '../runner.ts'
 import type {
   CommitFacts,
-  CommitInspector,
   DivergenceFacts,
   DivergenceInput,
   DivergenceInspector,
@@ -99,15 +98,28 @@ export const readDivergence: DivergenceInspector = async (
   return { ahead, behind, upstreamGone: false }
 }
 
-/** 最后一次提交。只有详情页要这一条——列表页为此多起一次 git.exe 不值得。 */
-export const readLastCommit: CommitInspector = async (
+/**
+ * 上游分支（`@{u}`）的最后一次提交 —— 也就是**那个仓库的作者**最后一次提交。
+ *
+ * 这里踩过两个坑，都是这一条曾经写错导致的：
+ *
+ * 1. **原来没写 ref**，`git log -1` 默认读 `HEAD` —— 那是**你自己本地**的最后一次提交。
+ *    清单上「远程更新」显示的是你本地那份的日期，跟远程今天有没有人提交无关。
+ *    必须读 `@{u}`（fetch 过的远程跟踪分支）。
+ * 2. **原来带 `--no-merges`**，跳过合并提交。很多仓库最新的提交就是
+ *    `Merge pull request #123`，带上这个参数就会**跳过它去拿一个更老的提交**，
+ *    于是日期看起来总是偏旧。作者最后一次提交就是最后一次提交，不分是不是 merge。
+ *
+ * 没有上游时（纯本地仓库、detached HEAD）退回 `HEAD`：那时"远程"本就不存在，
+ * 能显示自己最后一次提交也算有用。
+ */
+export async function readUpstreamTipCommit(
   path: string,
   options: InspectOptions,
-): Promise<CommitFacts | null> => {
-  const result = await probe(
-    ['log', '-1', '--no-merges', `--format=%h${FIELD}%s${FIELD}%an${FIELD}%cI`],
-    cwd(path, options),
-  )
+): Promise<CommitFacts | null> {
+  const format = `--format=%h${FIELD}%s${FIELD}%an${FIELD}%cI`
+  const upstream = await probe(['log', '-1', format, '@{u}'], cwd(path, options))
+  const result = upstream.ok ? upstream : await probe(['log', '-1', format, 'HEAD'], cwd(path, options))
   if (!result.ok) return null
   const [hash, subject, author, date] = result.stdout.trim().split(FIELD)
   if (!hash) return null

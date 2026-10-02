@@ -225,7 +225,60 @@ describe('状态行为等价表', () => {
     })
   })
 
-  it('最后提交：full 档读得到 hash / subject / author', async () => {
+  it('最后提交：读的是**上游**的最后一次提交，不是本地 HEAD', async () => {
+    // 清单上「远程更新」那一列回答的是「那个仓库的作者最后一次提交是什么时候」，
+    // 所以必须读 `@{u}`。曾经写成 `git log -1`（默认 HEAD），
+    // 于是显示的是你自己本地最后一次提交的时间——用户当场就看出来了
+    // （「远程今天明明有人更新」）。
+    const { origin, clone } = initClone(0)
+    track(origin)
+    track(clone)
+    // 远程往前走一个提交
+    commit(origin, '远程的新提交')
+
+    const cloneStatus = await getRepoStatus(clone)
+    // 克隆没 fetch 过，本地 HEAD 还停在「初始提交」
+    expect(git(clone, 'rev-parse', 'HEAD').trim()).not.toBe(
+      git(origin, 'rev-parse', 'HEAD').trim(),
+    )
+    // fetch 之后上游 tip 就是远程那个新提交
+    git(clone, 'fetch')
+    const afterFetch = await getRepoStatus(clone)
+    expect(afterFetch.lastCommit?.subject).toBe('远程的新提交')
+
+    // 对照：没 fetch 时读到的仍是**已经 fetch 过的那份上游**（初始提交），
+    // 反正不是本地 HEAD 之外的东西
+    expect(cloneStatus.lastCommit?.subject).toBe('初始提交')
+
+    // 关键：**本地**再提交一个，上游 tip 不能被本地提交带跑
+    fs.writeFileSync(path.join(clone, 'local.txt'), 'local\n')
+    git(clone, 'add', '-A')
+    git(clone, 'commit', '-m', '只在本地的提交')
+    const afterLocalCommit = await getRepoStatus(clone)
+    expect(afterLocalCommit.lastCommit?.subject).toBe('远程的新提交')
+  })
+
+  it('最后提交：merge 提交也要算（不能带 --no-merges）', async () => {
+    // 很多仓库最新的提交就是 `Merge pull request #123`。
+    // 曾经带着 `--no-merges`，会**跳过它去拿一个更老的提交**，日期看着总是偏旧。
+    const { origin, clone } = initClone(0)
+    track(origin)
+    track(clone)
+
+    // 造一个 merge：origin 上开分支、各自提交、再合并
+    git(origin, 'checkout', '-q', '-b', 'feature')
+    commit(origin, '分支上的提交', 'feature.txt')
+    git(origin, 'checkout', '-q', 'main')
+    commit(origin, 'main 上的提交', 'main.txt')
+    git(origin, 'merge', '--no-ff', '-m', 'Merge branch feature', 'feature')
+
+    git(clone, 'fetch')
+    const status = await getRepoStatus(clone)
+    expect(git(origin, 'log', '-1', '--format=%s').trim()).toBe('Merge branch feature')
+    expect(status.lastCommit?.subject).toBe('Merge branch feature')
+  })
+
+  it('最后提交：没有上游时退回本地 HEAD（纯本地仓库也得有东西可显示）', async () => {
     const dir = track(initRepo('第一条提交'))
     const status = await getRepoStatus(dir)
     expect(status.lastCommit).toMatchObject({ subject: '第一条提交', author: 'git-nest test' })
