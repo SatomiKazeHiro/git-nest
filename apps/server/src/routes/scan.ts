@@ -2,7 +2,7 @@ import path from 'node:path'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import type { DB } from '../db/index.ts'
-import { badRequest } from '../lib/errors.ts'
+import { badRequest, conflict } from '../lib/errors.ts'
 import { getRemoteUrl, scan } from '../lib/git.ts'
 import { dirExists, toAbsolutePath } from '../lib/paths.ts'
 import { insertProject, nextSortOrder, pathExists } from '../repos/projects.ts'
@@ -78,17 +78,31 @@ export const scanRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
     // 读远程地址失败只降级成 null —— git 起不来 / 目录不是仓库都属可降级，
     // 不该把整批导入变成 500。
     const candidates: { name: string; path: string; remoteUrl: string | null }[] = []
+    /*
+      **批内也要查重**。原来只查「库里有没有」，于是同一批里出现两条指向同一目录的
+      路径（大小写变体、8.3 短名、目录链接）时，两条都通过检查，最后撞上库层那条
+      `lower(path)` 部分唯一索引 → 整批事务回滚 → 返回一句误导的 409
+      「这条记录已经存在了」，而用户可能一个都还没加进去。
+      比较口径与那条唯一索引一致（lower + 归一化斜杠）。
+    */
+    const seen = new Set<string>()
     for (const raw of paths) {
       const abs = toAbsolutePath(raw)
+      const key = abs.toLowerCase()
 
       if (!dirExists(abs)) {
         skipped.push({ path: abs, reason: '目录不存在' })
+        continue
+      }
+      if (seen.has(key)) {
+        skipped.push({ path: abs, reason: '这一批里有重复的目录（大小写不同也算同一个）' })
         continue
       }
       if (pathExists(db, abs)) {
         skipped.push({ path: abs, reason: '已经在清单里了' })
         continue
       }
+      seen.add(key)
 
       let remoteUrl: string | null = null
       try {
@@ -116,10 +130,27 @@ export const scanRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
         created.push({ id, name: candidate.name, path: candidate.path })
       }
     })
-    insertAll()
+    try {
+      insertAll()
+    } catch (err) {
+      // 走到这里只剩「查过之后、插入之前别人也加了同一条」这一种竞态。
+      // 全局错误处理器会给 409，但它的文案（「这条记录已经存在了」）用在这条路上
+      // 看不出该做什么，所以这里换一句能指导动作的。
+      if (isUniqueViolation(err)) {
+        throw conflict('有目录刚被别的操作加进清单了，刷新后再看一次')
+      }
+      throw err
+    }
 
     return { created, skipped }
   })
+}
+
+/** better-sqlite3 的 UNIQUE 约束错误（与 app.ts 的判定同一口径）。 */
+function isUniqueViolation(err: unknown): boolean {
+  const candidate = err as { code?: unknown; message?: unknown }
+  if (candidate.code === 'SQLITE_CONSTRAINT_UNIQUE') return true
+  return typeof candidate.message === 'string' && /UNIQUE constraint failed/i.test(candidate.message)
 }
 
 interface Tracked {

@@ -32,6 +32,33 @@ export function buildApp(options: AppOptions = {}) {
 
   app.register(cors, { origin: config.corsOrigin })
 
+  /*
+    **跨站写入闸**：本机工具没有鉴权，而「没有鉴权」不等于「浏览器里的任意页面都能
+    指挥它」。攻击面很具体：恶意页面用 `<form>`/`fetch` 发一个**简单请求**
+    （无 content-type、无 body —— Fastify 照收，实测 200）就能触发
+    `POST /api/updates/check`（全部仓库联网 fetch）、`POST /api/auto-fetch`；
+    DNS rebinding 下更能直接读响应。CORS 挡不住这个：它只决定「能不能读响应」，
+    **副作用早就发生了**。
+
+    只拦「带 Origin 且不在白名单」的写请求：
+    - 浏览器跨站一定会带 Origin（表单、fetch、XHR 都是），所以这一条就够挡住上面那些；
+    - curl / 脚本 / 测试不带 Origin —— 不拦（本机工具的正常用法要留着）；
+    - 同源的页面（vite 代理下就是 `http://localhost:5173`）带的是白名单里的 Origin。
+
+    只做**一层**校验，不做「本机才允许」那类判断：Host 在 vite 代理（changeOrigin:false）
+    下仍是 `localhost:5173`，按 Host 卡会误伤正常开发。
+  */
+  app.addHook('onRequest', async (req, reply) => {
+    if (!WRITE_METHODS.has(req.method)) return
+    const origin = req.headers.origin
+    if (origin === undefined) return
+    if (allowedOrigins().includes(origin)) return
+    await reply.code(403).send({
+      code: 'cross_origin_blocked',
+      message: `拒绝跨站写入（Origin: ${origin}）。这是本机工具，写操作只允许来自 ${allowedOrigins().join(' / ')}`,
+    })
+  })
+
   // 健康检查：真的探一下数据库（`SELECT 1`），而不是恒真。
   // 不回数据库绝对路径 —— 本机路径只进本地 SQLite，不该顺着 HTTP 出去。
   app.get('/api/health', async () => {
@@ -83,6 +110,30 @@ export function buildApp(options: AppOptions = {}) {
   })
 
   return { app, db }
+}
+
+/**
+ * 会被跨站简单请求打到的写方法。
+ * GET/HEAD/OPTIONS 不在里头：它们本来就该可跨站读（而且没有副作用）。
+ */
+const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+
+/**
+ * 允许的浏览器来源：`GIT_NEST_CORS`（默认 http://localhost:5173）里的那一个，
+ * 外加本机的两个等价写法——vite 端口用 127.0.0.1 打开时 Origin 就不是 localhost，
+ * 那不是「跨站」，不该被拦。
+ */
+function allowedOrigins(): string[] {
+  const base = config.corsOrigin
+  const out = new Set([base])
+  try {
+    const url = new URL(base)
+    const mirror = url.hostname === 'localhost' ? '127.0.0.1' : 'localhost'
+    out.add(`${url.protocol}//${mirror}${url.port ? `:${url.port}` : ''}`)
+  } catch {
+    // 配了个不是 URL 的东西：那就只认字面量
+  }
+  return [...out]
 }
 
 /**

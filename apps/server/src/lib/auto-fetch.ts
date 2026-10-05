@@ -1,7 +1,7 @@
 import type { DB } from '../db/index.ts'
 import { analyze } from './git.ts'
 import { readSettings } from './settings.ts'
-import { lastUpstreamSha, recordUpdateCheck } from '../repos/updates.ts'
+import { lastUpstreamSha, pruneUpdateChecks, recordUpdateCheck } from '../repos/updates.ts'
 
 /**
  * 自动 fetch —— **保持远程状态新鲜，但绝不碰工作区**。
@@ -12,7 +12,8 @@ import { lastUpstreamSha, recordUpdateCheck } from '../repos/updates.ts'
  *
  * **它动的只有 `refs/remotes/*`**：
  * - 不 pull、不快进、不写工作区——「绝不自动更新」那条不变量仍然成立
- * - 走 server 那一个 `Scheduler` 实例，所以同一个仓库不会和别的操作并发
+ * - 走 server 那一个 `Scheduler` 实例，所以同一个仓库不会和别的操作并发；
+ *   跨仓库的并发上限就是设置页那个值（不再是自己一条条串行）
  * - 完全复用 `analyzeUpdates`（含错误归因），所以失败会照常记进 `update_checks`，
  *   和手动检查留下一样的痕迹
  *
@@ -79,24 +80,43 @@ async function doAutoFetch(db: DB): Promise<AutoFetchSummary> {
     failed: 0,
   }
 
-  for (const row of rows) {
+  const targets = rows.filter((row) => {
     // 与批量检查同一条口径：personal 默认不联网。设置页可以打开。
     if (!includePersonal && row.category === 'personal') {
       summary.skipped += 1
-      continue
+      return false
     }
     summary.projects += 1
-    try {
-      // label 进命令日志——用户要能看出这些进程是谁起的
-      const report = await analyze(row.path, lastUpstreamSha(db, row.id), 'auto-fetch')
-      recordUpdateCheck(db, row.id, report)
-      if (report.error) summary.failed += 1
-      else summary.checked += 1
-    } catch {
-      // 单个仓库炸了不该中断整轮；错误本身已经记进日志与检查历史
-      summary.failed += 1
-    }
-  }
+    return true
+  })
+
+  /*
+    **并发交给 scheduler，不再一条一条 await**。
+    原来是严格串行的 `for … await`：既让设置页的「并发上限」对这个后台轮次完全无效，
+    又让 `POST /api/auto-fetch`（同步等整轮）在仓库多的时候挂上几分钟。
+    `analyze` 内部自己按仓库排队并限流，所以这里直接 Promise.all 就是对的
+    ——但**不能**再套一层 scheduler.map，那会对同一个 path 自锁（见 README 的坑）。
+  */
+  await Promise.all(
+    targets.map(async (row) => {
+      try {
+        // label 进命令日志——用户要能看出这些进程是谁起的
+        const report = await analyze(row.path, {
+          lastUpstreamSha: lastUpstreamSha(db, row.id),
+          label: 'auto-fetch',
+        })
+        recordUpdateCheck(db, row.id, report)
+        if (report.error) summary.failed += 1
+        else summary.checked += 1
+      } catch {
+        // 单个仓库炸了不该中断整轮；错误本身已经记进日志与检查历史
+        summary.failed += 1
+      }
+    }),
+  )
+
+  // 这一轮又给每个仓库写了一行；给表加个上限，别让它无限长
+  pruneUpdateChecks(db)
 
   lastRun = summary
   return summary

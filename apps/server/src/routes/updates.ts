@@ -10,7 +10,12 @@ import {
   type UpdateReport,
 } from '../lib/git.ts'
 import { readSettings } from '../lib/settings.ts'
-import { lastUpstreamSha, lastVerdict, recordUpdateCheck } from '../repos/updates.ts'
+import {
+  lastUpstreamSha,
+  lastVerdict,
+  pruneUpdateChecks,
+  recordUpdateCheck,
+} from '../repos/updates.ts'
 import {
   createTask,
   eventsSince,
@@ -169,11 +174,17 @@ async function runCheck(db: DB, task: Task, targets: Target[]) {
   // 否则会落到 core 的 defaultScheduler，「同仓库串行」就失效了（而且并发上限也不受设置控制）。
   await Promise.all(
     targets.map(async (target) => {
-      markRunning(task, target.id)
       try {
         // 上次见过的上游 SHA 从历史里读——core 不认识数据库。
         // 没有它，「作者 force push 改写了历史」是判不出来的。
-        const report = await analyze(target.path, lastUpstreamSha(db, target.id))
+        //
+        // `onStart` 而不是在这里 markRunning：`analyze` 内部按仓库排队限流，
+        // 这一句会在**所有** target 上同步执行——200 个仓库会一起变成「检查中」，
+        // 而真正在跑的只有并发上限那几个。进度条上的数字会骗人。
+        const report = await analyze(target.path, {
+          lastUpstreamSha: lastUpstreamSha(db, target.id),
+          onStart: () => markRunning(task, target.id),
+        })
         reports.push(report)
         recordUpdateCheck(db, target.id, report)
         markDone(task, target.id, report)
@@ -196,6 +207,8 @@ async function runCheck(db: DB, task: Task, targets: Target[]) {
     failed: task.items.filter((i) => i.state === 'failed').length,
   })
   clearStatusCache()
+  // 历史只被用来「读最近一个事实」，给表加个上限（否则它会一直长）
+  pruneUpdateChecks(db)
 }
 
 async function runApply(db: DB, task: Task, targets: Target[]) {
@@ -228,8 +241,13 @@ async function runApply(db: DB, task: Task, targets: Target[]) {
       }
 
       // 走 lib/git.ts 的 pull()（它带 server 的 scheduler）而不是裸 pullRepo，
-      // 否则同一个仓库的 pull 会与状态查询并发
-      const result = await pull(target.path)
+      // 否则同一个仓库的 pull 会与状态查询并发。
+      //
+      // 第二个参数是**基线**：上面那道闸读的是「上次检查的结论」，而检查到点更新
+      // 之间作者可能刚好 force push——那种情况本地 HEAD 仍是新历史的祖先，
+      // `pull --ff-only` 会安静快进。基线交给 pull：它先 fetch（只动 refs/remotes/*）、
+      // 比对、确认没被改写才动工作区。
+      const result = await pull(target.path, lastUpstreamSha(db, target.id))
       recordUpdateCheck(db, target.id, {
         status: result.status,
         ahead: null,
@@ -260,6 +278,7 @@ async function runApply(db: DB, task: Task, targets: Target[]) {
 
   finish(task, summary)
   clearStatusCache()
+  pruneUpdateChecks(db)
 }
 
 async function streamEvents(reply: FastifyReply, task: Task, startCursor: number) {

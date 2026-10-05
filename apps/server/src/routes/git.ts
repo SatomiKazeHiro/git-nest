@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { idParamSchema, type RepoStatus } from '@git-nest/core'
 import type { DB } from '../db/index.ts'
-import { repoLog, repoStatus, repoStatusesLean } from '../lib/git.ts'
+import { repoFacts, repoLog, repoStatus, repoStatusesLean } from '../lib/git.ts'
 import { badRequest, notFound } from '../lib/errors.ts'
 
 /**
@@ -57,11 +57,13 @@ export const gitRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
     const { id } = req.params as { id: string }
     const path = requirePath(db, idParamSchema.parse(id))
 
-    // 目录没了 / 不是仓库时要说清楚，不能让前端显示成「还没有提交」
-    const status = await repoStatus(path, { fresh: true })
-    if (!status.isRepo) {
+    // 只要「是不是仓库」与「当前分支」两条事实：走库读 .git 就够（0 条 git 进程）。
+    // 原来这里跑的是 full + fresh 档的完整状态读取（3–4 条进程，还绕开缓存），
+    // 而它读回来的工作区、最后提交、推荐判决一个都没用上。
+    const facts = await repoFacts(path)
+    if (facts.error) {
       throw badRequest(
-        status.status === 'missing'
+        facts.error.kind === 'missing'
           ? '目录不在了，读不到提交记录'
           : '这个目录不是 git 仓库，读不到提交记录',
       )
@@ -71,8 +73,14 @@ export const gitRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
     const requested = Number(query.max)
     const max = Number.isFinite(requested) && requested > 0 ? Math.min(Math.floor(requested), 1000) : 200
 
-    const branch = status.branch ?? 'HEAD'
-    return { entries: await repoLog(path, max, branch), branch }
+    const branch = facts.branch ?? 'HEAD'
+    // 「空仓库」要返回空列表，而「读不出来」要报出去——这个区分在 core 的 getLog 里
+    // （它自己会判 HEAD 解不解得出来）。所以失败不能再被压成空列表。
+    try {
+      return { entries: await repoLog(path, max, branch), branch }
+    } catch (err) {
+      throw badRequest(err instanceof Error ? err.message : '读不到提交记录')
+    }
   })
 }
 

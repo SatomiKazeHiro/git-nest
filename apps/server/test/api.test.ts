@@ -376,4 +376,35 @@ describe('tags', () => {
 
     expect((await app.inject({ method: 'DELETE', url: `/api/tags/${tagId}` })).statusCode).toBe(200)
   })
+
+  /*
+    同一个字段有两个写入口，校验就必须是同一份。
+    `POST /api/tags` 一直有 `.max(40)`，而 `PUT /api/projects/:id/tags` 是「按需创建」
+    标签的那条路——原来只限条数不限长度，于是能从这里塞进任意长的标签名
+    （实测 200 字入库），反过来还能用一个超长名字绕过创建接口的全部约束。
+  */
+  it('标签名的长度上限在两个入口上一致（PUT /projects/:id/tags 也要拦）', async () => {
+    const created = await makeProject('tag-length')
+    const projectId = created.json().project.id
+    const tooLong = 'x'.repeat(41)
+
+    const viaCreate = await app.inject({
+      method: 'POST',
+      url: '/api/tags',
+      headers: json,
+      payload: { name: tooLong },
+    })
+    expect(viaCreate.statusCode).toBe(422)
+
+    const viaProject = await app.inject({
+      method: 'PUT',
+      url: `/api/projects/${projectId}/tags`,
+      headers: json,
+      payload: { tagNames: [tooLong] },
+    })
+    expect(viaProject.statusCode).toBe(422)
+
+    const stored = db.prepare('SELECT name FROM tags WHERE name = ?').get(tooLong)
+    expect(stored, '超长标签名不该被按需创建出来').toBeUndefined()
+  })
 })

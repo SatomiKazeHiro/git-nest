@@ -107,6 +107,36 @@ describe('POST /api/projects/import', () => {
     }
     expect(row.remote_url).toBeNull()
   })
+
+  /*
+    批内查重。原来只查「库里有没有」：同一批里两条指向同一目录的路径
+    （大小写变体 / 8.3 短名 / 目录链接）都会通过检查，最后撞上库层那条
+    `lower(path)` 唯一索引 → 整批回滚 → 409「这条记录已经存在了」，
+    而用户可能一个都还没加进去：想加的一个没加上，还收到一句看不懂的话。
+  */
+  it('同一批里两条同目录不同大小写的路径：跳过重复的那条，其余照常进', async () => {
+    const dir = makeDir('CaseRepo')
+    const variant = dir.replace(/CaseRepo$/, 'caserepo')
+    const before = (db.prepare('SELECT COUNT(*) AS n FROM projects').get() as { n: number }).n
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/projects/import',
+      headers: json,
+      payload: { paths: [dir, variant] },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json() as {
+      created: { path: string }[]
+      skipped: { path: string; reason: string }[]
+    }
+    expect(body.created).toHaveLength(1)
+    expect(body.skipped).toHaveLength(1)
+    expect(body.skipped[0]?.reason).toContain('重复')
+    const after = (db.prepare('SELECT COUNT(*) AS n FROM projects').get() as { n: number }).n
+    expect(after).toBe(before + 1)
+  })
 })
 
 describe('数据库约束错误的 HTTP 映射', () => {

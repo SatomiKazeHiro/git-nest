@@ -6,7 +6,9 @@ import {
   getRepoStatus,
   getRepoStatuses,
   pullRepo,
+  readRepoFacts,
   scanDirectory,
+  type RepoFacts,
   type RepoStatus,
   type ScanResult,
 } from '@git-nest/core/git'
@@ -169,19 +171,35 @@ function unreadableStatus(path: string): RepoStatus {
  * `lastUpstreamSha` 由调用方从 `update_checks` 历史里读出来传进来——
  * 那是判「作者有没有改写上游历史」的**唯一**依据（见 core 的 `inspect/recommend.ts`）。
  * core 不认识数据库，所以这个事实必须由 server 侧提供。
+ *
+ * `onStart` 在**真正拿到并发许可、开始跑**的那一刻回调：批量检查一次把几百个仓库
+ * 交出去，界面上不该在那一刻就把几百行标成「检查中」。
  */
 export function analyze(
   path: string,
-  lastUpstreamSha: string | null = null,
-  label = 'check',
+  options: { lastUpstreamSha?: string | null; label?: string; onStart?: () => void } = {},
 ) {
   const { gitTimeoutMs } = current()
-  return analyzeUpdates(path, { timeoutMs: gitTimeoutMs, scheduler, lastUpstreamSha, label })
+  return analyzeUpdates(path, {
+    timeoutMs: gitTimeoutMs,
+    scheduler,
+    lastUpstreamSha: options.lastUpstreamSha ?? null,
+    label: options.label ?? 'check',
+    ...(options.onStart ? { onStart: options.onStart } : {}),
+  })
 }
 
-export function pull(path: string) {
+/**
+ * 唯一的更新入口（`--ff-only`）。
+ *
+ * `lastUpstreamSha` 传下去，pull 就会在动手前先 fetch + 比基线：调用方手上那道闸
+ * 读的是**上次检查的结论**，而「检查」到「点更新」之间作者可能刚好 force push
+ * ——那正是「本地看不出被改写、git 自己会安静快进」的场景。基线必须在 fetch 之前读，
+ * 所以这一步得由 pull 自己（先 fetch、再比、最后才动工作区）做。
+ */
+export function pull(path: string, lastUpstreamSha: string | null = null) {
   const { gitTimeoutMs } = current()
-  return pullRepo(path, { timeoutMs: gitTimeoutMs, scheduler })
+  return pullRepo(path, { timeoutMs: gitTimeoutMs, scheduler, lastUpstreamSha })
 }
 
 /**
@@ -211,10 +229,27 @@ export function scan(dir: string, options: { maxDepth?: number; trackedPaths?: I
 /**
  * 只读 origin 地址。也要走这一个 scheduler 与设置里的超时：
  * 它读的是同一个仓库的配置，不该在别人 pull 的时候插进去并发跑。
+ *
+ * 注意传下去的 options **故意不带 scheduler**：core 的 `getRemoteUrl` 自己也会
+ * `scheduler.schedule`，两处都传就是「同一个 key 的 schedule 里再 schedule」，
+ * 直接自锁（core 的 scheduler.ts 文件头写着这条）。外面这层排队已经够了。
  */
 export function getRemoteUrl(path: string): Promise<string | null> {
   const { gitTimeoutMs } = current()
   return scheduler.schedule(path, () => coreGetRemoteUrl(path, { timeoutMs: gitTimeoutMs }))
+}
+
+/**
+ * 只读仓库元信息（分支 / HEAD / 上游 / origin 地址）：走 isomorphic-git，**一条
+ * git 进程都不起**（实测 0.5–3ms）。
+ *
+ * 给「只想知道是不是仓库、当前分支叫什么」的调用方用——那两条本来就在这份事实里，
+ * 没必要为此跑一次完整状态读取（`/projects/:id/log` 原来就是这么干的：
+ * full + fresh 档，3–4 条进程只为两个字段）。
+ */
+export function repoFacts(path: string): Promise<RepoFacts> {
+  const { gitTimeoutMs } = current()
+  return scheduler.schedule(path, () => readRepoFacts(path, { timeoutMs: gitTimeoutMs }))
 }
 
 export function clearStatusCache(): void {

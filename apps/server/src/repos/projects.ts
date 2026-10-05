@@ -164,7 +164,8 @@ export function deleteProject(db: DB, id: number): boolean {
  * 用 `lower(path)` 比较：SQLite 的 `=` 对 TEXT 默认区分大小写，而 NTFS 不区分。
  * 只按原样比较的话，同一个目录能进清单两条 —— 状态会被查两次、DELETE 只删掉
  * 其中一条、扫描又把两条都标成「已在清单里」，自相矛盾。
- * 库层还有一条 `lower(path)` 的部分唯一索引兜底（迁移 003）。
+ * 库层还有一条 `lower(path)` 的部分唯一索引兜底（`001_init` 里那条
+ * `idx_projects_path_ci`）。
  */
 export function pathExists(db: DB, p: string, exceptId?: number): boolean {
   const row = db
