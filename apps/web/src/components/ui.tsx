@@ -68,11 +68,17 @@ export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
 export function Dialog({
   title,
   description,
+  actions,
+  size = 'default',
   onClose,
   children,
 }: {
   title: string
   description?: string
+  /** 头部右侧、关闭按钮之前的动作（比如「重新检查」）。 */
+  actions?: ReactNode
+  /** `wide` 给需要横向空间的报告类内容（如更新报告）；表单用默认宽度。 */
+  size?: 'default' | 'wide'
   onClose: () => void
   children: ReactNode
 }) {
@@ -94,27 +100,36 @@ export function Dialog({
         if (e.target === e.currentTarget) onClose()
       }}
     >
+      {/*
+        内容区自己滚（`min-h-0 flex-1 overflow-y-auto`），标题、头部动作与关闭按钮
+        留在原地。原来是整个遮罩层滚——长表单滚下去之后标题和关闭按钮都不见了。
+      */}
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="w-full max-w-lg rounded-[4px] border border-line bg-panel shadow-[0_8px_32px_rgba(19,24,29,0.14)]"
+        className={`flex max-h-[85vh] w-full flex-col rounded-[4px] border border-line bg-panel shadow-[0_8px_32px_rgba(19,24,29,0.14)] ${
+          size === 'wide' ? 'max-w-3xl' : 'max-w-lg'
+        }`}
       >
-        <header className="flex items-start justify-between gap-4 border-b border-line-soft px-5 py-4">
-          <div>
+        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-line-soft px-5 py-4">
+          <div className="min-w-0">
             <h2 className="text-[15px] font-semibold text-ink">{title}</h2>
             {description ? <p className="mt-0.5 text-[12px] text-ink-3">{description}</p> : null}
           </div>
-          <button
-            onClick={onClose}
-            aria-label="关闭"
-            className="-mr-1 rounded-[3px] px-1.5 py-0.5 font-mono text-[15px] leading-6 text-ink-3 hover:bg-accent-wash hover:text-ink"
-          >
-            ×
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {actions}
+            <button
+              onClick={onClose}
+              aria-label="关闭"
+              className="-mr-1 rounded-[3px] px-1.5 py-0.5 font-mono text-[15px] leading-6 text-ink-3 hover:bg-accent-wash hover:text-ink"
+            >
+              ×
+            </button>
+          </div>
         </header>
-        <div className="px-5 py-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
       </div>
     </div>
   )

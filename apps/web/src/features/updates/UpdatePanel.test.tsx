@@ -51,7 +51,11 @@ const applyTask = {
   items: [{ projectId: 1, name: 'behind-one', state: 'pending' as const }],
 }
 
-function report(status: string, behind: number, subject = '远程提交') {
+function report(status: string, behind: number, subject = '远程提交', verdict?: string) {
+  // 真实报告**总是带判决**（`UpdateReport.recommendation`，core 里写着它是
+  // 「这个软件一阶段最要紧的一条输出」）。这里按 status 给一个默认判决，
+  // 需要「作者改写了历史」这类情形时用第 4 个参数覆盖。
+  const v = verdict ?? (status === 'behind' ? 'safe' : status === 'diverged' ? 'diverged' : 'safe')
   return {
     status,
     ahead: 0,
@@ -62,6 +66,17 @@ function report(status: string, behind: number, subject = '远程提交') {
         : [],
     outgoing: [],
     tags: [],
+    recommendation: {
+      verdict: v,
+      ahead: 0,
+      behind,
+      canPull: v === 'safe' && status === 'behind',
+      reason:
+        v === 'rewritten'
+          ? '上游历史被改写过（上次见过的那个提交已经不在远程分支上了，作者可能 force push 或回退了）。'
+          : `可以直接快进到远程的 ${behind} 个提交。`,
+    },
+    upstreamSha: null,
     error: null,
   }
 }
@@ -83,6 +98,14 @@ async function waitForStream() {
 }
 
 describe('勾选更新流程', () => {
+  it('报告是一个弹窗，不再是插进页面流里的一块区域', () => {
+    renderPanel([1, 2, 3])
+
+    // 插进页面流那种做法是 `<section class="border">`，屏幕上会和清单表凑成两张「表」；
+    // 现在是 role=dialog 的宽版弹窗（标题即 aria-label）
+    expect(screen.getByRole('dialog', { name: '联网检查更新' })).toBeTruthy()
+  })
+
   it('检查 → 看报告 → 只勾能快进的 → 更新 → 汇总', async () => {
     const applied: number[][] = []
 
@@ -96,8 +119,8 @@ describe('勾选更新流程', () => {
 
     renderPanel([1, 2, 3])
 
-    // 1. 点「检查更新」→ 拿到 task → 订阅进度
-    await click(/检查更新/)
+    // 1. 点「开始检查」→ 拿到 task → 订阅进度
+    await click(/开始检查/)
     const checkStream = await waitForStream()
     expect(checkStream.url).toContain('/api/updates/task-check/events')
 
@@ -215,7 +238,7 @@ describe('勾选更新流程', () => {
     await waitFor(() => expect(screen.getByText(/将检查当前筛选出的 3 个项目/)).toBeTruthy())
 
     // 第一次点：只弹确认，还没发请求
-    await click(/检查更新/)
+    await click(/开始检查/)
     await waitFor(() => expect(screen.getByText(/要对 3 个项目联网 fetch/)).toBeTruthy())
     expect(checks).toBe(0)
 
@@ -224,7 +247,7 @@ describe('勾选更新流程', () => {
     await waitFor(() => expect(screen.queryByText(/要对 3 个项目联网 fetch/)).toBeNull())
 
     // 再点一次仍然是确认，确认之后才真的发
-    await click(/检查更新/)
+    await click(/开始检查/)
     await click(/确认，检查这 3 个/)
     await waitFor(() => expect(checks).toBe(1))
   })
@@ -240,10 +263,81 @@ describe('勾选更新流程', () => {
     )
 
     renderPanel([1, 2, 3])
-    await click(/检查更新/)
+    await click(/开始检查/)
 
     await waitFor(() =>
       expect(screen.getByText(/都属于 personal/)).toBeTruthy(),
     )
+  })
+})
+
+/**
+ * 用户问的：「弹窗里面，看起来没有『推荐』？不怕更新到错误的东西吗」。
+ *
+ * 他问对了：`UpdateReport` 一直带着 `recommendation`，而报告行既不渲染它、
+ * 勾选判据也只看 `status === 'behind'`。**而「作者 force push 改写了历史」
+ * 恰恰表现为 `behind`**（本地 refs 只看到「落后 N 个」），判决却是 `rewritten`
+ * ——那就正是设计文档第 1 节要防的「更新到作者重置/删掉的东西」。
+ */
+describe('判决必须在弹窗里看得见，而且决定能不能勾', () => {
+  function emitRewriteCase(stream: FakeEventSource) {
+    stream.emit({
+      type: 'item',
+      done: 1,
+      item: {
+        projectId: 1,
+        name: 'force-pushed',
+        state: 'done',
+        // status 是 behind，但判决是 rewritten
+        result: report('behind', 2, '被改写掉的那些提交', 'rewritten'),
+      },
+    })
+    stream.emit({
+      type: 'item',
+      done: 2,
+      item: { projectId: 2, name: 'behind-ok', state: 'done', result: report('behind', 1) },
+    })
+  }
+
+  it('改写过历史的仓库：显示判决与理由，而且不能勾', async () => {
+    server.use(
+      http.post('/api/updates/check', () => HttpResponse.json(lastCheckTask, { status: 202 })),
+    )
+    renderPanel([1, 2])
+
+    await click(/开始检查/)
+    const stream = await waitForStream()
+    emitRewriteCase(stream)
+    stream.emit({
+      type: 'finished',
+      total: 2,
+      summary: { behind: 2, upToDate: 0, ahead: 0, diverged: 0, skipped: 0, failed: 0 },
+    })
+    stream.emit({ type: 'closed' })
+
+    // 判决短标签出现在这一行里（清单页那一格叫「推荐」）
+    await waitFor(() => expect(screen.getByText('别拉')).toBeTruthy())
+    // 理由要写全，不能只靠 tooltip —— 这是「别拉」的场合
+    expect(screen.getByText(/上游历史被改写过/)).toBeTruthy()
+
+    // 关键：status 是 behind，但判决说别拉 ⇒ 勾不了
+    expect((screen.getByLabelText('选择 force-pushed') as HTMLInputElement).disabled).toBe(true)
+    // 同一批里真的能快进的那个照常可勾
+    expect((screen.getByLabelText('选择 behind-ok') as HTMLInputElement).disabled).toBe(false)
+
+    // 「全选可更新的」也只该数到 1 个
+    expect(useButton(/全选可更新的 1 个/)).toBeTruthy()
+
+    // 汇总那句话不能再说「2 个可更新」——它必须按**判决**分，
+    // 否则和上面被禁用的勾选框自相矛盾
+    await waitFor(() => expect(screen.getByText(/检查完：/)).toBeTruthy())
+    const line = screen.getByText(/检查完：/)
+    expect(line.textContent).toContain('1 个可安全快进')
+    expect(line.textContent).toContain('1 个别拉')
+    expect(line.textContent).not.toContain('2 个可更新')
+
+    // 还有一句单独的警告，点名是哪个仓库（埋在 20 行里就没人看见了）
+    const warning = screen.getByText(/判定为「别拉」，不能勾选/)
+    expect(warning.textContent).toContain('force-pushed')
   })
 })

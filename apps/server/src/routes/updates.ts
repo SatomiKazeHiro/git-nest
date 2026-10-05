@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import { z } from 'zod'
+import { VERDICT_LABEL, VERDICT_REASON, type UpdateVerdict } from '@git-nest/core'
 import type { DB } from '../db/index.ts'
 import { badRequest, notFound } from '../lib/errors.ts'
 import {
@@ -9,7 +10,7 @@ import {
   type UpdateReport,
 } from '../lib/git.ts'
 import { readSettings } from '../lib/settings.ts'
-import { lastUpstreamSha, recordUpdateCheck } from '../repos/updates.ts'
+import { lastUpstreamSha, lastVerdict, recordUpdateCheck } from '../repos/updates.ts'
 import {
   createTask,
   eventsSince,
@@ -137,6 +138,19 @@ function loadAll(db: DB): Target[] {
     .all() as Target[]
 }
 
+/**
+ * 「别拉」的两种判决要给用户一个说得通的理由，并且**禁止执行**。
+ *
+ * 只有这两种：`rewritten`（作者 force push 改写了历史）与 `unrelated`（作者删库重建）。
+ * 它们的表象都是 `behind`（本地 refs 只看到「落后 N 个」），所以必须靠判决拦，
+ * 光看状态拦不住。返回 null = 可以照常 pull。
+ */
+function refuseReason(last: { verdict: UpdateVerdict } | null): string | null {
+  if (!last) return null
+  if (last.verdict !== 'rewritten' && last.verdict !== 'unrelated') return null
+  return `上次检查的结论是「${VERDICT_LABEL[last.verdict]}」：${VERDICT_REASON[last.verdict]}`
+}
+
 /** 告诉用户哪些没查、为什么没查——静默跳过最让人困惑。 */
 function describeSkipped(db: DB, requested: number[] | undefined, included: number[]): string[] {
   if (!requested) return []
@@ -191,6 +205,28 @@ async function runApply(db: DB, task: Task, targets: Target[]) {
   for (const target of targets) {
     markRunning(task, target.id)
     try {
+      /*
+        **服务端也复查一次判决**（前端禁掉勾选只是建议，直接打这个接口绕得过去）。
+        判决早就落在 `update_checks.detail` 里，读它不用多跑任何 git 命令。
+        这一步拦的是「作者 force push 改写了历史」与「作者删库重建」——
+        它们的表象恰恰是 `behind`，只看状态是拦不住的。
+      */
+      const refuse = refuseReason(lastVerdict(db, target.id))
+      if (refuse) {
+        markDone(task, target.id, {
+          outcome: 'skipped',
+          newCommits: 0,
+          status: 'diverged',
+          reason: refuse,
+          error: null,
+          summary: `跳过：${refuse}`,
+        })
+        summary.skipped += 1
+        // **不写 update_checks**：这一步没联网、没读到任何新事实。
+        // 写一行会把「上次检查」的时间与状态换成一次并没发生过的检查。
+        continue
+      }
+
       // 走 lib/git.ts 的 pull()（它带 server 的 scheduler）而不是裸 pullRepo，
       // 否则同一个仓库的 pull 会与状态查询并发
       const result = await pull(target.path)

@@ -261,6 +261,54 @@ describe('POST /api/updates/apply', () => {
     expect(git(clone, 'rev-list', '--count', '--merges', 'HEAD').trim()).toBe('0')
   })
 
+  it('上次检查判了「别拉」→ 服务端直接拒绝执行，连 pull 都不发', async () => {
+    // 这道闸拦的是两种表象为 `behind` 的情况：作者 force push 改写了历史、
+    // 或作者删库重建。前端已经把这类仓库的勾选框禁掉了，但那是建议——
+    // 直接打这个接口绕得过去，所以服务端必须自己也拦一道。
+    const { origin, clone } = makeOriginWithClone('apply-refused', 0)
+    const id = await addProject('apply-refused', clone)
+    commitIn(origin, '远程提交')
+
+    // 造一条「上次检查」的记录：状态是 behind，判决是 rewritten
+    db.prepare(
+      `INSERT INTO update_checks (project_id, checked_at, status, ahead_count, behind_count, detail)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      new Date(Date.now() - 60_000).toISOString(),
+      'behind',
+      0,
+      1,
+      JSON.stringify({ incoming: 1, outgoing: 0, tags: [], verdict: 'rewritten', canPull: false }),
+    )
+    const before = git(clone, 'rev-parse', 'HEAD').trim()
+
+    const task = await waitForTask(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/updates/apply',
+          headers: json,
+          payload: { ids: [id] },
+        })
+      ).json().id,
+    )
+
+    const result = task.items[0].result
+    expect(result.outcome).toBe('skipped')
+    expect(result.reason).toContain('别拉')
+    expect(result.reason).toContain('改写过')
+    expect(task.summary).toMatchObject({ skipped: 1, updated: 0, commits: 0 })
+    // 真的没动：HEAD 原地不动，那个远程提交没进来
+    expect(git(clone, 'rev-parse', 'HEAD').trim()).toBe(before)
+    expect(git(clone, 'log', '-1', '--pretty=%s').trim()).not.toBe('远程提交')
+    // 「上次检查」的时间也不该被这次拒绝覆盖（这一步没读到任何新事实）
+    const last = db
+      .prepare('SELECT status FROM update_checks WHERE project_id = ? ORDER BY id DESC LIMIT 1')
+      .get(id) as { status: string }
+    expect(last.status).toBe('behind')
+  })
+
   it('已是最新 → already_up_to_date', async () => {
     const { clone } = makeOriginWithClone('apply-fresh', 0)
     const id = await addProject('apply-fresh', clone)

@@ -59,18 +59,9 @@ export function ProjectsPage() {
         total={projects?.length ?? 0}
         onCheckUpdates={() => setPanelOpen(true)}
         onScan={() => navigate('/settings#scan')}
-        checking={panelOpen}
       />
 
       <div className="flex-1 px-6 pb-24">
-        {panelOpen ? (
-          <div className="pt-4">
-            <UpdatePanel
-              ids={selectedIds.length > 0 ? selectedIds : (projects ?? []).map((p) => p.id)}
-              onClose={() => setPanelOpen(false)}
-            />
-          </div>
-        ) : null}
         {isPending ? (
           <p className="py-10 font-mono text-[13px] text-ink-3">正在读清单…</p>
         ) : !projects || projects.length === 0 ? (
@@ -110,6 +101,14 @@ export function ProjectsPage() {
         <RemoveDialog project={pendingRemoval} onClose={() => setPendingRemoval(null)} />
       ) : null}
       <ProjectFormDialog />
+      {/* 报告是弹窗，不再插进页面流里（插进去会推移清单表，而且和表是同一套盒子语汇，
+          屏幕上就同时出现两张「表」）。 */}
+      {panelOpen ? (
+        <UpdatePanel
+          ids={selectedIds.length > 0 ? selectedIds : (projects ?? []).map((p) => p.id)}
+          onClose={() => setPanelOpen(false)}
+        />
+      ) : null}
     </div>
   )
 }
@@ -175,12 +174,10 @@ function Toolbar({
   total,
   onCheckUpdates,
   onScan,
-  checking,
 }: {
   total: number
   onCheckUpdates: () => void
   onScan: () => void
-  checking: boolean
 }) {
   // 逐个字段订阅，而不是 `useUiStore()` 整店订阅 ——
   // 整店订阅会让「勾选任何一行」都重渲染整个顶栏（搜索框、三个按钮、计数）。
@@ -213,14 +210,16 @@ function Toolbar({
       </span>
       <div className="ml-auto flex items-center gap-2">
         {/* 「联网」两个字是必须的：详情页还有一个只读本地的按钮，
-            两个都叫「检查更新」的话，用户没法从名字看出哪个会联网。 */}
+            两个都叫「检查更新」的话，用户没法从名字看出哪个会联网。
+            这里**不再有「检查中…」态**：进度和报告都在随后打开的弹窗里，
+            按钮照旧的写法（`checking={panelOpen}`）会在检查早已跑完、弹窗还开着时
+            继续显示「检查中…」——那是在骗人。 */}
         <Button
           onClick={onCheckUpdates}
           title="联网 fetch 远程，看每个仓库落后多少、推不推荐更新"
-          className={checking ? 'border-accent text-accent' : ''}
         >
-          <RefreshCw size={14} aria-hidden className={checking ? 'animate-spin' : ''} />
-          {checking ? '联网检查中…' : '联网检查更新'}
+          <RefreshCw size={14} aria-hidden />
+          联网检查更新
         </Button>
         <Button onClick={onScan} title="去设置里扫描一个目录，把本机仓库批量加进清单">
           <FolderSearch size={14} aria-hidden />

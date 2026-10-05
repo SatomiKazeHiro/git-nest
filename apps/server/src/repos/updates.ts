@@ -71,3 +71,34 @@ export function lastUpstreamSha(db: DB, projectId: number): string | null {
     return null
   }
 }
+
+/**
+ * 上次检查算出的判决（`rewritten` / `unrelated` / …）。
+ *
+ * **给「更新」那一步做服务端兜底用**：前端已经把「别拉」那些的勾选框禁掉了，
+ * 但那是建议——直接打 `POST /api/updates/apply` 能绕过去，所以这道闸必须也在服务端。
+ *
+ * 读的是**库里存的结论**，不是现算：结论本来就要求落库（见 `VERDICT_REASON` 的注释，
+ * 「结论要落库、之后要能原样重建」），而现算要多跑 4 次 git 命令。
+ * 代价是它反映的是**上次检查**那一刻的判断——所以给用户的理由里写明了这一点。
+ */
+export function lastVerdict(
+  db: DB,
+  projectId: number,
+): { verdict: UpdateVerdict; canPull: boolean } | null {
+  const row = db
+    .prepare(
+      `SELECT detail FROM update_checks
+       WHERE project_id = ? AND detail IS NOT NULL
+       ORDER BY id DESC LIMIT 1`,
+    )
+    .get(projectId) as { detail: string } | undefined
+  if (!row) return null
+  try {
+    const parsed = JSON.parse(row.detail) as UpdateCheckDetail
+    if (!parsed.verdict) return null
+    return { verdict: parsed.verdict, canPull: parsed.canPull === true }
+  } catch {
+    return null
+  }
+}

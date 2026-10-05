@@ -1,20 +1,50 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
-import type { UpdateReport } from '@git-nest/core'
-import { Button, ErrorNote, Meta } from '@/components/ui'
-import { statusText, statusTone, Delta } from '@/features/status/StatusCell'
+import {
+  VERDICT_LABEL,
+  type UpdateRecommendation,
+  type UpdateReport,
+} from '@git-nest/core'
+import { Button, Dialog, ErrorNote, Meta } from '@/components/ui'
+import {
+  RecommendationCell,
+  statusText,
+  statusTone,
+  Delta,
+} from '@/features/status/StatusCell'
 import { isPull, isReport, useUpdateTask, type TaskSnapshot } from './taskStream'
 import { useSettings } from '@/features/settings/queries'
 import { useInvalidate } from '@/features/projects/queries'
 
-/** 能安全 ff-only 更新的状态：远程有、本地没有，且本地没有会挡路的提交 */
-const UPDATABLE = new Set(['behind'])
+/**
+ * 这一条能不能勾（＝能不能安全快进）。
+ *
+ * **不能只看 `status === 'behind'`**：作者 force push 改写历史时，本地 refs 看到的
+ * 只是「落后 N 个」，判决却是 `rewritten`；作者删库重建时是 `unrelated`。
+ * 这两种正是设计文档第 1 节要防的「更新到作者重置/删掉的东西」，
+ * 而 `behind` 恰恰是它们的表象。判据用判决自己的 `canPull`。
+ */
+function canPullNow(report: UpdateReport | null): boolean {
+  return report?.recommendation?.canPull === true
+}
+
+/** 「别拉」的两种判决：理由必须在行里写全，不能只塞进 tooltip。 */
+function isDontPull(r: UpdateRecommendation | null): r is UpdateRecommendation {
+  return r?.verdict === 'rewritten' || r?.verdict === 'unrelated'
+}
 
 /**
- * 更新面板：检查 → 看报告 → 勾选 → 更新 → 结果汇总。
+ * 更新报告：检查 → 看报告 → 勾选 → 更新 → 结果汇总。
  *
  * 原则照抄设计文档：**绝不自动更新**。检查完只是给建议，
  * 真正动工作区的只有用户点了「更新选中的」之后的那一次。
+ *
+ * **容器是一个宽版弹窗**（原来是一块插进页面流的区域）。理由：它是一次性的任务，
+ * 不是页面内容——插在流里时会推移下面的清单表 / 把详情页的「身份信息」和「git 状态」
+ * 切开，而且它和清单表是同一套盒子语汇（外框 + 分隔行），屏幕上就同时出现两张「表」。
+ * 弹窗还顺手统一了清单页与详情页：同一个动作在哪儿都是同一个形态。
+ * 代价是关掉窗口＝放弃这次查看（`reset()` 清掉本地快照）；服务端任务会照跑完并
+ * 写进 `update_checks`，这一句写在弹窗说明里，不含糊。
  */
 export function UpdatePanel({
   ids,
@@ -37,9 +67,13 @@ export function UpdatePanel({
     () => (task?.items ?? []).filter((i) => isReport(i.result)),
     [task],
   )
-  const updatable = reports.filter(
-    (i) => isReport(i.result) && UPDATABLE.has(i.result.status),
-  )
+  const results = useMemo(() => reports.map((i) => i.result).filter(isReport), [reports])
+  // 「全选可更新的」也得用同一个判据，否则会把「别拉」的那些一起勾上
+  const updatable = reports.filter((i) => isReport(i.result) && canPullNow(i.result))
+  /** 判定为「别拉」的仓库名——报告列表上方单独提示一句，免得埋在 20 行里 */
+  const dontPullNames = reports
+    .filter((i) => isReport(i.result) && isDontPull(i.result.recommendation))
+    .map((i) => i.name)
 
   // 数量多时先确认范围：检查会联网 fetch 十几个仓库，不能一点就开跑
   const threshold = settings?.confirmThreshold ?? 20
@@ -65,37 +99,30 @@ export function UpdatePanel({
   }
 
   return (
-    <section className="mb-5 border border-line bg-panel">
-      <header className="flex flex-wrap items-center gap-2 border-b border-line-soft px-4 py-2.5">
-        <h2 className="text-[14px] font-semibold text-ink">更新</h2>
-        <p className="text-[12px] text-ink-3">
-          检查会联网 fetch 远程；更新只在你勾选之后执行，且只做 fast-forward
-        </p>
-        <div className="ml-auto flex items-center gap-2">
+    <Dialog
+      size="wide"
+      title="联网检查更新"
+      description="检查会联网 fetch 远程；更新只在你勾选之后执行，且只做 fast-forward。关掉窗口＝放弃这次查看，服务端仍会跑完并记下结果。"
+      onClose={() => {
+        reset()
+        onClose()
+      }}
+      actions={
+        <>
           {busy ? (
-            <span className="flex items-center gap-2">
+            <>
               <Meta label="进度" value={task ? `${task.done}/${task.total}` : '启动中'} />
               {connected ? null : <Meta label="连接" value="重连中" placeholder />}
-            </span>
+            </>
           ) : null}
           <Button onClick={startCheckNow} disabled={busy}>
-            {busy ? '联网检查中…' : task ? '重新检查' : '联网检查更新'}
+            {busy ? '检查中…' : task ? '重新检查' : '开始检查'}
           </Button>
-          <button
-            onClick={() => {
-              reset()
-              onClose()
-            }}
-            aria-label="关闭更新面板"
-            className="rounded-[3px] px-1.5 py-0.5 font-mono text-[15px] leading-6 text-ink-3 hover:bg-paper hover:text-ink"
-          >
-            ×
-          </button>
-        </div>
-      </header>
-
+        </>
+      }
+    >
       {confirming && overThreshold ? (
-        <p className="flex flex-wrap items-center gap-3 border-b border-line-soft px-4 py-2.5">
+        <p className="flex flex-wrap items-center gap-3 border-b border-line-soft pb-3">
           <span className="text-[13px] text-signal-ahead">
             要对 {ids.length} 个项目联网 fetch（超过确认阈值 {threshold}），确认吗？
           </span>
@@ -106,27 +133,33 @@ export function UpdatePanel({
         </p>
       ) : null}
 
-      {error ? (
-        <div className="px-4 pt-3">
-          <ErrorNote message={error} />
-        </div>
-      ) : null}
+      {error ? <ErrorNote message={error} /> : null}
 
       {!task ? (
-        <p className="px-4 py-4 text-[13px] text-ink-2">
+        <p className="text-[13px] text-ink-2">
           {ids.length > 0
             ? `将检查当前筛选出的 ${ids.length} 个项目（personal 分类默认跳过，可在设置里打开）。`
-            : '先在上方勾选项目，就只检查勾选的那几个。'}
+            : '先在清单里勾选项目，就只检查勾选的那几个。'}
         </p>
       ) : task.status === 'failed' ? (
-        <div className="px-4 py-3">
-          <ErrorNote message={task.error ?? '任务失败'} />
-        </div>
+        <ErrorNote message={task.error ?? '任务失败'} />
       ) : (
         <>
           {task.skipped && task.skipped.length > 0 ? (
-            <p className="border-b border-line-soft px-4 py-2 text-[12.5px] text-ink-3">
+            <p className="border-b border-line-soft py-2 text-[12.5px] text-ink-3">
               跳过了 {task.skipped.join('、')}：personal 分类默认不参与检查
+            </p>
+          ) : null}
+
+          {/*
+            「推不推荐更新」不能只藏在每一行的短标签里：20 个仓库里混进两个「别拉」，
+            红字会被埋掉。这里单独报一句，名字点出来。
+          */}
+          {dontPullNames.length > 0 ? (
+            <p className="mb-2 border-l-2 border-signal-bad bg-panel px-3 py-2 text-[12.5px] text-signal-bad">
+              {dontPullNames.length} 个判定为「别拉」，不能勾选（理由在各自那一行）：
+              {dontPullNames.slice(0, 3).join('、')}
+              {dontPullNames.length > 3 ? ` 等 ${dontPullNames.length} 个` : ''}
             </p>
           ) : null}
 
@@ -142,10 +175,12 @@ export function UpdatePanel({
           </ul>
 
           {task.status === 'done' ? (
-            <footer className="flex flex-wrap items-center gap-3 border-t border-line-soft px-4 py-2.5">
+            <footer className="flex flex-wrap items-center gap-3 border-t border-line-soft pt-3">
               {task.kind === 'check' ? (
                 <>
-                  <span className="text-[13px] text-ink-2">{checkSummary(task)}</span>
+                  <span className="text-[13px] text-ink-2">
+                    {checkSummary(results, task.summary ?? {})}
+                  </span>
                   <Button
                     variant="primary"
                     disabled={picked.size === 0 || busy}
@@ -177,7 +212,7 @@ export function UpdatePanel({
           ) : null}
         </>
       )}
-    </section>
+    </Dialog>
   )
 }
 
@@ -190,23 +225,28 @@ function TaskRow({
   checked: boolean
   onToggle: () => void
 }) {
+  const rep = isReport(item.result) ? item.result : null
+  const recommendation = rep?.recommendation ?? null
+  const pullable = canPullNow(rep)
+  const dontPull = isDontPull(recommendation)
+
   return (
-    <li className="border-b border-line-soft px-4 py-2 last:border-b-0">
+    <li className="border-b border-line-soft py-2 last:border-b-0">
       <div className="flex items-center gap-2.5">
-        {isReport(item.result) ? (
+        {rep ? (
           <input
             type="checkbox"
             checked={checked}
             onChange={onToggle}
-            disabled={!UPDATABLE.has(item.result.status)}
+            disabled={!pullable}
             title={
-              UPDATABLE.has(item.result.status)
+              pullable
                 ? '勾上就会 ff-only 更新到远程'
-                : '这个状态不能安全快进，勾了也没用'
+                : (recommendation?.reason ?? '这个状态不能安全快进，勾了也没用')
             }
             aria-label={`选择 ${item.name}`}
             className={`list-check shrink-0 ${
-              UPDATABLE.has(item.result.status) ? '' : 'cursor-not-allowed opacity-40'
+              pullable ? '' : 'cursor-not-allowed opacity-40'
             }`}
           />
         ) : (
@@ -224,8 +264,8 @@ function TaskRow({
           <span className="font-mono text-[12px] text-ink-3">检查中…</span>
         ) : item.state === 'failed' ? (
           <span className="text-[12.5px] text-signal-bad">{item.error ?? '失败'}</span>
-        ) : isReport(item.result) ? (
-          <ReportCell report={item.result} />
+        ) : rep ? (
+          <ReportCell report={rep} />
         ) : isPull(item.result) ? (
           <span
             className={`text-[12.5px] ${
@@ -237,9 +277,20 @@ function TaskRow({
         ) : null}
       </div>
 
-      {isReport(item.result) && item.result.incoming.length > 0 ? (
+      {/*
+        「别拉」的两种判决（作者改写过历史 / 换了仓库）必须把理由写全：
+        这一行是用户决定勾不勾的地方，而这两种情况的表象恰恰是「落后 N 个」——
+        只给一个短标签和 tooltip，等于让他自己去猜为什么不能勾。
+      */}
+      {dontPull ? (
+        <p className="mt-1.5 ml-12 text-[12.5px] text-signal-bad">
+          {VERDICT_LABEL[recommendation.verdict]}：{recommendation.reason}
+        </p>
+      ) : null}
+
+      {rep && rep.incoming.length > 0 ? (
         <ul className="mt-1.5 ml-12 flex flex-col gap-0.5">
-          {item.result.incoming.slice(0, 4).map((c) => (
+          {rep.incoming.slice(0, 4).map((c) => (
             <li key={c.shortHash} className="flex gap-2 text-[12.5px]">
               <span className="w-20 shrink-0 truncate font-mono text-[11.5px] text-ink-3">
                 {c.shortHash}
@@ -247,9 +298,9 @@ function TaskRow({
               <span className="min-w-0 flex-1 truncate text-ink-2">{c.subject}</span>
             </li>
           ))}
-          {item.result.incoming.length > 4 ? (
+          {rep.incoming.length > 4 ? (
             <li className="text-[12px] text-ink-3">
-              还有 {item.result.incoming.length - 4} 个提交
+              还有 {rep.incoming.length - 4} 个提交
             </li>
           ) : null}
         </ul>
@@ -266,6 +317,10 @@ function ReportCell({ report }: { report: UpdateReport }) {
       </span>
       {report.behind ? <Delta n={report.behind} dir="behind" /> : null}
       {report.ahead ? <Delta n={report.ahead} dir="ahead" /> : null}
+      {/* 「推荐」这一格：清单页有这一列、详情页有一段，唯独这个**决定勾不勾**的
+          弹窗原来没有。短标签在这里，理由在 title 里；「别拉」的两种在下面
+          单独用一行写全理由（见 TaskRow）。 */}
+      <RecommendationCell recommendation={report.recommendation} />
       {report.tags.map((t) => (
         <span
           key={t}
@@ -281,15 +336,24 @@ function ReportCell({ report }: { report: UpdateReport }) {
   )
 }
 
-function checkSummary(task: TaskSnapshot): string {
-  const s = task.summary ?? {}
+/**
+ * 检查完的那句话。
+ *
+ * 「可更新」按**判决**分，不按 status：作者 force push 过的仓库 status 同样是 `behind`，
+ * 但它不能拉。原来写「N 个可更新」把这两种混在一起，和勾选框的判据自相矛盾——
+ * 用户问的「有展示推荐与否的 UI 吗」就是这一条。现在分成「可安全快进」与「别拉」。
+ */
+function checkSummary(reports: UpdateReport[], summary: Record<string, number>): string {
   const parts: string[] = []
-  if (s.behind) parts.push(`${s.behind} 个可更新`)
-  if (s.upToDate) parts.push(`${s.upToDate} 个已是最新`)
-  if (s.diverged) parts.push(`${s.diverged} 个已分叉`)
-  if (s.ahead) parts.push(`${s.ahead} 个领先远程`)
-  if (s.skipped) parts.push(`${s.skipped} 个没法检查`)
-  if (s.failed) parts.push(`${s.failed} 个失败`)
+  const pullable = reports.filter(canPullNow).length
+  const dontPull = reports.filter((r) => isDontPull(r.recommendation)).length
+  if (pullable > 0) parts.push(`${pullable} 个可安全快进`)
+  if (dontPull > 0) parts.push(`${dontPull} 个别拉`)
+  if (summary.upToDate) parts.push(`${summary.upToDate} 个已是最新`)
+  if (summary.ahead) parts.push(`${summary.ahead} 个领先远程`)
+  if (summary.diverged) parts.push(`${summary.diverged} 个已分叉`)
+  if (summary.skipped) parts.push(`${summary.skipped} 个没法检查`)
+  if (summary.failed) parts.push(`${summary.failed} 个失败`)
   return parts.length > 0 ? `检查完：${parts.join('、')}` : '检查完了'
 }
 

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
-import { ArrowLeft, Pencil, RefreshCw, X } from 'lucide-react'
+import { ArrowLeft, Pencil, RefreshCw } from 'lucide-react'
 import { isRemoteCheckStatus, deriveStatus, VERDICT_LABEL, type RepoStatus, type UpdateRecommendation, type UpdateStatus } from '@git-nest/core'
 import { Button, ErrorNote, Meta } from '@/components/ui'
 import { formatRelative } from '@/lib/format'
@@ -68,11 +68,11 @@ export function ProjectDetailPage() {
             编辑资料
           </Button>
           <Button
-            onClick={() => setUpdating((v) => !v)}
+            onClick={() => setUpdating(true)}
             title="联网 fetch 远程，再分析落后多少、推不推荐更新"
           >
-            {updating ? <X size={14} aria-hidden /> : <RefreshCw size={14} aria-hidden />}
-            {updating ? '收起更新' : '联网检查更新'}
+            <RefreshCw size={14} aria-hidden />
+            联网检查更新
           </Button>
         </div>
       </div>
@@ -115,9 +115,6 @@ export function ProjectDetailPage() {
         <dd className="font-mono text-[12.5px] text-ink-2">{formatRelative(project.addedAt)}</dd>
       </dl>
 
-      {updating ? (
-        <UpdatePanel ids={[project.id]} onClose={() => setUpdating(false)} />
-      ) : null}
       <StatusPanel
         status={status}
         isFetching={isFetching}
@@ -127,6 +124,9 @@ export function ProjectDetailPage() {
       />
 
       <ProjectFormDialog />
+      {/* 报告是弹窗：插在流里会把「身份信息」和「git 状态」切开（而且那时它还是个
+          与「git 状态」同级的区域） */}
+      {updating ? <UpdatePanel ids={[project.id]} onClose={() => setUpdating(false)} /> : null}
     </div>
   )
 }

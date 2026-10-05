@@ -83,7 +83,7 @@ apps/server/
 
 apps/web/src/
 ├── features/status/           状态列。★ freshness 逻辑在这里（措辞按新鲜度降级）
-├── features/updates/          更新面板：check → 报告 → 勾选 → apply → 汇总
+├── features/updates/          更新报告：宽版弹窗，check → 报告 → 勾选 → apply → 汇总
 ├── features/gitgraph/         （已删）一阶段界面不再有提交图，见下方「待决定的事」
 ├── features/settings/         扫描目录 + 标签 + 参数
 ├── features/projects/         清单页、项目表单、tag 选择器
@@ -98,7 +98,13 @@ apps/web/src/
 2. **git 实时状态不落库**，每次现查（server 侧 3 秒短缓存，`?fresh=true` 绕开）。
    落库的下次打开就是旧数据，反而更危险。
 3. **同仓库串行、跨仓库并发上限 4**；`Scheduler.schedule` 对同一 key 不可重入。
-4. **只有 `behind` 状态能勾选更新**：dirty / diverged / detached / 无上游 勾了也没用。
+4. **勾选判据是判决的 `canPull`，不是 `status === 'behind'`。** 作者 force push 改写历史
+   （`rewritten`）或删库重建（`unrelated`）时，本地 refs 看到的**恰恰就是** `behind`：
+   只看 status 等于邀请用户去点一个「勾了也没用」的仓库，而那两种正是设计文档第 1 节
+   要防的场景。dirty / diverged / detached / 无上游 同样勾不了。
+   **这道闸前端与服务端各有一道**：前端禁勾只是建议，`runApply` 会再读一次
+   `update_checks.detail` 里存的判决，是「别拉」就直接跳过（且不写新的检查行——
+   那一步没读到任何新事实）。
 5. **状态措辞按新鲜度降级**：状态接口不联网，「已是最新」在没依据时是失真的。
    从没查过 → 「没查过远程」且不给颜色；>12h → 「上次看是最新」；纯本地状态不受影响。
 6. **本地绝对路径只存本机 SQLite**，不进任何会被提交的文件。
