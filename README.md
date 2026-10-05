@@ -28,7 +28,7 @@ pnpm dev:web
 ```bash
 pnpm typecheck    # 三个包一起 tsc --noEmit
 pnpm test         # vitest，core / server / web 三个 project
-pnpm build        # 构建 web 产物
+pnpm build        # 构建 web 产物（core / server 以源码形式运行，没有构建产物）
 ```
 
 首次启动会在 `data/git-nest.db` 建库（已 gitignore）。删掉这个文件就回到空清单。
@@ -76,8 +76,14 @@ git-nest/
 3. **同仓库串行、跨仓库并发上限 4**（`Scheduler`），防 `index.lock` 冲突与远程限流
 4. 探测命令逐个执行、单独判退出码：「没有上游」「detached HEAD」是预期内的非零退出
 5. `pull` 只允许 `--ff-only`；脏工作区 / detached / 无上游 / 已分叉一律跳过并说清原因
-6. 失败按 网络 / 认证 / 锁残留 / 路径过长 / 目录丢失 归因，各自给可操作的提示；
-   「远程仓库找不到」单独说，不当成「要认证」——那会把人引向错误的方向
+6. **更新前先比基线**：`pull` 会先 `fetch` 一次（只动 `refs/remotes/*`，不碰工作区），
+   拿「上次见到的上游 SHA」跟新上游比——那个提交不在新历史里就是作者改写过历史，
+   直接拒绝，连 `--ff-only` 都不发。这一步必须在 fetch 之前读基线（不变量 10），
+   所以顺序是「先 fetch → 比对 → 才动工作区」
+7. 失败按 网络 / 认证 / 锁残留 / 路径过长 / 目录丢失 归因，各自给可操作的提示；
+   「远程仓库找不到」单独说，不当成「要认证」——那会把人引向错误的方向。
+   注意「路径太长」和「目录没了」报的是同一句 git 报错
+   （`cannot change to '<dir>': No such file or directory`），判据只能是那个路径本身的长度
 
 状态机覆盖的常态分支（不是异常）：`up_to_date` `behind` `ahead` `diverged` `dirty`
 `no_upstream` `gone` `detached` `no_remote` `no_commits` `missing` `not_a_repo`，
@@ -97,7 +103,11 @@ git-nest/
 的数字保持新鲜——否则新加的仓库在你手动检查前推荐列一直是空的。
 
 **它只更新 `refs/remotes/*`：不 pull、不快进、不碰工作区**，「绝不自动更新」那条不变量
-仍然成立。personal 分类默认跳过（跟设置页那个开关走）。
+仍然成立。personal 分类默认跳过（跟设置页那个开关走）。跨仓库并发走设置里那个上限
+（和手动检查同一个 `Scheduler`），所以仓库多的时候不会一条条串行等。
+
+**`update_checks` 有上限**：每个项目只保留最近 2000 条检查历史（一轮自动 fetch 就是
+每个仓库一行，不设上限这张表会一直长）。清理在每轮批量任务收尾时做。
 
 **每一条 git 命令都记进命令日志**（设置页 →「自动 fetch 与命令日志」→ 看命令日志，
 或 `GET /api/commands`）：时间、发起者（`auto-fetch` / `check` / `status` / `pull`）、
@@ -123,6 +133,11 @@ git-nest/
 **一个诚实的限制**：作者 force push 掉「本地从没读到过」的提交，是**看不出来**的
 ——那种情况本地 HEAD 仍是新历史的祖先，git 自己也会正常快进。要抓住它只能靠基线
 （上次见到的上游 SHA），而基线需要检查过一次才有。这个限制有一条专门的用例钉着。
+
+**更新那一步也拿基线兜了一道**（2026-10 补）：调用方手上那道闸读的是「上次检查的结论」，
+而「检查」到「点更新」之间作者可能刚好 force push。所以 `pullRepo` 自己也收基线：
+先 fetch（只动 `refs/remotes/*`）、比对、确认没被改写才动工作区。行为表见
+`packages/core/test/git/pull.test.ts` 的「基线闸」一组。
 
 结论**只在真正检查过之后才产生**，并随检查结果落库（`update_checks.detail`）；
 清单页显示的是那次结论，不是现算的——现算要先 fetch，而列表是纯本地读。
@@ -169,15 +184,21 @@ POST   /api/updates/apply         对勾选的仓库逐个 pull --ff-only，同�
 
 **超时怎么调**：没有 `GIT_NEST_GIT_TIMEOUT` 这个环境变量——超时是设置表里的
 `gitTimeoutMs`（默认 120s，允许 1s–600s），在设置页改，或 `PATCH /api/settings`。
+数字字段是「失焦或回车才提交」，不是每敲一个字发一次请求。
 代码真正读的环境变量只有这几个：
 
 | 变量 | 用途 | 默认 |
 |---|---|---|
 | `GIT_NEST_DB` | SQLite 文件位置 | `data/git-nest.db` |
 | `GIT_NEST_PORT` | server 端口 | `5174` |
-| `GIT_NEST_HOST` | server 监听地址 | `127.0.0.1` |
-| `GIT_NEST_CORS` | 允许的跨域来源 | `http://localhost:5173` |
+| `GIT_NEST_HOST` | server 监听地址 | `127.0.0.1`（**改成 `0.0.0.0` 等于把接口开放给整个局域网**，没有任何鉴权；启动时会打一条警告日志） |
+| `GIT_NEST_CORS` | 允许的跨域来源（同时是**写接口的 Origin 白名单**） | `http://localhost:5173` |
 | `GIT_NEST_API` | web 开发服务器的 API 代理目标 | `http://127.0.0.1:5174` |
+
+**写接口有一道跨站闸**：`POST/PUT/PATCH/DELETE` 带 `Origin` 且不在白名单里 → 403。
+理由是这类接口都是「简单请求」（无 body、无自定义头）就能打的，CORS 只挡得住读响应、
+挡不住副作用（比如 `POST /api/auto-fetch` 让全部仓库联网）。curl / 脚本不带 `Origin`，
+照常能用。
 
 更新任务为什么是「POST 启动 + GET 订阅」：`EventSource` 只能发 GET，而批量检查可能要联网
 fetch 十几个仓库，不能让一个 HTTP 请求一直挂着。任务状态放内存（半小时 TTL，**只清已结束的任务**），
