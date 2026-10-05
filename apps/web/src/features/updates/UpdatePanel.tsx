@@ -115,7 +115,7 @@ export function UpdatePanel({
               {connected ? null : <Meta label="连接" value="重连中" placeholder />}
             </>
           ) : null}
-          <Button onClick={startCheckNow} disabled={busy}>
+          <Button onClick={startCheckNow} disabled={busy || ids.length === 0}>
             {busy ? '检查中…' : task ? '重新检查' : '开始检查'}
           </Button>
         </>
@@ -136,10 +136,15 @@ export function UpdatePanel({
       {error ? <ErrorNote message={error} /> : null}
 
       {!task ? (
+        /*
+          `ids.length === 0` 只可能是**清单是空的**（列表页没勾选时是「全部筛选结果」，
+          非空清单永远不会是 0）。这里不能再说「先去清单里勾选」——弹窗盖着清单，
+          那句话在弹窗里做不到；「开始检查」同时是禁用的。
+        */
         <p className="text-[13px] text-ink-2">
           {ids.length > 0
             ? `将检查当前筛选出的 ${ids.length} 个项目（personal 分类默认跳过，可在设置里打开）。`
-            : '先在清单里勾选项目，就只检查勾选的那几个。'}
+            : '清单里还没有项目。先在清单页添加一个（或扫描一个目录），再回来检查。'}
         </p>
       ) : task.status === 'failed' ? (
         <ErrorNote message={task.error ?? '任务失败'} />

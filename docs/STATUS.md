@@ -75,14 +75,17 @@ M1–M5 都做完了，功能与设计文档对齐，逐条差异记在设计文
 （git 行为、依赖安装那些坑都写在 `README.md` 的「踩过的坑」里，这里不重复。）
 
 1. **别用 Windows PowerShell 的 `Invoke-RestMethod` 验中文接口**：它会把 body 里的非 ASCII
-   编成 `?`（U+003F），看起来像服务端丢字——我为此报过一次假警报。验中文往返用 node 的
-   `fetch`（或 `curl.exe`），并且拿**码点**比而不是看控制台输出（渲染也会骗人）：
-   `[...s].map(c => c.codePointAt(0))`。
+   编成 `?`（U+003F），看起来像服务端丢字。验中文往返用 node 的 `fetch`（或 `curl.exe`），
+   并且拿**码点**比而不是看控制台输出（渲染也会骗人）：`[...s].map(c => c.codePointAt(0))`。
+   同理，用 pwsh 的 `Get-Content` 读中文源码会显示成 GBK 乱码（文件本身没问题）——
+   看文件内容一律用读文件的工具。这两条我都据此报过假警报。
 2. 用 heredoc 跑 `python - <<'EOF'` 改仓库里的文件**会静默失败**（不报错也没写进去）。
    改文件一律用编辑/写文件的工具。
 3. **删开发库 `data/git-nest.db*` 之前先停掉自己的 dev server**：库被它占着会报
    「being used by another process」。按端口找 PID 停（`netstat -ano | grep :5174`）——
-   注意 IPv6（`[::1]:5174`）上可能还挂着一个残留实例。
+   注意 IPv6（`[::1]:5174`）上可能还挂着一个残留实例。vite 现在配了 `strictPort`：
+   5173 被占会直接报错退出；以前它会悄悄换到 5174（API 的端口）把 API 撞死，
+   而日志里「web ready」和「server EADDRINUSE」并排出现，看起来像一切正常。
 4. 验证 UI 用 `playwright-cli`（`open` / `snapshot` / `find` / `screenshot`）；起服务前先删
    `apps/web/node_modules/.vite`，否则改完组件会白屏（报 "does not provide an export named ..."）。
 5. msw 3.x 里 `server.listen` 的选项叫 `onUnhandledFrame`（2.x 是 `onUnhandledRequest`）。
