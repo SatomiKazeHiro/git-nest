@@ -1,3 +1,19 @@
+/**
+ * Schema。**开发期就这一份，不写历史迁移步骤。**
+ *
+ * 约定：改结构 = 直接改这里 + 删掉本地库重建（`data/git-nest.db*`）。
+ * 理由：眼下只有一个开发者在开发机上跑，随时能重建、随时能测；为「旧库」留
+ * ALTER / DROP 步骤只会攒出一堆没人验证过的分支——`004_project_record` 就是这么
+ * 来的（它删的正是 `001` 里的列，还得专门造一个假的旧库去测它）。
+ * 用户原话：「我不想再看到为了什么什么旧机型考虑的数据迁移问题，明明在开发中，
+ * 随时能测」。等真有别人的数据要保，再谈迁移。
+ *
+ * 所以：**旧库不会被就地升级**。若拿一个旧库启动，第一次查询就会报
+ * `no such column: record` —— 那就删库重建。（清单里的项目重新扫一遍就回来了。）
+ *
+ * `schema_migrations` 那套按 id 增量执行的机制留着：加一张**新**表时仍然追加一条，
+ * 比改 001 省事（但改已有表的结构，仍然是改 001 + 删库）。
+ */
 export const migrations = [
   {
     id: '001_init',
@@ -8,8 +24,7 @@ export const migrations = [
         path        TEXT NOT NULL UNIQUE,          -- 本地绝对路径，仅存本地 DB，不外泄
         remote_url  TEXT,                          -- origin URL，可为空（纯本地项目）
         category    TEXT NOT NULL DEFAULT '',      -- 自由字符串
-        source_url  TEXT,                          -- 来源链接（如 B 站视频）
-        summary     TEXT,                          -- 一句话摘要
+        record      TEXT NOT NULL DEFAULT '',      -- 你自己写的那段（怎么找到的、想法）
         added_at    TEXT NOT NULL,                 -- ISO 时间
         sort_order  INTEGER NOT NULL DEFAULT 0
       );
@@ -26,14 +41,6 @@ export const migrations = [
         PRIMARY KEY (project_id, tag_id)
       );
 
-      CREATE TABLE notes (
-        id         INTEGER PRIMARY KEY,
-        project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        content    TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
       CREATE TABLE update_checks (
         id           INTEGER PRIMARY KEY,
         project_id   INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -46,8 +53,14 @@ export const migrations = [
 
       CREATE INDEX idx_projects_category ON projects(category);
       CREATE INDEX idx_project_tags_tag ON project_tags(tag_id);
-      CREATE INDEX idx_notes_project ON notes(project_id, created_at);
       CREATE INDEX idx_update_checks_project ON update_checks(project_id, checked_at DESC);
+
+      -- path 原有 UNIQUE 是区分大小写的，而 Windows 的文件系统不区分：
+      -- 同一个目录可以用不同大小写写进清单两条（状态查两次、DELETE 只删一条）。
+      -- 这里在库层再兜一道（应用层 pathExists 也按 lower 比较，两边语义一致）。
+      -- 用部分索引：path 为空的记录不参与。
+      CREATE UNIQUE INDEX idx_projects_path_ci
+        ON projects(lower(path)) WHERE path IS NOT NULL;
     `,
   },
   {
@@ -58,32 +71,6 @@ export const migrations = [
         key   TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
-    `,
-  },
-  {
-    id: '003_projects_path_ci_unique',
-    sql: `
-      -- path 原有 UNIQUE 是区分大小写的，而 Windows 的文件系统不区分：
-      -- 同一个目录可以用不同大小写写进清单两条（状态查两次、DELETE 只删一条）。
-      -- 这里在库层再兜一道（应用层 pathExists 也按 lower 比较，两边语义一致）。
-      -- 用部分索引：path 为空的记录不参与。
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_path_ci
-        ON projects(lower(path)) WHERE path IS NOT NULL;
-    `,
-  },
-  {
-    id: '004_project_record',
-    sql: `
-      -- 「记录」：一个文本框吃掉原来的三样（摘要、来源链接、备注列表）。
-      --
-      -- 为什么直接删而不是搬：那三样是照一份手写 Markdown 清单的行内写法建的模
-      -- （一条 bullet 一句话一个链接），不是按人怎么记东西建的模，搬过去也只是
-      -- 把错的形状换个地方。用户明确同意丢掉这部分数据。
-      ALTER TABLE projects ADD COLUMN record TEXT NOT NULL DEFAULT '';
-
-      DROP TABLE IF EXISTS notes;
-      ALTER TABLE projects DROP COLUMN source_url;
-      ALTER TABLE projects DROP COLUMN summary;
     `,
   },
 ] as const

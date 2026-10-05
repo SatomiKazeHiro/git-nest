@@ -106,12 +106,21 @@ export function clearCommandLog(): void {
   commandLog.length = 0
 }
 
+/**
+ * 环形缓冲的裁剪：超出上限就**就地**丢掉最旧的。
+ *
+ * 抽成纯函数是为了能真的测到它：原来这条性质是靠「起 1010 次真实 git 子进程」
+ * 验的，Windows 上单次 100ms 上下，整条测试跑满 120 秒预算（实测 118.9 秒），
+ * 机器一忙就翻红——而它测的只是这几行。现在纯函数零进程，集成那条只留一次调用。
+ */
+export function trimCommandLog<T>(entries: T[], limit: number = COMMAND_LOG_LIMIT): void {
+  if (entries.length > limit) entries.splice(0, entries.length - limit)
+}
+
 function record(entry: CommandLogEntry): void {
   commandLog.push(entry)
   // 环形缓冲：只留最近 N 条，长时间跑的服务也不会无限涨
-  if (commandLog.length > COMMAND_LOG_LIMIT) {
-    commandLog.splice(0, commandLog.length - COMMAND_LOG_LIMIT)
-  }
+  trimCommandLog(commandLog)
 }
 
 export function runGit(args: string[], options: RunOptions): Promise<GitResult> {

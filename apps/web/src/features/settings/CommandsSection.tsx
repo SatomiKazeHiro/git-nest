@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, Eraser, RefreshCw, Terminal } from 'lucide-react'
-import { Button } from '@/components/ui'
-import { api } from '@/lib/api'
+import { Button, ErrorNote } from '@/components/ui'
+import { ApiError, api } from '@/lib/api'
 
 /**
  * 命令日志：**这个软件自己跑了哪些 git 命令**。
@@ -46,7 +46,8 @@ const SHOW = 50
 export function CommandsSection() {
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
-  const { data, isPending } = useQuery({
+  const [banner, setBanner] = useState<string | null>(null)
+  const { data, isPending, error } = useQuery({
     queryKey: commandKeys.all,
     queryFn: () => api.get<CommandsResponse>(`/commands?limit=${SHOW}`),
     // 只在展开时轮询：这是个排查视图，不该在后台一直请求
@@ -57,14 +58,19 @@ export function CommandsSection() {
   const runNow = useMutation({
     mutationFn: () => api.post<{ summary: unknown }>('/auto-fetch', {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: commandKeys.all }),
+    onError: (e) => setBanner(e instanceof ApiError ? e.message : '跑不起来'),
   })
 
   const clear = useMutation({
     mutationFn: () => api.del('/commands'),
     onSuccess: () => qc.invalidateQueries({ queryKey: commandKeys.all }),
+    onError: (e) => setBanner(e instanceof ApiError ? e.message : '清不掉'),
   })
 
   const last = data?.lastAutoFetch
+  // 读不到日志时**不能**显示成「还没有命令记录」——那是在说一件假事：
+  // 空的日志和查不出来的日志，用户要做的事完全不一样（等一轮 vs 去看服务端）
+  const readFailed = error instanceof ApiError ? error.message : error ? '服务端没应答' : null
 
   return (
     <section>
@@ -91,7 +97,9 @@ export function CommandsSection() {
             清空
           </Button>
         ) : null}
-        {last ? (
+        {readFailed ? (
+          <span className="font-mono text-[12px] text-signal-bad">读不到状态</span>
+        ) : last ? (
           <span className="font-mono text-[12px] text-ink-3">
             上轮：{last.checked} 个有结论 / {last.skipped} 跳过 / {last.failed} 失败
           </span>
@@ -100,10 +108,20 @@ export function CommandsSection() {
         )}
       </div>
 
+      {banner ? (
+        <div className="mt-2">
+          <ErrorNote message={banner} />
+        </div>
+      ) : null}
+
       {open ? (
         <div className="mt-3 border border-line-soft bg-panel">
           {isPending ? (
             <p className="px-3 py-2 font-mono text-[12px] text-ink-3">读取中…</p>
+          ) : readFailed ? (
+            <div className="px-3 py-2">
+              <ErrorNote message={`读不到命令日志：${readFailed}`} />
+            </div>
           ) : !data || data.entries.length === 0 ? (
             <p className="px-3 py-2 text-[12.5px] text-ink-3">
               还没有命令记录。跑一轮检查或者等自动 fetch 之后就有了。

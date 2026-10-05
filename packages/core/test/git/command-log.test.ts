@@ -1,5 +1,11 @@
 import { afterAll, describe, expect, it } from 'vitest'
-import { clearCommandLog, probe, recentCommands, runGit } from '../../src/git/runner.ts'
+import {
+  clearCommandLog,
+  probe,
+  recentCommands,
+  runGit,
+  trimCommandLog,
+} from '../../src/git/runner.ts'
 import { readRepoStatus } from '../../src/git/inspect/index.ts'
 import { cleanup, commit, git, initClone, initRepo } from '../helpers/repo.ts'
 
@@ -74,21 +80,46 @@ describe('命令日志', () => {
     expect(mine.every((e) => e.cwd === clone)).toBe(true)
   })
 
-  it('有上限：环形缓冲，不会无限涨', async () => {
+  it('有上限：环形缓冲，不会无限涨', () => {
+    // 直接在裁剪逻辑上验，不再起 1010 次真实 git 子进程。
+    //
+    // 原来那条写法是「循环 1010 次 runGit，再看剩下的」：Windows 上单次 git 约 100ms，
+    // 整条跑满 120 秒的预算（实测 118.9 秒），机器一忙就翻红——而它测的只是
+    // 「超过上限就从最旧的开始丢」这几行。现在零进程，性质照测。
+    const entries = Array.from({ length: 1010 }, (_, i) => ({ args: [`HEAD~${i}`] }))
+
+    trimCommandLog(entries, 1000)
+
+    expect(entries.length).toBe(1000)
+    // 留下的是最新的那批：最后一次还在，最旧的已经挤掉
+    expect(entries.at(-1)!.args).toEqual(['HEAD~1009'])
+    expect(entries.some((e) => e.args.at(-1) === 'HEAD~0')).toBe(false)
+
+    // 没超上限就一条都不动
+    const small = [{ args: ['a'] }, { args: ['b'] }]
+    trimCommandLog(small, 1000)
+    expect(small).toHaveLength(2)
+  })
+
+  it('每记一条都走同一条裁剪路径（一次真实调用即可验到位）', async () => {
     const dir = track(initRepo())
     clearCommandLog()
-    // 1010 次调用超过 1000 的上限，超出部分应从**最旧的**开始丢
-    for (let i = 0; i < 1010; i++) {
-      await runGit(['rev-parse', '--verify', '-q', `HEAD~${i}`], { cwd: dir, label: 'test-ring' })
-    }
-    const log = recentCommands()
-    expect(log.length).toBeLessThanOrEqual(1000)
-    // 留下来的必须是最新的那批：最后一次调用还在（哪怕期间有别人写进来）
-    const mine = onlyLabel('test-ring')
-    expect(mine.at(-1)!.args).toEqual(['rev-parse', '--verify', '-q', 'HEAD~1009'])
-    // 而最旧的那些已经被挤掉了
-    expect(mine.some((e) => e.args.at(-1) === 'HEAD~0')).toBe(false)
-  }, 120_000)
+    // 先把日志灌到上限：往 `recentCommands()` 返回的那个数组里塞（它就是模块内那份状态），
+    // 这样**一次**真实调用就能触发裁剪，不用起一千次子进程
+    const log = recentCommands() as unknown as { label: string; args: string[] }[]
+    for (let i = 0; i < 1000; i++) log.push({ label: 'filler', args: [`filler-${i}`] })
+
+    await runGit(['rev-parse', 'HEAD'], { cwd: dir, label: 'test-ring' })
+
+    // 别的测试文件可能同时在写这份共享日志（vitest 按文件并行），
+    // 所以长度只断言「不超过上限」，自己那条按 label 认
+    expect(recentCommands().length).toBeLessThanOrEqual(1000)
+    expect(onlyLabel('test-ring').at(-1)!.args).toEqual(['rev-parse', 'HEAD'])
+    // 最旧的填充项被挤掉，但不是被清空
+    const fillers = onlyLabel('filler')
+    expect(fillers.some((e) => e.args.at(-1) === 'filler-0')).toBe(false)
+    expect(fillers.length).toBeGreaterThan(0)
+  })
 
   it('clearCommandLog 能清空', async () => {
     const dir = track(initRepo())
