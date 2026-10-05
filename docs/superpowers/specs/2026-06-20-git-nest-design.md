@@ -56,7 +56,7 @@ CREATE TABLE projects (
   path        TEXT NOT NULL UNIQUE,          -- 本地绝对路径，仅存本地 DB，不外泄
   remote_url  TEXT,                          -- origin URL，可为空（纯本地项目）
   category    TEXT NOT NULL DEFAULT '',      -- 自由字符串，初始值见下
-  record      TEXT NOT NULL DEFAULT '',      -- ★ 你自己写的那段（迁移 004 加的，见 §13 第 19 条）
+  record      TEXT NOT NULL DEFAULT '',      -- ★ 你自己写的那段（见 §13 第 19 条）
   added_at    TEXT NOT NULL,                 -- ISO 时间
   sort_order  INTEGER NOT NULL DEFAULT 0
 );
@@ -88,8 +88,9 @@ CREATE TABLE update_checks (
 );
 ```
 
-> **原设计里的 `source_url` / `summary` 两列与 `notes` 表已删**（迁移 004）：三样都被
+> **原设计里的 `source_url` / `summary` 两列与 `notes` 表都不在了**：三样都被
 > `projects.record` 一个字段替代。为什么撤，见第 13 节第 19 条。
+> （开发期不留历史迁移步骤：schema 就是 `migrations.ts` 里那一份，改结构＝改它 + 删本地库重建。）
 
 设计要点：
 
@@ -349,10 +350,14 @@ POST   /api/updates/apply                  { ids: [...] } → 勾选仓库 pull 
       （B 站 → 视频里提到的仓库 → GitHub），而且链接常常只在句子里成立。
     - `notes`：是「流」（N 条、各自时间戳、逐条改删），人要的是「文档」（一处、
       持续改）。界面把它做成了没有宿主的评论框。
-    现在：迁移 004 删掉那两列与 `notes` 表，加 `record TEXT NOT NULL DEFAULT ''`
-    （清空 = 空串，不用 null）；四个 notes 路由、`repos/notes.ts`、`Note` 类型、
-    `notesCount` 全部下线；清单页的搜索 `q` 顺带覆盖记录正文。**旧数据按用户要求
-    直接丢弃，不做拼接搬运。**
+    现在：那两列与 `notes` 表从 schema 里**直接拿掉**，`projects` 只留
+    `record TEXT NOT NULL DEFAULT ''`（清空 = 空串，不用 null）；四个 notes 路由、
+    `repos/notes.ts`、`Note` 类型、`notesCount` 全部下线；清单页的搜索 `q` 顺带覆盖
+    记录正文。**旧数据按用户要求直接丢弃。**
+    这里值得记一笔的是**做法**：第一版写成了一条「迁移 004」（加列 + 删表 + 删列，
+    还专门造一个假的旧库去测它）。用户否了这种做法——「我不想再看到为了什么什么
+    旧机型考虑的数据迁移问题，明明在开发中，随时能测」。于是改成：开发期 schema
+    只有一份，改结构就是改 `001_init` + 删本地库重建（见 STATUS 不变量 14）。
     编辑入口只有「编辑资料」弹窗一个（记录字段就在里面，详情页只读展示、链接可点）；
     原来第一版把记录做成详情页上的文本框 + 「保存记录」，被用户指出「这和顶部的
     编辑资料不有歧义吗」，于是收回弹窗。标签行那个「改标签」快捷入口同理删掉。
