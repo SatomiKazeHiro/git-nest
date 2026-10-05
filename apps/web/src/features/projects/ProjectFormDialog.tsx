@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Check, Plus, X } from 'lucide-react'
 import { createProjectSchema, categorySuggestions } from '@git-nest/core'
 import { ApiError } from '@/lib/api'
@@ -55,11 +55,29 @@ export function ProjectFormDialog() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [banner, setBanner] = useState<string | null>(null)
 
+  /*
+    表单只在**打开的那一刻**灌一次。
+    依赖里**不能**放 `editing` 整个对象当触发条件：它是 query 的 data，每次重新取数
+    都是新引用，于是用户敲了一半的表单会被服务端旧值整体覆盖
+    （详情那条失效一旦修好，重取会变频繁，这个雷会立刻发作）。
+    这里用 `loadedFor` 记住「本轮已经灌给谁了」：同一次打开期间后台刷新不碰输入，
+    关掉再开（或换一个项目）才重新灌。
+  */
+  const loadedFor = useRef<string | null>(null)
   useEffect(() => {
-    if (!formOpen) return
+    if (!formOpen) {
+      loadedFor.current = null
+      return
+    }
+    const target = editingId === null ? 'new' : `edit:${editingId}`
+    if (loadedFor.current === target) return
+    // 要编辑但详情还没读回来：先不灌，等 data 到了这次 effect 会再跑一遍
+    if (editingId !== null && !editing) return
+
+    loadedFor.current = target
     setErrors({})
     setBanner(null)
-    if (editingId && editing) {
+    if (editing) {
       setForm({
         name: editing.name,
         path: editing.path,
@@ -105,8 +123,23 @@ export function ProjectFormDialog() {
         { id: editingId, patch: { ...payload, path: parsed.data.path } },
         {
           onSuccess: () => {
-            if (tagNames.join() !== editing?.tags.map((t) => t.name).join()) {
-              setTags.mutate({ id: editingId, tagNames })
+            const tagsChanged = tagNames.join() !== editing?.tags.map((t) => t.name).join()
+            if (tagsChanged) {
+              // 标签失败**不能**一声不响：项目本体已经存下去了，这里再默默失败
+              // 就是「界面说保存成功、其实标签没存」。所以失败时不关弹窗，报出来。
+              setTags.mutate(
+                { id: editingId, tagNames },
+                {
+                  onSuccess: closeForm,
+                  onError: (e) =>
+                    setBanner(
+                      e instanceof ApiError
+                        ? `资料已保存，但标签没存上：${e.message}`
+                        : '资料已保存，但标签没存上',
+                    ),
+                },
+              )
+              return
             }
             closeForm()
           },
@@ -120,7 +153,21 @@ export function ProjectFormDialog() {
       { ...payload, path: parsed.data.path },
       {
         onSuccess: ({ project }) => {
-          if (tagNames.length > 0) setTags.mutate({ id: project.id, tagNames })
+          if (tagNames.length > 0) {
+            setTags.mutate(
+              { id: project.id, tagNames },
+              {
+                onSuccess: closeForm,
+                onError: (e) =>
+                  setBanner(
+                    e instanceof ApiError
+                      ? `项目已添加，但标签没存上：${e.message}`
+                      : '项目已添加，但标签没存上',
+                  ),
+              },
+            )
+            return
+          }
           closeForm()
         },
         onError: (e) => {
@@ -134,7 +181,7 @@ export function ProjectFormDialog() {
     )
   }
 
-  const busy = create.isPending || update.isPending
+  const busy = create.isPending || update.isPending || setTags.isPending
 
   return (
     <Dialog

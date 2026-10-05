@@ -16,15 +16,10 @@ export function ProjectDetailPage() {
   const projectId = Number(id)
   const openEdit = useUiStore((s) => s.openEdit)
   const [updating, setUpdating] = useState(false)
-  // 点一次「重读本地状态」就把 nonce 加一，绕过服务端短缓存重查一遍
-  const [freshNonce, setFreshNonce] = useState(0)
   const validId = Number.isFinite(projectId) ? projectId : null
   const { data: project, isPending, error } = useProject(validId)
   // 状态提到页面这一层：missing 的提示要出现在页面最上面，不只是状态面板里
-  const { data: status, isFetching } = useProjectStatus(validId, {
-    fresh: freshNonce > 0,
-    nonce: freshNonce,
-  })
+  const { data: status, refresh } = useProjectStatus(validId)
 
   if (error) {
     return (
@@ -117,8 +112,8 @@ export function ProjectDetailPage() {
 
       <StatusPanel
         status={status}
-        isFetching={isFetching}
-        onRefresh={() => setFreshNonce((n) => n + 1)}
+        isFetching={refresh.isPending}
+        onRefresh={() => refresh.mutate()}
         lastCheckAt={project.latestCheck?.checkedAt ?? null}
         lastCheckStatus={project.latestCheck?.status ?? null}
       />
@@ -219,21 +214,32 @@ export function StatusPanel({
   const hasRemoteCheck = Boolean(lastCheckStatus && isRemoteCheckStatus(lastCheckStatus))
   const freshness = hasRemoteCheck ? freshnessOf({ checkedAt: lastCheckAt }) : 'never'
 
-  // 摘要要回答的是「跟远程差多少、该不该拉」，所以**脏标记不当主角**：
-  // `deriveStatus` 的优先级会把 dirty 顶到最前面（那对「最紧急的一件事」是对的），
-  // 但在这里它只是「拉了会不会踩到你」的一个提醒，降级成旁边一句灰字。
-  const verdict = deriveStatus({
-    isRepo: status.isRepo,
-    dirty: status.dirty,
-    detached: status.detached,
-    hasCommits: status.status !== 'no_commits',
-    upstream: status.upstream !== null,
-    ahead: status.ahead,
-    behind: status.behind,
-    upstreamGone: status.upstreamGone,
-    hasRemote: status.remoteUrl !== null,
-    skipDirty: true,
-  })
+  /*
+    **不是仓库时不要重算状态。**
+    `deriveStatus` 的第一条是「不是仓库就返回 not_a_repo」，而 `missing`（目录不在了）
+    与 `error`（读不出来 / 路径过长）在 core 里同样是 `isRepo: false`
+    ——重算会把它们一起变成「不是 git 仓库」，摘要行就这么说了：
+    同屏顶部横幅写着「这个目录不在了」，这里却说「不是 git 仓库」，
+    而 path_too_long 那种更是把一个「读不出来」说成了确定的结论。
+    所以：是仓库才降级 dirty 重算，不是仓库就原样用它自己的状态说话。
+  */
+  const verdict = status.isRepo
+    ? deriveStatus({
+        isRepo: true,
+        dirty: status.dirty,
+        detached: status.detached,
+        hasCommits: status.status !== 'no_commits',
+        upstream: status.upstream !== null,
+        ahead: status.ahead,
+        behind: status.behind,
+        upstreamGone: status.upstreamGone,
+        hasRemote: status.remoteUrl !== null,
+        // 摘要要回答的是「跟远程差多少、该不该拉」，所以**脏标记不当主角**：
+        // `deriveStatus` 的优先级会把 dirty 顶到最前面（那对「最紧急的一件事」是对的），
+        // 但在这里它只是「拉了会不会踩到你」的一个提醒，降级成旁边一句灰字。
+        skipDirty: true,
+      })
+    : status.status
 
   const detailTitle = statusTitle(
     { ...status, status: verdict },

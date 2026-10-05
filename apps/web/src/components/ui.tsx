@@ -83,15 +83,28 @@ export function Dialog({
   children: ReactNode
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
+  /*
+    **Escape 与初始焦点不能挂在 `onClose` 上。**
+    调用方全传内联箭头（`onClose={() => {...}}`），引用每次渲染都变；
+    而更新面板每来一个 SSE 事件就重渲染一次 —— effect 跟着重跑，
+    每跑一次就把焦点抢回面板里第一个可聚焦元素。用户正在勾选复选框，
+    焦点一直被打断，键盘操作（空格勾选）直接失灵。
+    所以：Escape 用 ref 读最新的 onClose；焦点只在挂载时给一次。
+  */
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') closeRef.current()
     }
     document.addEventListener('keydown', onKey)
-    panelRef.current?.querySelector<HTMLElement>('input, textarea, button')?.focus()
     return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [])
+
+  useEffect(() => {
+    panelRef.current?.querySelector<HTMLElement>('input, textarea, button')?.focus()
+  }, [])
 
   return (
     <div

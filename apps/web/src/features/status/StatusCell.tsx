@@ -102,8 +102,15 @@ export function statusTone(status: UpdateStatus): string {
   return TONE[status]
 }
 
+/**
+ * 悬停说明。
+ *
+ * `freshness` 缺省是 `'never'`（**不是** `'fresh'`）：省略参数时应当退到最保守的说法，
+ * 而不是替调用方断言「刚查过」。原来缺省 `'fresh'`，一旦有人忘了传，就会给出
+ * 一个没有任何依据的肯定语气——正是这个仓库最忌讳的那类假话。
+ */
 export function statusTitle(s: RepoStatus, freshness?: Freshness): string {
-  const state = freshness ? freshnessOf(freshness) : 'fresh'
+  const state = freshness ? freshnessOf(freshness) : 'never'
   const base = describe(s)
   if (!REMOTE_CLAIMS.has(s.status)) return base
 

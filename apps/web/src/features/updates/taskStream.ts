@@ -80,21 +80,41 @@ export function useUpdateTask(onFinished?: () => void, options: UpdateTaskOption
   const [error, setError] = useState<string | null>(null)
   const [connected, setConnected] = useState(false)
   const sourceRef = useRef<EventSource | null>(null)
+  /*
+    重连/看门狗定时器的句柄放在 ref 里，**不在 `openStream` 的闭包里**。
+    原来它们只活在闭包内，只有 `giveUp` / `closed` 事件会清：
+    - 流断 → `onerror` 排了一个 500ms 后的重连 →
+    - 用户点 × 或「重新检查」（`reset()` 只关 EventSource）→
+    - 定时器到点，为**旧任务**新建一条 EventSource 并覆盖 `sourceRef.current`，
+      把新任务的连接顶掉；面板已卸载的话就是一条泄漏的连接 + 对已卸载组件 setState。
+  */
+  const timersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
+
   const finishedRef = useRef(onFinished)
   finishedRef.current = onFinished
 
-  /** 关掉**指定的**那条流；只有它还是当前流时才清 ref。 */
-  const closeSource = useCallback((source: EventSource | null) => {
-    source?.close()
-    if (sourceRef.current === source) {
-      sourceRef.current = null
-      setConnected(false)
-    }
+  const clearTimers = useCallback(() => {
+    for (const t of timersRef.current) clearTimeout(t)
+    timersRef.current.clear()
   }, [])
 
+  /** 关掉**指定的**那条流；只有它还是当前流时才清 ref。 */
+  const closeSource = useCallback(
+    (source: EventSource | null) => {
+      source?.close()
+      if (sourceRef.current === source) {
+        sourceRef.current = null
+        setConnected(false)
+      }
+    },
+    [],
+  )
+
   const close = useCallback(() => {
+    // 关流的同时把定时器一起清掉：不然「关掉面板」之后它还会自己接回来
+    clearTimers()
     closeSource(sourceRef.current)
-  }, [closeSource])
+  }, [clearTimers, closeSource])
 
   useEffect(() => close, [close])
 
@@ -125,11 +145,17 @@ export function useUpdateTask(onFinished?: () => void, options: UpdateTaskOption
       let silenceTimer: ReturnType<typeof setTimeout> | null = null
       let retryTimer: ReturnType<typeof setTimeout> | null = null
 
-      const clearTimers = () => {
-        if (silenceTimer) clearTimeout(silenceTimer)
-        if (retryTimer) clearTimeout(retryTimer)
-        silenceTimer = null
-        retryTimer = null
+      /*
+        定时器**注册进 ref**（而不是只留在闭包里）：`close()` 要能一次清干净。
+        另外每个定时器回调都会先确认「自己还属于当前这一轮」——`generation` 变了
+        就什么都不做，免得旧任务的定时器把新任务连接顶掉。
+      */
+      const track = (t: ReturnType<typeof setTimeout>) => {
+        timersRef.current.add(t)
+        return t
+      }
+      const untrack = (t: ReturnType<typeof setTimeout> | null) => {
+        if (t) timersRef.current.delete(t)
       }
 
       /** 收尾：复位 busy、报错、并确保不再重连 */
@@ -144,12 +170,18 @@ export function useUpdateTask(onFinished?: () => void, options: UpdateTaskOption
       }
 
       const armSilenceWatchdog = (source: EventSource) => {
-        if (silenceTimer) clearTimeout(silenceTimer)
-        silenceTimer = setTimeout(() => {
-          // 这么久没有任何事件 = 流死了（服务端不会静默这么久）
-          closeSource(source)
-          giveUp('进度流断了，没能恢复。可以点「重新检查」再试一次。', true)
-        }, silenceTimeoutMs)
+        const previous = silenceTimer
+        untrack(previous)
+        if (previous) clearTimeout(previous)
+        silenceTimer = track(
+          setTimeout(() => {
+            untrack(silenceTimer)
+            silenceTimer = null
+            // 这么久没有任何事件 = 流死了（服务端不会静默这么久）
+            closeSource(source)
+            giveUp('进度流断了，没能恢复。可以点「重新检查」再试一次。', true)
+          }, silenceTimeoutMs),
+        )
       }
 
       const connect = () => {
@@ -172,7 +204,15 @@ export function useUpdateTask(onFinished?: () => void, options: UpdateTaskOption
             return
           }
           retries += 1
-          retryTimer = setTimeout(connect, retryDelayMs)
+          retryTimer = track(
+            setTimeout(() => {
+              untrack(retryTimer)
+              retryTimer = null
+              // 这一轮可能已经被 close()/reset() 结束了（定时器已被清，这是双保险）
+              if (finished) return
+              connect()
+            }, retryDelayMs),
+          )
         }
 
         source.onmessage = (raw) => {
@@ -210,7 +250,7 @@ export function useUpdateTask(onFinished?: () => void, options: UpdateTaskOption
 
       connect()
     },
-    [closeSource],
+    [clearTimers, closeSource],
   )
 
   return {

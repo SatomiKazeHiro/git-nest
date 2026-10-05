@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ErrorNote, Field, Input } from '@/components/ui'
 import { ApiError } from '@/lib/api'
 import { useSaveSettings, useSettings } from '@/features/settings/queries'
@@ -78,46 +78,109 @@ function GitSection() {
         />
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Field label="git 超时" hint="毫秒">
-            {(id) => (
-              <Input
-                id={id}
-                type="number"
-                min={1000}
-                max={600000}
-                step={1000}
-                value={settings.gitTimeoutMs}
-                onChange={(e) => update({ gitTimeoutMs: Number(e.target.value) })}
-              />
-            )}
-          </Field>
-          <Field label="并发上限" hint="同时跑几个仓库">
-            {(id) => (
-              <Input
-                id={id}
-                type="number"
-                min={1}
-                max={16}
-                value={settings.concurrency}
-                onChange={(e) => update({ concurrency: Number(e.target.value) })}
-              />
-            )}
-          </Field>
-          <Field label="确认阈值" hint="超过几个先确认">
-            {(id) => (
-              <Input
-                id={id}
-                type="number"
-                min={1}
-                max={200}
-                value={settings.confirmThreshold}
-                onChange={(e) => update({ confirmThreshold: Number(e.target.value) })}
-              />
-            )}
-          </Field>
+          <NumberField
+            label="git 超时"
+            hint="毫秒，1000–600000"
+            min={1_000}
+            max={600_000}
+            value={settings.gitTimeoutMs}
+            onCommit={(v) => update({ gitTimeoutMs: v })}
+          />
+          <NumberField
+            label="并发上限"
+            hint="同时跑几个仓库，1–16"
+            min={1}
+            max={16}
+            value={settings.concurrency}
+            onCommit={(v) => update({ concurrency: v })}
+          />
+          <NumberField
+            label="确认阈值"
+            hint="超过几个先确认，1–200"
+            min={1}
+            max={200}
+            value={settings.confirmThreshold}
+            onCommit={(v) => update({ confirmThreshold: v })}
+          />
         </div>
       </div>
     </section>
+  )
+}
+
+/**
+ * 数字设置项：**本地草稿 + 失焦/回车才提交**。
+ *
+ * 原来是「每次按键就 PATCH」+ 显示值直接来自服务端回值，两个后果都很糟：
+ * 1. 中间值必然越界（想从 120000 改成 60000，清空后第一个字符是 `6`）→ 服务端 422
+ *    → mutation 状态一变就重渲染 → 受控值被写回旧值 → **用户敲的字符被吞掉**，
+ *    那个输入框根本没法正常改；
+ * 2. 打一个字发一次请求，还把「正在输入」的语义交给了服务端。
+ * 现在输入期间只动本地 state，按回车或失焦时才发一次；越界在前端就拦下来并说明。
+ */
+function NumberField({
+  label,
+  hint,
+  min,
+  max,
+  value,
+  onCommit,
+}: {
+  label: string
+  hint: string
+  min: number
+  max: number
+  value: number
+  onCommit: (v: number) => void
+}) {
+  const [draft, setDraft] = useState(String(value))
+  const [localError, setLocalError] = useState<string | null>(null)
+  // 服务端的值变了（别处改的、或保存成功后回读）就同步回草稿
+  useEffect(() => {
+    setDraft(String(value))
+    setLocalError(null)
+  }, [value])
+
+  const commit = () => {
+    if (draft.trim() === '') {
+      setDraft(String(value))
+      setLocalError(null)
+      return
+    }
+    const n = Number(draft)
+    if (!Number.isFinite(n)) {
+      setLocalError('要填一个数字')
+      return
+    }
+    const rounded = Math.round(n)
+    if (rounded < min || rounded > max) {
+      setLocalError(`要在 ${min} – ${max} 之间`)
+      return
+    }
+    setLocalError(null)
+    if (rounded !== value) onCommit(rounded)
+  }
+
+  return (
+    <Field label={label} hint={hint} error={localError ?? undefined}>
+      {(id) => (
+        <Input
+          id={id}
+          type="number"
+          min={min}
+          max={max}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              commit()
+            }
+          }}
+        />
+      )}
+    </Field>
   )
 }
 

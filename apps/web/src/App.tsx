@@ -9,7 +9,14 @@ import { EmptyState } from '@/components/ui'
 
 export function App() {
   return (
-    <AppShell sidebar={<Sidebar />}>
+    <AppShell
+      sidebar={
+        // 侧栏也在边界里面：它自己崩掉（比如 categories 拿到意外数据）同样不该白屏
+        <ErrorBoundary>
+          <Sidebar />
+        </ErrorBoundary>
+      }
+    >
       {/* 兜住页面渲染期的异常：只炸内容区，外壳（顶栏 / 侧栏）还能用，
           所以用户仍然点得回清单，而不是白屏。 */}
       <ErrorBoundary>

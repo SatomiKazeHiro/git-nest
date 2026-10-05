@@ -26,9 +26,3 @@ export function shortenPath(p: string, keep = 3): string {
   if (parts.length <= keep + 1) return p
   return [parts[0], '…', ...parts.slice(-keep)].join('/')
 }
-
-export function hostOf(remoteUrl: string | null): string | null {
-  if (!remoteUrl) return null
-  const m = /^(?:https?:\/\/|git@)([^/:]+)/.exec(remoteUrl)
-  return m?.[1] ?? null
-}

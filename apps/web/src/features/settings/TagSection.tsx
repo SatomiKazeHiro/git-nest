@@ -62,7 +62,12 @@ export function TagSection() {
               <span className="font-mono text-[13px] text-ink">{t.name}</span>
               <span className="font-mono text-[12px] text-ink-3">{t.projectCount} 个项目</span>
               <button
-                onClick={() => remove.mutate(t.id)}
+                onClick={() =>
+                  remove.mutate(t.id, {
+                    // 静默失败 = 用户以为删掉了，下次刷新它又回来了
+                    onError: (e) => setBanner(e instanceof ApiError ? e.message : '删除失败'),
+                  })
+                }
                 className="ml-auto text-[12px] text-ink-2 hover:text-signal-bad"
               >
                 删除

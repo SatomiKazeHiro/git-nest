@@ -15,6 +15,8 @@ export const queryKeys = {
   projects: (params: { category?: string | null; tag?: string | null; q?: string }) =>
     ['projects', params] as const,
   project: (id: number) => ['project', id] as const,
+  /** 所有项目详情的**前缀**：失效时用它，不要用 `project(0)`（见 useInvalidate） */
+  projectAll: ['project'] as const,
   tags: ['tags'] as const,
   status: ['status'] as const,
   settings: ['settings'] as const,
@@ -58,12 +60,18 @@ export function useTags() {
  * 这里是**唯一**的失效入口：状态列、检查时间、设置都可能被一次写入影响
  * （比如删项目会清状态缓存、导入会改常用目录），所以一起失效最省心，
  * 也免得某处漏掉一个 key 导致界面停在旧数据上。
+ *
+ * ⚠️ 详情那一行必须是**前缀** `['project']`，不能写成 `queryKeys.project(0)`：
+ * TanStack 的失效是前缀匹配，`['project', 0]` 只匹配 id 恰好为 0 的那条
+ * （那是「没选中任何项目」时 `enabled: false` 的占位键），
+ * 于是**任何写操作都失效不掉 `['project', id]`**——改完资料详情页还是旧名字、
+ * 旧分类、旧记录，用户会以为没保存。这条踩过一次，注释钉在这里。
  */
 export function useInvalidate() {
   const qc = useQueryClient()
   return () => {
     void qc.invalidateQueries({ queryKey: queryKeys.projects({}) })
-    void qc.invalidateQueries({ queryKey: queryKeys.project(0) })
+    void qc.invalidateQueries({ queryKey: queryKeys.projectAll })
     void qc.invalidateQueries({ queryKey: queryKeys.tags })
     void qc.invalidateQueries({ queryKey: queryKeys.status })
     void qc.invalidateQueries({ queryKey: queryKeys.settings })

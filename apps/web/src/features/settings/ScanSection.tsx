@@ -4,7 +4,7 @@ import { Link, useLocation } from 'react-router'
 import { Check, Download, Eraser, FolderSearch, Loader, Trash2, X } from 'lucide-react'
 import type { ScannedRepo } from '@git-nest/core'
 import { ApiError, api } from '@/lib/api'
-import { Button, ErrorNote, Field, Input } from '@/components/ui'
+import { Button, Dialog, ErrorNote, Field, Input } from '@/components/ui'
 import { useSaveSettings, useSettings } from './queries'
 import { useRemoveProject, useInvalidate } from '@/features/projects/queries'
 
@@ -59,6 +59,7 @@ export function ScanSection() {
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [result, setResult] = useState<ScanResponse | null>(null)
   const [banner, setBanner] = useState<string | null>(null)
+  const [confirmingImport, setConfirmingImport] = useState(false)
   const [removing, setRemoving] = useState<ScannedRepoWithProject | null>(null)
   const removeProject = useRemoveProject()
 
@@ -74,7 +75,10 @@ export function ScanSection() {
 
   const forgetDir = (target: string) => {
     const next = (settings?.scanDirs ?? []).filter((d) => d !== target)
-    saveSettings.mutate({ scanDirs: next })
+    saveSettings.mutate(
+      { scanDirs: next },
+      { onError: (e) => setBanner(e instanceof ApiError ? e.message : '取消失败') },
+    )
   }
 
   const runScan = (target: string, remember = false) => {
@@ -88,6 +92,7 @@ export function ScanSection() {
           setBanner(null)
           // 新扫出来、还没在清单里的默认不勾：导入这种事宁少勿多
           setPicked(new Set())
+          setConfirmingImport(false)
         },
         onError: (e) => {
           setResult(null)
@@ -107,11 +112,18 @@ export function ScanSection() {
 
   const untracked = result?.found.filter((r) => !r.alreadyTracked) ?? []
   const tracked = result?.found.filter((r) => r.alreadyTracked) ?? []
-  // 超过阈值要先确认范围（沿用 github-kb 的惯例）
-  const needsConfirm =
-    picked.size > (settings?.confirmThreshold ?? 20) && importRepos.isIdle
+  // 超过阈值要先确认范围（沿用 github-kb 的惯例）。
+  // **判据是本地 state，不能用 `importRepos.isIdle`**：mutation 一旦跑过一次
+  // 就再也不是 idle（success / error 都算），于是「导入过一批之后，确认闸永久失效」
+  // ——再勾 30 个仓库会直接导入。参照 UpdatePanel 的 confirming 写法。
+  const overThreshold = picked.size > (settings?.confirmThreshold ?? 20)
 
   const doImport = () => {
+    if (overThreshold && !confirmingImport) {
+      setConfirmingImport(true)
+      return
+    }
+    setConfirmingImport(false)
     importRepos.mutate(
       { paths: [...picked], category: '' },
       {
@@ -263,16 +275,16 @@ export function ScanSection() {
 
           {picked.size > 0 ? (
             <footer className="flex flex-wrap items-center gap-2 border-t border-line-soft px-3 py-2">
-              {needsConfirm ? (
+              {confirmingImport && overThreshold ? (
                 <>
                   <span className="text-[12.5px] text-signal-ahead">
-                    要一次加入 {picked.size} 个，确认吗？
+                    要一次加入 {picked.size} 个（超过确认阈值 {settings?.confirmThreshold ?? 20}），确认吗？
                   </span>
                   <Button variant="primary" onClick={doImport} disabled={importRepos.isPending}>
                     <Check size={14} aria-hidden />
                     确认加入这 {picked.size} 个
                   </Button>
-                  <Button onClick={() => setPicked(new Set())}>再想想</Button>
+                  <Button onClick={() => setConfirmingImport(false)}>再想想</Button>
                 </>
               ) : (
                 <>
@@ -284,7 +296,12 @@ export function ScanSection() {
                     <Download size={14} aria-hidden />
                     添加选中的 {picked.size} 个
                   </Button>
-                  <Button onClick={() => setPicked(new Set())}>
+                  <Button
+                    onClick={() => {
+                      setPicked(new Set())
+                      setConfirmingImport(false)
+                    }}
+                  >
                     <Eraser size={14} aria-hidden />
                     清空勾选
                   </Button>
@@ -329,31 +346,23 @@ function RemoveDialog({
   onClose: () => void
   onConfirm: () => void
 }) {
+  // 用统一的 Dialog：自制的那版没有 Escape、没有初始焦点、也不圈焦点
+  //（键盘用户 Tab 一下就跑到底下的清单里去了）
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 p-6"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="w-full max-w-md rounded-[4px] border border-line bg-panel px-5 py-4 shadow-[0_8px_32px_rgba(19,24,29,0.14)]"
-      >
-        <h2 className="text-[15px] font-semibold text-ink">把 {repo.name} 移出清单？</h2>
-        <p className="mt-1.5 text-[13px] text-ink-2">
-          只删掉清单里这一条。磁盘上的{' '}
-          <span className="font-mono text-[12px]">{repo.dir}</span> 和它的 git 历史都不动，
-          你写的那段记录与标签关联会一起清掉。
-        </p>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button onClick={onClose}>留下</Button>
-          <Button variant="danger" disabled={busy} onClick={onConfirm}>
-            <Trash2 size={14} aria-hidden />
-            移出清单
-          </Button>
-        </div>
+    <Dialog title={`把 ${repo.name} 移出清单？`} onClose={onClose}>
+      <p className="text-[13px] text-ink-2">
+        只删掉清单里这一条。磁盘上的{' '}
+        <span className="font-mono text-[12px]">{repo.dir}</span> 和它的 git 历史都不动，
+        你写的那段记录与标签关联会一起清掉。
+      </p>
+      <div className="mt-4 flex justify-end gap-2">
+        <Button onClick={onClose}>留下</Button>
+        <Button variant="danger" disabled={busy} onClick={onConfirm}>
+          <Trash2 size={14} aria-hidden />
+          移出清单
+        </Button>
       </div>
-    </div>
+    </Dialog>
   )
 }
 
