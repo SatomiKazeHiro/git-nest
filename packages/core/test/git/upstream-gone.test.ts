@@ -67,4 +67,27 @@ describe('上游分支被远程删掉', () => {
     expect(status.status).toBe('up_to_date')
     expect(status.upstreamGone).toBe(false)
   })
+
+  /*
+    上游指向**本机另一个分支**时（`git branch -u main feature` 写进 config 的是
+    `remote = .` + `merge = refs/heads/main`），原实现去解析 `refs/remotes/./main`
+    ——必然失败，于是报 `gone`「上游分支已经被远程删掉了」，而 gone 给用户的建议是
+    「重新 push -u，不用了就删掉本地分支」。**假警报引向真破坏**：
+    用户照做就删掉了自己的分支，而这仓库压根没有远程上游这回事。
+  */
+  it('上游是本机分支（remote = .）不是 gone', async () => {
+    const dir = track(initRepo('主干'))
+    git(dir, 'checkout', '-q', '-b', 'feature')
+    commit(dir, '支线提交', 'side.txt')
+    git(dir, 'branch', '-u', 'main', 'feature')
+
+    const status = await getRepoStatus(dir)
+
+    expect(status.upstreamGone).toBe(false)
+    expect(status.status).not.toBe('gone')
+    // 上游是 main：本地分支就是领先它的那个（feature 比 main 多一个提交）
+    expect(status.upstream).toBe('main')
+    expect(status.ahead).toBe(1)
+    expect(status.behind).toBe(0)
+  })
 })

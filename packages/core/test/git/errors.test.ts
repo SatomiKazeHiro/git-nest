@@ -42,6 +42,53 @@ describe('classifyError', () => {
     expect(err.message).toContain('something odd happened')
     expect(err.raw).toContain('something odd happened')
   })
+
+  /*
+    下面两条钉的是同一句话的两种含义。git 对「路径太长」和「目录没了」报的都是
+    `cannot change to '<dir>': No such file or directory`，只看文案分不出来，
+    判据只能是引号里那个路径有多长。判错方向的代价不对称：
+    说成「路径太长」会让用户去挪目录（白折腾），说成「目录不在了」他才知道要重新指路。
+  */
+  it('目录被移走/删掉（路径不长）→ missing，并告诉他怎么重新指路', () => {
+    const err = classifyError({
+      ...base,
+      code: 128,
+      stderr: "fatal: cannot change to 'D:/Git/experiments/gone-repo': No such file or directory",
+    })
+    expect(err.kind).toBe('missing')
+    expect(err.message).toContain('目录不在了')
+    expect(err.message).toContain('编辑资料')
+  })
+
+  it('同一句话但路径长到 git 进不去 → path_too_long', () => {
+    const long = `D:/${'x'.repeat(250)}`
+    const err = classifyError({
+      ...base,
+      code: 128,
+      stderr: `fatal: cannot change to '${long}': No such file or directory`,
+    })
+    expect(err.kind).toBe('path_too_long')
+  })
+
+  it('stderr 里 URL 内嵌的凭证会被抹掉（它会落进 update_checks.detail）', () => {
+    const err = classifyError({
+      ...base,
+      stderr:
+        "fatal: unable to access 'https://someone:ghp_supersecrettoken@example.invalid/x.git/': The requested URL returned error: 401",
+    })
+    expect(err.raw).not.toContain('ghp_supersecrettoken')
+    expect(err.message).not.toContain('ghp_supersecrettoken')
+    expect(err.raw).toContain('https://***@example.invalid/x.git/')
+    expect(err.kind).toBe('auth')
+  })
+
+  it('只有用户名的 URL（ssh / git@）原样保留——排查时要看得出访问的是谁', () => {
+    const err = classifyError({
+      ...base,
+      stderr: "fatal: unable to access 'ssh://git@example.invalid/x.git/': Could not resolve host",
+    })
+    expect(err.raw).toContain('ssh://git@example.invalid/x.git/')
+  })
 })
 
 describe('deriveStatus 优先级', () => {

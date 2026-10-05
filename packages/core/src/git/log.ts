@@ -5,8 +5,11 @@ import { readHasCommonAncestor, readIsAncestor } from './inspect/via-cli.ts'
 import type { GitLogEntry, UpdateReport, UpdateReportEntry, UpdateStatus } from './types.ts'
 
 /**
- * 提交图数据。字段用 0x1F（单元分隔）隔开、记录用 0x1E（记录分隔），
- * 这样 message 里出现任何字符都不会串行。
+ * 提交图数据。字段用 0x1F（单元分隔）隔开、记录用 0x1E（记录分隔）。
+ *
+ * **这两个字节并不是「不可能出现在提交信息里」**：git 只禁 NUL，subject 里真的
+ * 可以有 0x1E/0x1F。所以解析那边必须自己把关——`parseGitLog` 会丢掉 hash 不是
+ * 40 位十六进制的残片（见那里的注释）。别把「分隔符不会冲突」当成前提。
  *
  * 字段顺序与 `parseGitLog` 的解析一一对应，改动时两边一起改。
  * `%cI` 是 committer date、`%aI` 是 author date：提交图组件两个都要
@@ -44,6 +47,14 @@ export interface LogOptions extends Partial<RunOptions> {
    * 由调用方从 `update_checks` 历史里读出来传进来——core 不知道数据库。
    */
   lastUpstreamSha?: string | null
+  /**
+   * 任务**真正开始**（拿到并发许可）时回调一次。
+   *
+   * 给「逐仓库进度」用：`schedule` 会把超出并发上限的调用排队，而调用方是
+   * 一次性把 200 个仓库都交出去的——没有这个钩子的话，调用方只能在交出去的那一刻
+   * 就把 200 行都标成「进行中」，界面上明明只有 4 个在跑。
+   */
+  onStart?: () => void
 }
 
 /** 解析 `git log --pretty` 的输出，喂给泳道图组件。 */
@@ -63,7 +74,14 @@ export function parseGitLog(raw: string, branch = 'HEAD'): GitLogEntry[] {
       subject,
       refs,
     ] = line.split(FIELD)
-    if (!hash) continue
+    /*
+      必须是 40 位十六进制才是真提交。
+      提交信息里出现 0x1E（真的允许）时，一条记录会被切成两段，
+      第二段仍带着 `%h%x1f%s%x1f...` 的形状——只判「hash 非空」就会把
+      文本残片当成提交混进图里（hash 字段可能是半截 sha，也可能是别的东西）。
+      形状校验比任何转义技巧都可靠。
+    */
+    if (!hash || !/^[0-9a-f]{40}$/i.test(hash)) continue
     const date = committerDate ?? ''
     entries.push({
       hash,
@@ -90,15 +108,29 @@ export function parseGitLog(raw: string, branch = 'HEAD'): GitLogEntry[] {
 export async function getLog(path: string, options: LogOptions = {}): Promise<GitLogEntry[]> {
   const scheduler = options.scheduler ?? defaultScheduler
   return scheduler.schedule(path, async () => {
+    options.onStart?.()
     const branch = options.branch ?? 'HEAD'
     const args = ['log', branch, '-n', String(options.maxCount ?? 200)]
     args.push('--date=iso-strict', PRETTY)
     const result = await probe(args, { cwd: path, timeoutMs: options.timeoutMs })
-    if (!result.ok) {
-      // 空仓库 / 不是仓库：给空列表，让 UI 显示「还没有提交」而不是报错
-      return []
-    }
-    return parseGitLog(result.stdout, branch)
+    if (result.ok) return parseGitLog(result.stdout, branch)
+
+    /*
+      「读不到」有两种，必须分开：**空仓库 / 不是仓库**该给空列表（UI 显示
+      「还没有提交」），而超时、index.lock、对象损坏、分支不存在这些是**失败**。
+      原来一律 `return []`：坏仓库在界面上长得和空仓库一模一样，
+      用户看到的是「还没有提交」——和「假绿」同一性质的假话。
+
+      判据用 HEAD 解不解得出来：解得出来说明有提交，那 log 失败就是真失败。
+    */
+    const head = await probe(['rev-parse', '--verify', '-q', 'HEAD'], {
+      cwd: path,
+      timeoutMs: options.timeoutMs,
+    })
+    if (!head.ok) return []
+
+    const error = toGitError(result.result, `读不到 ${branch} 的提交记录`)
+    throw new Error(error.message)
   })
 }
 
@@ -112,6 +144,7 @@ export async function getLog(path: string, options: LogOptions = {}): Promise<Gi
 export async function analyzeUpdates(path: string, options: LogOptions = {}): Promise<UpdateReport> {
   const scheduler = options.scheduler ?? defaultScheduler
   return scheduler.schedule(path, async () => {
+    options.onStart?.()
     const cwd = { cwd: path, timeoutMs: options.timeoutMs, label: options.label ?? 'check' }
 
     // 有没有 origin？没有就别去 fetch —— git 会报一堆看着像网络问题的错。

@@ -1,6 +1,7 @@
 import { probe, runGit, toGitError, type RunOptions } from './runner.ts'
 import { defaultScheduler, type Scheduler } from './scheduler.ts'
 import { readWorktree } from './inspect/via-cli.ts'
+import { VERDICT_REASON } from '../types.ts'
 import type { PullOutcome, PullResult, UpdateStatus } from './types.ts'
 
 export type { PullOutcome, PullResult }
@@ -9,6 +10,24 @@ export interface PullOptions extends Partial<RunOptions> {
   scheduler?: Scheduler
   /** 覆盖默认前置检查（测试用） */
   skipPreflight?: boolean
+  /**
+   * 上次见到的上游 SHA（来自 `update_checks`，由 server 侧传进来——core 不认识数据库）。
+   *
+   * 给了它，`pullRepo` 就会在动手之前**先 fetch 一次、再拿基线和新的上游比**：
+   * 那个提交不再在新上游历史里 ⇒ 作者改写过历史（force push / 回退 / 换仓库），
+   * 直接拒绝，连 `--ff-only` 都不发。
+   *
+   * 为什么必须在这里做，而不是只在调用方做：调用方那道闸读的是**上次检查的结论**，
+   * 而「上次检查」到「这次点更新」之间，作者完全可能刚好 force push。
+   * 那种情况本地 HEAD 仍是新历史的祖先（`recommend.ts` 文件头点名的限制），
+   * `pull --ff-only` 会毫无怨言地快进——静默更新到一个被改写的仓库。
+   *
+   * **这一条只是兜底**：基线优先取「本机现在指着的上游 ref」（fetch 之前读，
+   * 不变量 10），只有它读不出来时才用这里传进来的值。理由是 SHA 属于**某一条**
+   * 上游 ref，而 `update_checks` 里不记那是哪一条——在 A 分支上记录的值拿去问
+   * B 分支，答案必然是「不是祖先」，就成了假警报（详见 `detectRewrittenHistory`）。
+   */
+  lastUpstreamSha?: string | null
 }
 
 const SKIP = (reason: string, status: UpdateStatus): PullResult => ({
@@ -38,9 +57,19 @@ export async function pullRepo(path: string, options: PullOptions = {}): Promise
       if (pre) return pre
     }
 
+    // 「作者改写过历史」这道闸：fetch 之前先记下本机的上游，fetch 之后拿它比。
+    // 顺序不能反——pull 内部的 fetch 会把 @{u} 就地更新成新历史，那时再比就永远「还在」了
+    //（不变量 10：读基线必须在 fetch 之前）。
+    const rewritten = await detectRewrittenHistory(cwd, options.lastUpstreamSha ?? null)
+    if (rewritten) return SKIP(rewritten, 'diverged')
+
     // 不在这里用 ahead/behind 提前判「没东西可拉」：那个数字来自上次 fetch，是旧的。
     // 直接让 `pull --ff-only` 去 fetch + 快进，它才是权威。
-    const result = await runGit(['pull', '--ff-only'], { ...cwd, env: { GIT_PROGRESS: '0' } })
+    //
+    // 注意这里**没有** `GIT_PROGRESS`：git 没有这个环境变量（它只认
+    // GIT_PROGRESS_DELAY / `--progress`），写了也是死配置。进度条本来就不会出现
+    // ——stdout 是管道，不是 tty，git 自己会闭嘴。
+    const result = await runGit(['pull', '--ff-only'], cwd)
 
     if (result.code !== 0) {
       // pull 失败时它已经 fetch 过了，refs 是新的——这时候再判分叉才准
@@ -84,6 +113,41 @@ async function countPulled(cwd: RunOptions): Promise<number> {
   if (!result.ok) return 0
   const n = Number(result.stdout.trim())
   return Number.isFinite(n) ? n : 0
+}
+
+/**
+ * 基线还在不在新上游里？返回非 null = **别拉**（附理由）。
+ *
+ * 基线优先取**本机现在指着的上游 ref**（fetch 之前读）：它是同一条 ref 的上一个值，
+ * 天然不会串到别的分支上。传进来的 `explicitBaseline`（数据库里记的那个 SHA）
+ * 只在本地读不出来时兜底——SHA 本身不带「属于哪条 ref」的信息，拿 A 分支的值去问
+ * B 分支，答案必然是「不是祖先」，那就是假警报，而假警报比「判不出来」坏得多。
+ *
+ * 三步，每一步失败都退回「不下结论」（返回 null，让 pull 照常去跑并报真实原因）：
+ * 1. `fetch --prune origin` —— 只更新 `refs/remotes/*`，不碰工作区（不变量 1）。
+ *    失败（断网 / 认证 / 没有 origin）时不拦：那不是「作者改写了历史」，
+ *    真正的失败原因交给 pull 自己报更准。
+ * 2. `merge-base --is-ancestor <基线> @{u}` —— 退出码 0 = 还在（正常快进），
+ *    1 = **确定不在了**（改写过），其它 = 出错，不敢下结论。
+ * 3. 没有上游（`@{u}` 解析不出来）时也没有可比的对象，直接放行。
+ */
+async function detectRewrittenHistory(
+  cwd: RunOptions,
+  explicitBaseline: string | null,
+): Promise<string | null> {
+  const upstream = await probe(['rev-parse', '--verify', '-q', '@{u}'], cwd)
+  const local = upstream.ok ? upstream.stdout.trim() : ''
+  const baseline = local.length > 0 ? local : explicitBaseline
+  if (!baseline) return null
+
+  const fetch = await probe(['fetch', '--prune', 'origin'], cwd)
+  if (!fetch.ok) return null
+
+  const ancestor = await probe(['merge-base', '--is-ancestor', baseline, '@{u}'], cwd)
+  if (ancestor.ok) return null
+  if (ancestor.result.code !== 1) return null
+
+  return `上次见到的上游提交 ${baseline.slice(0, 7)} 已经不在远程分支的历史里了——${VERDICT_REASON.rewritten}`
 }
 
 /**

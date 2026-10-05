@@ -145,3 +145,90 @@ describe('pullRepo', () => {
     expect(['skipped', 'failed']).toContain(result.outcome)
   })
 })
+
+/**
+ * 「作者改写了历史」这道闸。
+ *
+ * 调用方（server 的 runApply）手上有一道基于**上次检查结论**的闸，但「检查」
+ * 与「点更新」之间作者完全可能刚好 force push。那种情况本地 HEAD 仍是新历史的
+ * 祖先（`recommend.ts` 文件头点名的限制），`pull --ff-only` 会毫无怨言地快进
+ * ——静默更新到一个被改写的仓库。唯一抓得住它的是基线（上次见到的上游 SHA），
+ * 而基线必须在 **fetch 之前**读：所以 pull 自己先 fetch 一遍再比，然后才动工作区。
+ */
+describe('pullRepo 的基线闸（判「作者改写了历史」）', () => {
+  it('作者 force push 掉见过的提交 → 拒绝更新，工作区一个字节都不动', async () => {
+    // origin 上先走两步，clone 落在初始提交上
+    const { origin, clone } = track(initClone(2))
+    git(clone, 'fetch', 'origin')
+    // 这就是「上次检查时见到的上游」
+    const baseline = git(clone, 'rev-parse', 'origin/main').trim()
+    const before = git(clone, 'rev-parse', 'HEAD').trim()
+
+    /*
+      作者把远程回退一格、再提交别的东西 —— 对 clone 来说这就是一次 force push：
+      `origin/main` 从 C2 变成了 C1'，而 C2 已经不在新历史里。
+      （origin 是个普通本地仓库、没有 remote，所以直接在它身上改写 refs 即可，
+      等价于在远端 force push。）
+    */
+    git(origin, 'reset', '--hard', 'HEAD~1')
+    commit(origin, '被改写后的新历史')
+
+    const result = await pullRepo(clone, { lastUpstreamSha: baseline })
+
+    expect(result.outcome).toBe('skipped')
+    expect(result.reason).toContain('改写过')
+    expect(result.reason).toContain(baseline.slice(0, 7))
+    // 关键：HEAD 没动，也没有产生 merge commit
+    expect(git(clone, 'rev-parse', 'HEAD').trim()).toBe(before)
+    expect(git(clone, 'rev-list', '--count', '--merges', 'HEAD').trim()).toBe('0')
+  })
+
+  it('正常的快进（基线仍是祖先）不受影响', async () => {
+    const { origin, clone } = track(initClone(0))
+    git(clone, 'fetch', 'origin')
+    const baseline = git(clone, 'rev-parse', 'origin/main').trim()
+
+    commit(origin, '远程正常往前走一格')
+
+    const result = await pullRepo(clone, { lastUpstreamSha: baseline })
+
+    expect(result.outcome).toBe('updated')
+    expect(result.newCommits).toBe(1)
+  })
+
+  it('没有基线时行为不变（老调用方不受影响）', async () => {
+    const { origin, clone } = track(initClone(0))
+    commit(origin, '远程提交')
+    const result = await pullRepo(clone)
+    expect(result.outcome).toBe('updated')
+  })
+
+  /*
+    **假警报比「判不出来」坏得多。**
+    SHA 属于**某一条**上游 ref，而库里记的值不带这个信息。在 main 上检查过、
+    之后切到 feature 再更新时，拿 main 的 SHA 去问「它还在 feature 的历史里吗」，
+    答案必然是否 —— 于是报「作者改写了历史，别拉」。作者什么都没干。
+    所以基线优先取**本机现在指着的上游 ref**（天然属于当前这条线），
+    传进来的那个值只在本地读不出来时兜底。
+  */
+  it('切到另一条分支后：属于旧分支的基线不造成假警报', async () => {
+    const { origin, clone } = track(initClone(0))
+    // main 往前走一格 —— 这就是「上次在 main 上检查时见到的上游」
+    commit(origin, 'main 上的提交')
+    git(clone, 'fetch', 'origin')
+    const mainSha = git(clone, 'rev-parse', 'origin/main').trim()
+
+    // feature 从**更早**的基点分出去（这样 mainSha 不是它的祖先）
+    const base = git(origin, 'rev-parse', 'HEAD~1').trim()
+    git(origin, 'checkout', '-q', '-b', 'feature', base)
+    commit(origin, 'feature 上的提交', 'feature.txt')
+    git(origin, 'checkout', '-q', 'main')
+
+    git(clone, 'fetch', 'origin')
+    git(clone, 'checkout', '-q', '-b', 'feature', 'origin/feature')
+
+    const result = await pullRepo(clone, { lastUpstreamSha: mainSha })
+
+    expect(result.outcome, '不属于当前分支的基线不该造成「改写过历史」').toBe('already_up_to_date')
+  })
+})

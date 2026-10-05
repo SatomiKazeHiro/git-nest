@@ -15,7 +15,7 @@ import { classifyError } from './errors.ts'
 export const DEFAULT_TIMEOUT_MS = 120_000
 
 export interface RunOptions {
-  /** 仓库目录，等价于 git -C &lt;dir&gt; */
+  /** 仓库目录，等价于 `git -C <dir>` */
   cwd: string
   timeoutMs?: number
   env?: Record<string, string>
@@ -143,11 +143,16 @@ export function runGit(args: string[], options: RunOptions): Promise<GitResult> 
         windowsHide: true,
         env: {
           ...process.env,
+          ...options.env,
+          /*
+            下面这几条**故意放在最后**：它们是「不让 git 挂死」的闸，
+            调用方（或将来某个 `options.env`）不能把它们覆盖掉——
+            否则 `{ GIT_TERMINAL_PROMPT: '1' }` 一个参数就能把整个批量检查拖到超时。
+            LC_ALL 一起钉住：归因逻辑是按英文文案写的。
+          */
           GIT_TERMINAL_PROMPT: '0',
           GIT_ASKPASS: 'echo',
-          // 让 git 的报错信息稳定在英文，归因逻辑才好写
           LC_ALL: 'C',
-          ...options.env,
         },
       },
       (error, stdout, stderr) => {

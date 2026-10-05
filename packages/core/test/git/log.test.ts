@@ -8,18 +8,20 @@ const track = <T>(dir: T): T => (dirs.push(dir as unknown as string), dir)
 afterAll(() => cleanup(...dirs))
 
 describe('parseGitLog', () => {
-  it('按记录分隔符切开，message 里有分隔符也不串行', () => {
+  it('按记录分隔符切开，字段各归各位', () => {
     // 字段顺序与 log.ts 的 PRETTY 一致：hash/hash/家长/作者名/作者邮箱/
     // committerDate/authorDate/subject/refs
+    const A = 'a'.repeat(40)
+    const B = 'b'.repeat(40)
     const raw = [
-      'abc123\x1fa1b2c3\x1f\x1f某人\x1fa@b.c\x1f2026-06-20T10:00:00+08:00\x1f2026-06-20T09:00:00+08:00\x1f标题里有 → 箭头\x1fHEAD -> main, tag: v1\x1e',
-      'def456\x1fd4e5f6\x1fabc123\x1f另一个人\x1fd@e.f\x1f2026-06-19T09:00:00+08:00\x1f2026-06-19T08:00:00+08:00\x1f第二个提交\x1f\x1e',
+      `${A}\x1fa1b2c3\x1f\x1f某人\x1fa@b.c\x1f2026-06-20T10:00:00+08:00\x1f2026-06-20T09:00:00+08:00\x1f标题里有 → 箭头\x1fHEAD -> main, tag: v1\x1e`,
+      `${B}\x1fd4e5f6\x1f${A}\x1f另一个人\x1fd@e.f\x1f2026-06-19T09:00:00+08:00\x1f2026-06-19T08:00:00+08:00\x1f第二个提交\x1f\x1e`,
     ].join('')
 
     const entries = parseGitLog(raw, 'main')
     expect(entries).toHaveLength(2)
     expect(entries[0]).toMatchObject({
-      hash: 'abc123',
+      hash: A,
       shortHash: 'a1b2c3',
       parents: [],
       authorName: '某人',
@@ -29,7 +31,24 @@ describe('parseGitLog', () => {
       authorDate: '2026-06-20T09:00:00+08:00',
     })
     expect(entries[0]?.refs).toEqual(['HEAD -> main', 'tag: v1'])
-    expect(entries[1]?.parents).toEqual(['abc123'])
+    expect(entries[1]?.parents).toEqual([A])
+  })
+
+  it('提交信息里出现真 0x1E 时，不许把残片当提交', () => {
+    /*
+      git 只禁 NUL，0x1E/0x1F 在提交信息里是合法字节。subject 里带 0x1E 时，
+      一条记录会被切成两段：「ghp_deadbeef」那段只有 subject 剩下的部分，
+      但 split 出来的第二块仍带着 `短sha\x1f...` 的形状。
+      没有 40 位十六进制这道守卫，它就会被当成一条提交混进图里。
+    */
+    const A = 'c'.repeat(40)
+    const raw =
+      `${A}\x1fa1b2c3\x1f\x1f某人\x1fa@b.c\x1f2026-06-20T10:00:00+08:00\x1f2026-06-20T09:00:00+08:00\x1f前半\x1e后半\x1fHEAD -> main\x1e`
+
+    const entries = parseGitLog(raw, 'main')
+    // 只认第一条（真 hash）；残片被丢掉，而不是变成一条 hash 为「后半」的假提交
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.hash).toBe(A)
   })
 
   it('空输入返回空数组', () => {

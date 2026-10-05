@@ -3,9 +3,21 @@ import { INITIAL_CATEGORIES } from './types.ts'
 
 const trimmed = z.string().trim()
 
+/**
+ * 标签名的**唯一**约束来源。
+ *
+ * 标签有两个写入口：`POST /api/tags`（建标签）和 `PUT /api/projects/:id/tags`
+ * （整体替换项目的标签集合，不存在的名字按需创建）。第一版只在前者写了
+ * `.max(40)`，后者只限条数——于是同一个字段两条路的上限不一样，
+ * 从项目那条路能塞进任意长的标签名（实测 200 字入库）。
+ * 约束写在一处、两处都引它，才不会又飘开。
+ */
+export const tagNameSchema = trimmed.min(1, '标签名不能为空').max(40, '标签名过长')
+
 export const createProjectSchema = z.object({
   name: trimmed.min(1, '名称不能为空').max(120, '名称过长'),
-  path: trimmed.min(1, '本地路径不能为空'),
+  // 上限与 updateProjectSchema.path / scanSchema.dir 一致：同一个字段三条路一个口径
+  path: trimmed.min(1, '本地路径不能为空').max(400, '路径过长'),
   category: trimmed.max(60).default(''),
   remoteUrl: trimmed.max(500).nullish().transform((v) => v || null),
   // 「记录」是详情页那个文本框，添加项目时还写不到，所以默认空串
@@ -40,7 +52,7 @@ export const listProjectsQuerySchema = z.object({
 })
 
 export const createTagSchema = z.object({
-  name: trimmed.min(1, '标签名不能为空').max(40, '标签名过长'),
+  name: tagNameSchema,
   color: trimmed
     .regex(/^#[0-9a-fA-F]{6}$/, '颜色需为 #rrggbb')
     .nullish()
@@ -50,7 +62,9 @@ export const createTagSchema = z.object({
 export type CreateTagInput = z.input<typeof createTagSchema>
 
 export const setProjectTagsSchema = z.object({
-  tagNames: z.array(trimmed.min(1)).max(20),
+  // 每个名字都过 tagNameSchema（长度上限在内）——这条路上是「按需创建」，
+  // 不校验就等于绕过了 POST /api/tags 的全部约束
+  tagNames: z.array(tagNameSchema).max(20),
 })
 
 export const idParamSchema = z.coerce.number().int().positive()

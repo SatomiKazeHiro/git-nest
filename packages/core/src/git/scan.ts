@@ -14,6 +14,9 @@ export interface ScanOptions {
 
 const README_NAMES = ['README.md', 'readme.md', 'README.MD', 'README', 'README.txt']
 
+/** 摘要只取 60 个字符，读超过这个大小的 README 是纯浪费（2MB 足够装下任何正经说明） */
+const MAX_README_BYTES = 2 * 1024 * 1024
+
 /**
  * 扫一层子目录，找出 git 仓库。
  * `.git` 是目录或文件都算——worktree 与 submodule 的 `.git` 是文件。
@@ -98,7 +101,10 @@ function readReadmeSummary(dir: string): string | null {
     const file = path.join(dir, name)
     let text: string
     try {
-      if (!fs.statSync(file).isFile()) continue
+      const stat = fs.statSync(file)
+      if (!stat.isFile()) continue
+      // 别为了 60 个字的摘要把几百 MB 的文件读进内存（数据仓库里真有人放这么大的 README）
+      if (stat.size > MAX_README_BYTES) continue
       text = fs.readFileSync(file, 'utf8')
     } catch {
       continue

@@ -3,17 +3,22 @@
  *
  * | 档位 | 读什么 | 进程 | 谁用 |
  * |---|---|---|---|
- * | `lean` | ref/config + ahead/behind | 每仓库 1 次 git | 列表页（十几个仓库一屏） |
- * | `full` | 上面全部 + 工作区 + 最后提交 | 每仓库 3 次 git | 详情页、pull 前置检查 |
+ * | `lean` | ref/config + ahead/behind + 上游最后一次提交 | 每仓库 2 次 git | 列表页（十几个仓库一屏） |
+ * | `full` | 上面全部 + 工作区 + 推荐判决 | 每仓库 3–4 次 git | 详情页、pull 前置检查 |
  *
- * 差别就是「脏标记」和「最后提交」这两条：前者要遍历工作区，后者要读对象，
- * 都很贵；而列表页那一列根本不显示它们（`StatusCell` 只画分支、↑↓、一句话状态），
- * 详情页才需要 dirty / dirtyCount / lastCommit。
+ * 「上游最后一次提交」**两档都读**（`readUpstreamTipCommit`）：列表页有一列
+ * 「远程更新」要显示它，而它必须读 `@{u}` 而不是本地 HEAD。所以 lean 不是 1 条
+ * 而是 2 条（rev-list + log）——数字由 `test/git/status-spawns.test.ts` 钉着，
+ * 别凭印象改这一段。
  *
- * 列表页以前也走 full，100 个仓库要 7.8 秒——里面大半是在算没人看的两个字段。
+ * 两档真正的差别是「脏标记」与「推荐判决」：前者要遍历工作区，后者要额外问
+ * 两三次「谁是祖先」。列表页那一列（`StatusCell`）两者都不显示，推荐读的是
+ * 上次检查落库的结论。列表页以前也走 full，100 个仓库要 7.8 秒——里面大半是在
+ * 算没人看的字段。
  */
 
 import fs from 'node:fs'
+import { isPathTooLong } from '../errors.ts'
 import { defaultScheduler, type Scheduler } from '../scheduler.ts'
 import { deriveStatus, type DeriveInput } from '../status.ts'
 import type { GitError, RepoStatus, UpdateRecommendation } from '../types.ts'
@@ -53,17 +58,14 @@ export interface ReadStatusOptions extends InspectOptions {
 /**
  * 门槛可以提前拦掉，就不必起进程再解释一遍 git 的报错。
  *
- * 240 这个数字刻意比 Windows 的 MAX_PATH（约 260）保守一截：实测 258 字符的目录
- * **存在**，但 `git -C <它>` 直接 exit 128（`fatal: cannot change to ...`），
- * 带上 `core.longpaths=true` 也一样——那个选项救不了最初的 chdir。
+ * 判据本身（240 字符 / Windows）在 `../errors.ts` 的 `isPathTooLong` 里：
+ * 归因那边也要用它——git 对「路径太长」和「目录没了」报的是同一句话
+ * （`cannot change to '<dir>': No such file or directory`），
+ * 只能靠引号里那个路径的长度分。两处各写一份必然飘开。
  *
  * 注意这一条**不能**因为「库读 ref 不需要 chdir」就放宽：ahead/behind 仍然要真 git，
  * 仓库有上游时照样会卡在这里，那还不如一开始就说清楚。
  */
-function pathTooLong(path: string): boolean {
-  return path.length > 240 && process.platform === 'win32'
-}
-
 function blank(path: string): RepoStatus {
   return {
     path,
@@ -94,7 +96,7 @@ function unreadable(path: string, error: GitError): RepoStatus {
 
 /** 目录不存在 / 路径过长：不起进程就知道，也不必等 git 报一句看不懂的错。 */
 async function gate(path: string): Promise<RepoStatus | null> {
-  if (pathTooLong(path)) {
+  if (isPathTooLong(path)) {
     return unreadable(path, {
       kind: 'path_too_long',
       message: `路径 ${path.length} 个字符，git 进不去（Windows 上超过约 240 字符就会失败，core.longpaths 也救不了最初的目录切换）。把仓库移到浅一点的目录，或者开启系统的长路径支持（LongPathsEnabled）`,
@@ -169,6 +171,17 @@ async function inspect(path: string, options: ReadStatusOptions): Promise<RepoSt
     return unreadable(path, { kind: 'unknown', message: '读不出工作区状态，不敢判它干不干净' })
   }
 
+  /*
+    「最后提交读不出来」同理：HEAD 明明在（`facts.hasCommits`），却读不出它指向的
+    提交——那是仓库坏了 / 超时 / 引用悬空，**不是**「仓库还没有提交」。
+    原来这里把 `hasCommits` 按 `lastCommit !== null` 一夹，`deriveStatus` 就直接落到
+    `no_commits`，界面上显示「仓库里还没有提交」——和「假绿」同一性质的假话，
+    只是换了个方向（把一个错误说成了一个确定的空状态）。
+  */
+  if (facts.hasCommits && lastCommit === null) {
+    return unreadable(path, { kind: 'unknown', message: '读不出最后一次提交，不敢判这个仓库的状态' })
+  }
+
   const dirty = worktree?.dirty ?? false
   // 「推不推荐更新」：只有 full 档算。
   //
@@ -201,9 +214,9 @@ async function inspect(path: string, options: ReadStatusOptions): Promise<RepoSt
     isRepo: true,
     dirty,
     detached: facts.detached,
-    // 「有提交」以「最后提交读出来了」为准（改造前的口径）：HEAD 在但 log 失败
-    // （仓库坏、或引用悬空）时应当报错，而不是嘴硬说 up_to_date。
-    hasCommits: facts.hasCommits && lastCommit !== null,
+    // 走到这里就说明「HEAD 在 且 最后提交读得出来」（上面那条守卫已经拦掉了
+    // 「HEAD 在但读不出提交」），所以这里可以直接用 facts.hasCommits。
+    hasCommits: facts.hasCommits,
     upstream: facts.upstream !== null && !upstreamGone,
     ahead: upstreamGone ? null : (divergence?.ahead ?? null),
     behind: upstreamGone ? null : (divergence?.behind ?? null),

@@ -6,7 +6,8 @@
  * （分支名、HEAD、上游配置、origin 地址）都只是读 `.git` 下的几个小文件，
  * 实测 0.5–3ms。
  *
- * 明确的边界（探针实测，见 `packages/core/test/git/inspect-lib.test.ts`）：
+ * 明确的边界（探针实测；这些边界由 `test/git/status-spawns.test.ts` 的
+ * 「一条都不起」用例与 `test/git/status-equivalence.test.ts` 的行为等价表钉着）：
  *
  * - **不读对象**。`git.readObject` 要解析整个 pack index，290MB 的仓库上
  *   首次约 480ms、且 isomorphic-git 每次调用都新建 FileSystem（缓存不跨调用），
@@ -112,13 +113,28 @@ export const readRepoFacts: RepoInspector = async (
     if (remote !== null && merge !== null) {
       // `refs/heads/x` → `refs/remotes/<remote>/x`。ref 名允许斜杠，直接拼就行。
       const short = merge.replace(/^refs\/heads\//, '')
-      const ref = `refs/remotes/${remote}/${short}`
-      try {
-        await git.resolveRef({ fs, dir, ref })
-        upstream = `${remote}/${short}`
-      } catch {
-        // 引用解析不出来 = 远程已经把这个分支删了（fetch --prune 之后就是这个形态）
-        upstreamGone = true
+      if (remote === '.') {
+        /*
+          上游是**本机另一个分支**（`git branch -u main` 写进 config 的就是
+          `remote = .` + `merge = refs/heads/main`）。这一种绝不能去拼
+          `refs/remotes/./main` —— 那必然解析不出来，于是把「上游是本机分支」
+          误报成「上游被远程删掉了」（gone），而 gone 给用户的建议是
+          「重新 push -u 或删掉本地分支」——**假警报引向真破坏**。
+
+          这里不做第二遍存在性判断：本地分支真被删了的话，CLI 那条
+          `rev-list HEAD...@{u}` 会失败并被认成 upstreamGone（见 via-cli.ts），
+          判定权交给它，一处一个判据。
+        */
+        upstream = short
+      } else {
+        const ref = `refs/remotes/${remote}/${short}`
+        try {
+          await git.resolveRef({ fs, dir, ref })
+          upstream = `${remote}/${short}`
+        } catch {
+          // 引用解析不出来 = 远程已经把这个分支删了（fetch --prune 之后就是这个形态）
+          upstreamGone = true
+        }
       }
     }
   }
