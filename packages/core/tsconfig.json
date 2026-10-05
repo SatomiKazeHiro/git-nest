@@ -1,8 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "noEmit": true,
-    "outDir": "dist"
+    // core 以源码形式被引用（exports 直指 src），build 脚本只做类型检查。
+    // 别再加 outDir：和 noEmit 并存只会让人以为它真的产出 JS。
+    "noEmit": true
   },
   "include": ["src", "test"]
 }
