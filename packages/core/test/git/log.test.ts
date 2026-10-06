@@ -113,8 +113,8 @@ describe('getLog', () => {
   })
 
   it('带出提交图组件需要的字段（authorDate / branch）', async () => {
-    // 提交图换成 @tomplum/react-git-log 之后，它要 author 与 committerDate，
-    // 以及每个提交所属的 branch；branch 取当前分支名。
+    // 提交图渲染器换过两代，现在是「一阶段不显示、接口留给二阶段 Agent」。
+    // 它要的是 author 与 committerDate，以及每个提交所属的 branch；branch 取当前分支名。
     const dir = track(initRepo('第一个'))
 
     const entries = await getLog(dir, { branch: 'main' })

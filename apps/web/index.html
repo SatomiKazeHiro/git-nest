@@ -13,12 +13,29 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2314506E'/%3E%3Cg fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M5.5 5v7'/%3E%3Cpath d='M5.5 8.5h3.5a2 2 0 0 0 2-2v-.5'/%3E%3C/g%3E%3Ccircle cx='5.5' cy='3.9' r='1.6' fill='%23fff'/%3E%3Ccircle cx='5.5' cy='12.6' r='1.6' fill='%23fff'/%3E%3Ccircle cx='11' cy='4.4' r='1.6' fill='%23fff'/%3E%3C/svg%3E"
     />
+    <!--
+      字体**不能阻塞渲染**。原来这个 <link rel="stylesheet"> 是同步的：它是本机工具
+      唯一的第三方请求，fonts.googleapis.com 一慢（或干脆连不上），整页就是白的
+      ——本机页面的首屏不该由外部 CDN 决定。
+      现在用「先按 print 加载、加载完再切回 all」的常规写法：首屏立刻用 index.css 里
+      那套回退字体（system-ui / Segoe UI / 微软雅黑，等宽是 Cascadia / Consolas）画出来，
+      字体到了再换；URL 里带 display=swap，所以不会出现「字看不见」的中间态。
+      关掉 JS 时走 noscript 那份，行为和以前一样（同步加载），不至于没字体。
+    -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+      />
+    </noscript>
   </head>
   <body>
     <div id="root"></div>

@@ -45,10 +45,10 @@ git-nest/
 ```
 
 - `packages/core` 无 UI、无 HTTP 依赖，以源码形式被引用（`exports: ./src/index.ts`），改完不用构建。
-- **core 有两个入口**（`package.json` 的 `exports` 里还有一个 `./types`，当前无人引用）：
-  `@git-nest/core`（类型 + zod，浏览器安全）与 `@git-nest/core/git`
+- **core 有两个入口**：`@git-nest/core`（类型 + zod，浏览器安全）与 `@git-nest/core/git`
   （依赖 `node:child_process`，只能 node 侧引）。别在 barrel 里 `export *` git 层，
   否则浏览器打包会报 `node:child_process has been externalized`。
+  （`exports` 里曾经还挂着一个 `./types`，全仓零引用，已删——留着死入口只会让人猜「该从哪个进」。）
 - 元数据进 SQLite；git 实时状态不落库，每次现查（server 侧 3 秒短缓存，`?fresh=true` 可绕开）。
 - 本地绝对路径只存在本机 SQLite 里，不进任何会被提交的文件。
 
@@ -167,7 +167,9 @@ GET    /api/tags                  标签列表（带每个标签的项目数）
 POST   /api/tags                  建标签（名字唯一、最长 40 字）
 DELETE /api/tags/:id              删标签（注意要带 :id；没有对集合的 DELETE）
 
-POST   /api/scan                   扫一层子目录预览（只读；remember=true 记进常用目录；depth 1–3）
+POST   /api/scan                   扫一层子目录预览（只读；remember=true 记进常用目录；depth 1–3；
+                                   一次最多列出 500 个仓库——超了响应里 truncated=true，界面会说清
+                                   「只列了前 N 个」而不是假装就这么多）
 POST   /api/projects/import        把扫出来的目录添加进清单（一个事务：要么全进、要么全不进）
 GET    /api/settings               读设置
 PATCH  /api/settings              改设置（personal 是否参与检查、git 超时、并发、确认阈值、常用目录）

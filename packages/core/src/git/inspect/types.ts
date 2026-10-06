@@ -105,7 +105,13 @@ export type DivergenceInspector = (
   input: DivergenceInput,
 ) => Promise<DivergenceFacts | null>
 
-/** 读最后一次提交。只有详情页要。 */
+/**
+ * 读最后一次提交。
+ *
+ * 注意**不是「只有详情页要」**：它读的是上游分支（`@{u}`）的最后一次提交，
+ * 清单页那一列「远程更新」显示的就是它——早期为了省一次进程把它从列表拿掉过，
+ * 那是错的（用户就是想知道「作者上次更新是什么时候」）。
+ */
 export type CommitInspector = (
   path: string,
   options: InspectOptions,

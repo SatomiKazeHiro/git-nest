@@ -5,8 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./git": "./src/git/index.ts",
-    "./types": "./src/types.ts"
+    "./git": "./src/git/index.ts"
   },
   "types": "./src/index.ts",
   "scripts": {
