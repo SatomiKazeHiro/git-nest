@@ -1,17 +1,26 @@
-import { FolderGit2 } from 'lucide-react'
+import { FolderGit2, Minus, Square, X } from 'lucide-react'
+import { desktopWindow, type DesktopWindow } from '@/lib/desktop'
 
 /**
- * 标题栏。**只放品牌**——导航（清单 / 设置）不在这儿。
+ * 标题栏。品牌在左，窗口控件在右，中间一整条是**拖拽区**。
  *
  * 网页习惯把导航放右上角，那是因为网页没有左栏可用；桌面软件左边本来就有一条，
- * 再在标题栏重复一份导航，等于同一个目的地有两个入口。
+ * 再在标题栏重复一份导航，等于同一个目的地有两个入口——所以导航在左栏，不在这儿。
  *
- * 窗口控件与拖拽区在打包成桌面软件时才有（那时才有窗口可控制），
- * 现在这里留空也不影响：这一条在浏览器里就是一条普通的顶栏。
+ * 窗口控件只在真的跑在桌面窗口里时才画（`window.__TAURI__` 在，且方法齐了）。
+ * 在浏览器里开发时**藏掉而不是画成装饰**：三个点不动的按钮比没有更让人困惑，
+ * 而且它们会占掉一截标题栏。判定见 `lib/desktop.ts`——刻意不引 Tauri 的依赖。
  */
 export function TitleBar() {
+  const win = desktopWindow()
+
   return (
-    <header className="chrome flex h-9 shrink-0 items-center gap-2 border-b border-line bg-panel px-3">
+    <header
+      className="chrome flex h-9 shrink-0 items-center gap-2 border-b border-line bg-panel pl-3"
+      // 拖拽区。Tauri 靠这个属性识别「按住这里可以拖窗口」，浏览器里它什么也
+      // 不是，正好现在就能把布局看清楚，将来不用改。
+      data-tauri-drag-region
+    >
       {/*
         logo。原来是一段手写的 inline SVG（一小段提交图），现在与页面其余图标同源。
 
@@ -22,6 +31,50 @@ export function TitleBar() {
       <FolderGit2 size={16} aria-hidden className="shrink-0 text-accent" />
       <span className="font-mono text-[13px] font-semibold tracking-tight text-ink">git-nest</span>
       <span className="text-[12px] text-ink-3">本地仓库清单</span>
+
+      {win ? <WindowControls win={win} /> : null}
     </header>
+  )
+}
+
+function WindowControls({ win }: { win: DesktopWindow }) {
+  return (
+    <div className="ml-auto flex items-stretch self-stretch">
+      <Control label="最小化" onClick={() => void win.minimize()}>
+        <Minus size={14} aria-hidden />
+      </Control>
+      <Control label="最大化 / 还原" onClick={() => void win.toggleMaximize()}>
+        <Square size={11} aria-hidden />
+      </Control>
+      <Control label="关闭" danger onClick={() => void win.close()}>
+        <X size={14} aria-hidden />
+      </Control>
+    </div>
+  )
+}
+
+function Control({
+  label,
+  danger,
+  onClick,
+  children,
+}: {
+  label: string
+  danger?: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      // 图标按钮必须有可访问名——这里没有可见文字
+      aria-label={label}
+      title={label}
+      className={`flex w-11 cursor-pointer items-center justify-center text-ink-2 hover:bg-paper hover:text-ink ${
+        danger ? 'hover:bg-signal-bad hover:text-white' : ''
+      }`}
+    >
+      {children}
+    </button>
   )
 }

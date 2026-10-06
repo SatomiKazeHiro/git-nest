@@ -206,12 +206,19 @@ POST   /api/updates/apply         对勾选的仓库逐个 pull --ff-only，同�
 | `GIT_NEST_PORT` | server 端口 | `5174` |
 | `GIT_NEST_HOST` | server 监听地址 | `127.0.0.1`（**改成 `0.0.0.0` 等于把接口开放给整个局域网**，没有任何鉴权；启动时会打一条警告日志） |
 | `GIT_NEST_CORS` | 允许的跨域来源（同时是**写接口的 Origin 白名单**） | `http://localhost:5173` |
+| `GIT_NEST_TAURI_ORIGIN` | 额外放行的桌面端来源（逗号分隔） | `tauri://localhost,http://tauri.localhost,https://tauri.localhost`（配成空串可整个关掉） |
 | `GIT_NEST_API` | web 开发服务器的 API 代理目标 | `http://127.0.0.1:5174` |
 
 **写接口有一道跨站闸**：`POST/PUT/PATCH/DELETE` 带 `Origin` 且不在白名单里 → 403。
 理由是这类接口都是「简单请求」（无 body、无自定义头）就能打的，CORS 只挡得住读响应、
 挡不住副作用（比如 `POST /api/auto-fetch` 让全部仓库联网）。curl / 脚本不带 `Origin`，
 照常能用。
+
+**白名单里那三个 tauri 来源是给「装成桌面软件之后」准备的。** 打包之后 webview
+自己起一个来源，不再是 `http://localhost:5173`；不加进来的话，添加项目、勾选更新、
+改设置**全部 403**，而本地开发一路绿灯——这类只在打包后现形的故障最难查，所以提前
+写进配置。放它们是安全的：这些 scheme 浏览器里的普通网页拿不到，而 `Origin` 由浏览器
+按页面自己的来源填、脚本伪造不了，等于只认「我们自己那个窗口」。
 
 更新任务为什么是「POST 启动 + GET 订阅」：`EventSource` 只能发 GET，而批量检查可能要联网
 fetch 十几个仓库，不能让一个 HTTP 请求一直挂着。任务状态放内存（半小时 TTL，**只清已结束的任务**），

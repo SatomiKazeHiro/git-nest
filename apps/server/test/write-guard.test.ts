@@ -51,6 +51,27 @@ describe('写接口的跨站闸', () => {
     expect(res.statusCode).toBe(200)
   })
 
+  /*
+    打包成桌面软件之后的来源。
+
+    这几条是「等打包那天才发现就晚了」的那一类：开发时页面跑在 vite 上，
+    Origin 是 http://localhost:5173，一路绿灯；装成应用之后 webview 换了自己的
+    来源，于是添加项目、勾选更新、设置**全部 403**——而本地开发毫无异常。
+    把它们写进白名单与测试，是为了在打包之前就把这件事解决掉。
+  */
+  it.each([
+    'tauri://localhost',
+    'http://tauri.localhost',
+    'https://tauri.localhost',
+  ])('打包成桌面软件后的来源 %s 照常放行写操作', async (origin) => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auto-fetch',
+      headers: { origin },
+    })
+    expect(res.statusCode).toBe(200)
+  })
+
   it('读接口不受影响（GET 没有副作用）', async () => {
     const res = await app.inject({
       method: 'GET',

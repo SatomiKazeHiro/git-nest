@@ -30,7 +30,7 @@ export function buildApp(options: AppOptions = {}) {
   // Ctrl-C 之后进程退不掉。关服务时直接断开连接。
   const app = Fastify({ logger: options.logger ?? true, forceCloseConnections: true })
 
-  app.register(cors, { origin: config.corsOrigin })
+  app.register(cors, { origin: allowedOrigins() })
 
   /*
     **跨站写入闸**：本机工具没有鉴权，而「没有鉴权」不等于「浏览器里的任意页面都能
@@ -119,13 +119,17 @@ export function buildApp(options: AppOptions = {}) {
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
 /**
- * 允许的浏览器来源：`GIT_NEST_CORS`（默认 http://localhost:5173）里的那一个，
- * 外加本机的两个等价写法——vite 端口用 127.0.0.1 打开时 Origin 就不是 localhost，
- * 那不是「跨站」，不该被拦。
+ * 允许的浏览器来源：
+ * - `GIT_NEST_CORS`（默认 http://localhost:5173）里的那一个，外加本机的等价
+ *   写法——vite 端口用 127.0.0.1 打开时 Origin 就不是 localhost，
+ *   那不是「跨站」，不该被拦
+ * - 打包成桌面软件后 webview 自己的来源（见 `config.tauriOrigins`）。
+ *   少了这一组，装成应用之后**每一个写接口都会 403**，而本地开发完全正常——
+ *   这类只在打包后现形的故障最难查，所以写进配置而不是等到那天再补
  */
 function allowedOrigins(): string[] {
   const base = config.corsOrigin
-  const out = new Set([base])
+  const out = new Set([base, ...config.tauriOrigins])
   try {
     const url = new URL(base)
     const mirror = url.hostname === 'localhost' ? '127.0.0.1' : 'localhost'
