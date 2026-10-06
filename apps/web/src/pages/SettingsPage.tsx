@@ -5,7 +5,12 @@ import { useSaveSettings, useSettings } from '@/features/settings/queries'
 import { ScanSection } from '@/features/settings/ScanSection'
 import { CommandsSection } from '@/features/settings/CommandsSection'
 import { TagSection } from '@/features/settings/TagSection'
-import { SettingRow, SettingSection } from '@/features/settings/SettingRow'
+import {
+  CheckRow,
+  FieldPack,
+  FieldRow,
+  SettingSection,
+} from '@/features/settings/SettingRow'
 
 /**
  * 设置页。
@@ -83,59 +88,55 @@ function GitSection() {
         </div>
       ) : null}
 
-      <SettingRow
-        label="personal 分类"
+      {/*
+        复选框**在标签左边**，且只有一行短说明。
+        原来它是「标签在左列 / 复选框在最右列」——框和它的文字被甩到屏幕两端，
+        框到底管的是哪一句得靠位置去猜。软件里几乎没有这种排法。
+      */}
+      <CheckRow
+        label="personal 分类也参与检查"
         hint="自己的项目自己清楚，默认不参与。打开后批量检查会带上它们，跳过了谁会在报告里说明。"
-      >
-        <Toggle
-          label="参与检查"
-          checked={settings.includePersonal}
-          disabled={save.isPending}
-          onChange={(v) => update({ includePersonal: v })}
-        />
-      </SettingRow>
+        checked={settings.includePersonal}
+        disabled={save.isPending}
+        onChange={(v) => update({ includePersonal: v })}
+      />
 
-      <SettingRow
-        label="git 超时"
-        hint="一条 git 命令超过这么久就放弃，毫秒。仓库大、网络慢的时候调高；卡死了要少等就调低。"
-      >
-        <NumberField
-          label="git 超时"
-          hint="毫秒，1000–600000"
-          min={1_000}
-          max={600_000}
-          value={settings.gitTimeoutMs}
-          onCommit={(v) => update({ gitTimeoutMs: v })}
-        />
-      </SettingRow>
-
-      <SettingRow
-        label="并发上限"
-        hint="同时跑几个仓库。调高更快，但更容易撞上远程限流。"
-      >
-        <NumberField
-          label="并发上限"
-          hint="1–16"
-          min={1}
-          max={16}
-          value={settings.concurrency}
-          onCommit={(v) => update({ concurrency: v })}
-        />
-      </SettingRow>
-
-      <SettingRow
-        label="确认阈值"
-        hint="一次要检查的项目超过这么多个，先问一句再开跑。检查会让这些仓库全部联网。"
-      >
-        <NumberField
-          label="确认阈值"
-          hint="1–200"
-          min={1}
-          max={200}
-          value={settings.confirmThreshold}
-          onCommit={(v) => update({ confirmThreshold: v })}
-        />
-      </SettingRow>
+      {/*
+        这三个是**同一件事的三次出现**——都是「批量操作怎么跑」。
+        各占一整行会把它们拉成三段互不相干的文字，所以并排成一行；
+        每条只留范围与取舍的提示，长解释交给上面的分组注释。
+      */}
+      <div className="mt-5">
+        <FieldPack>
+          <FieldRow label="git 超时" hint="毫秒，1000–600000">
+            <NumberField
+              label="git 超时"
+              min={1_000}
+              max={600_000}
+              value={settings.gitTimeoutMs}
+              onCommit={(v) => update({ gitTimeoutMs: v })}
+            />
+          </FieldRow>
+          <FieldRow label="并发上限" hint="1–16">
+            <NumberField
+              label="并发上限"
+              min={1}
+              max={16}
+              value={settings.concurrency}
+              onCommit={(v) => update({ concurrency: v })}
+            />
+          </FieldRow>
+          <FieldRow label="确认阈值" hint="1–200">
+            <NumberField
+              label="确认阈值"
+              min={1}
+              max={200}
+              value={settings.confirmThreshold}
+              onCommit={(v) => update({ confirmThreshold: v })}
+            />
+          </FieldRow>
+        </FieldPack>
+      </div>
     </>
   )
 }
@@ -150,19 +151,19 @@ function GitSection() {
  * 2. 打一个字发一次请求，还把「正在输入」的语义交给了服务端。
  * 现在输入期间只动本地 state，按回车或失焦时才发一次；越界在前端就拦下来并说明。
  *
- * 数字框给固定宽度：控件列右边空着是故意的（所有控件左边缘对齐成一条竖线），
- * 但输入框本身跟着列拉宽就会变成一条难按的细长条。
+ * 数字框给固定宽度：并排三列时，跟着列拉宽会变成一条难按的细长条。
+ *
+ * 它**不印范围提示**——那件事归外层 `FieldRow`（标签左边、提示在控件下面）。
+ * 两个地方各印一次，同一句话会在屏幕上出现两遍。
  */
 function NumberField({
   label,
-  hint,
   min,
   max,
   value,
   onCommit,
 }: {
   label: string
-  hint: string
   min: number
   max: number
   value: number
@@ -198,19 +199,12 @@ function NumberField({
   }
 
   return (
-    <div className="max-w-52">
-      {/*
-        这里**不再重复行标签**——左边那列已经写着「git 超时」了，控件里再印
-        一遍就成了同一句话出现两次。控件区只留两样东西：输入框，和它下面那行
-        范围提示（出错时同一个位置换成错误说明）。
-
-        可访问名交给 `aria-label`，于是读屏读到的仍然是「git 超时」，
-        `getByLabelText('git 超时')` 也照旧找得到。
-      */}
+    <div className="max-w-24">
       <Input
         type="number"
         aria-label={label}
-        aria-describedby={describedBy}
+        aria-describedby={localError ? describedBy : undefined}
+        aria-invalid={localError ? true : undefined}
         min={min}
         max={max}
         value={draft}
@@ -223,37 +217,13 @@ function NumberField({
           }
         }}
       />
-      <p
-        id={describedBy}
-        className={`mt-1 text-[11.5px] ${localError ? 'text-signal-bad' : 'text-ink-3'}`}
-      >
-        {localError ?? hint}
-      </p>
+      {/* 只在出错时占一个位置。范围提示由 FieldRow 印，避免同一句话出现两遍。 */}
+      {localError ? (
+        <p id={describedBy} className="mt-1 text-[11.5px] text-signal-bad">
+          {localError}
+        </p>
+      ) : null}
     </div>
   )
 }
 
-function Toggle({
-  label,
-  checked,
-  disabled,
-  onChange,
-}: {
-  label: string
-  checked: boolean
-  disabled?: boolean
-  onChange: (v: boolean) => void
-}) {
-  return (
-    <label className="inline-flex cursor-pointer items-center gap-2">
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.checked)}
-        className="list-check"
-      />
-      <span className="text-[13px] text-ink">{label}</span>
-    </label>
-  )
-}

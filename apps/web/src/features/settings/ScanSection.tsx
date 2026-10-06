@@ -5,7 +5,7 @@ import { Check, Download, Eraser, FolderSearch, Loader, Trash2, X } from 'lucide
 import { MAX_SCAN_RESULTS, type ScannedRepo } from '@git-nest/core'
 import { ApiError, api } from '@/lib/api'
 import { Button, Dialog, ErrorNote, Input } from '@/components/ui'
-import { SettingRow } from './SettingRow'
+import { FieldRow, SettingRow } from './SettingRow'
 import { useSaveSettings, useSettings } from './queries'
 import { useRemoveProject, useInvalidate } from '@/features/projects/queries'
 
@@ -165,7 +165,7 @@ export function ScanSection() {
     <section ref={sectionRef} id="scan">
       <SettingRow
         label="目录"
-        hint="填一个已存在的本机目录。只扫直接子目录；也可以填到上层再往下扫。扫描只读，不写清单也不动磁盘——你挑中的那几个才会进来。"
+        hint="填一个已存在的本机目录。扫描只读：不写清单也不动磁盘，你挑中的那几个才会进来。"
       >
         <div className="flex items-center gap-2">
           <Input
@@ -197,7 +197,7 @@ export function ScanSection() {
         </div>
       </SettingRow>
 
-      <SettingRow label="往下扫几层" hint="1 = 只看直接子目录。层数越多耗时越长。">
+      <FieldRow label="往下扫几层" hint="1 = 只看直接子目录，层数越多越慢">
         <Input
           type="number"
           min={1}
@@ -205,9 +205,9 @@ export function ScanSection() {
           value={depth}
           onChange={(e) => setDepth(Math.min(Math.max(Number(e.target.value) || 1, 1), 3))}
           aria-label="往下扫几层"
-          className="!w-24"
+          className="!w-16"
         />
-      </SettingRow>
+      </FieldRow>
 
       {settings && settings.scanDirs.length > 0 ? (
         <div className="mt-3">
