@@ -8,10 +8,12 @@ import type { ReactNode } from 'react'
  * 被压成一条难读的窄行，而横向空间全部浪费。桌面软件的设置页反过来——
  * 说明放在它所描述的那个控件**旁边**，两边各拿到该有的宽度。
  *
- * 顺带解决一个扫读问题：控件的左边缘在所有行上对齐成一条竖线，眼睛沿着
- * 它往下走就能把「哪些行有控件」一眼看完。
+ * **两列的宽度是写死的，不看窗口。** 外面那层 `.settings-body` 已经是固定
+ * 宽度（见 `index.css`），行内不需要任何断点：标签列给 `minmax(22rem,22rem)`
+ * 是因为**最小值不能是 0**——`minmax(0, …)` 允许这一列塌掉，于是窗口一窄
+ * 控件列就被挤成一条缝（输入框溢出、按钮压成两行、底部冒出横向滚动条）。
  *
- * 窄屏（单栏）时退回竖排，说明仍然紧贴在控件上方。
+ * `sm:` 那个断点只是**浏览器里的兜底**：桌面包了最小宽度之后根本走不到它。
  */
 export function SettingRow({
   label,
@@ -23,7 +25,7 @@ export function SettingRow({
   children: ReactNode
 }) {
   return (
-    <div className="grid gap-x-8 gap-y-1.5 border-b border-line-soft py-3.5 last:border-b-0 sm:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] sm:items-start">
+    <div className="grid gap-x-8 gap-y-1.5 border-b border-line-soft py-3.5 last:border-b-0 sm:grid-cols-[minmax(22rem,22rem)_minmax(0,1fr)] sm:items-start">
       <div className="min-w-0">
         <p className="text-[13px] font-medium text-ink">{label}</p>
         {hint ? (

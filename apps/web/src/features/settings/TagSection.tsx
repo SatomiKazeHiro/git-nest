@@ -46,7 +46,7 @@ export function TagSection() {
         拨动的开关。所以它不套 `SettingRow`（那会把它伪装成一个配置项），
         自己用一张窄的名单，占住左侧的标签列。
       */}
-      <div className="grid gap-x-8 gap-y-1.5 border-b border-line-soft py-3.5 sm:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] sm:items-start">
+      <div className="grid gap-x-8 gap-y-1.5 border-b border-line-soft py-3.5 sm:grid-cols-[minmax(22rem,22rem)_minmax(0,1fr)] sm:items-start">
         <div>
           <p className="text-[13px] font-medium text-ink">标签</p>
           <p className="mt-1 max-w-prose text-[12.5px] leading-[1.6] text-ink-2">
@@ -91,7 +91,9 @@ export function TagSection() {
             </ul>
           )}
 
-          <div className="mt-3 flex items-center gap-2">
+          {/* 允许换行：控件列在很窄的浏览器窗口里可能放不下这一组，
+              那就让「新建标签」掉到下一行，而不是把三个都压扁。 */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}

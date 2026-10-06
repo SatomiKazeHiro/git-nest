@@ -23,39 +23,32 @@ import { SettingRow, SettingSection } from '@/features/settings/SettingRow'
  */
 export function SettingsPage() {
   return (
-    <div>
-      {/* 不要再套一层滚动容器：`.content` 已经是外层滚动区了，嵌套的滚动区
-          会抢同一个滚轮，而且内层那条滚动条永远用不上（内容总是恰好一样高）。 */}
-      <header className="border-b border-line px-6 py-3">
+    // 不要再套一层滚动容器：`.content` 已经是外层滚动区了，嵌套的滚动区
+    // 会抢同一个滚轮，而且内层那条滚动条永远用不上（内容总是恰好一样高）。
+    <div className="settings-body px-6 py-6">
+      <header className="mb-8 border-b border-line pb-4">
         <h1 className="text-[17px] font-semibold leading-tight text-ink">设置</h1>
-        <p className="mt-1 text-[12.5px] text-ink-2">
+        <p className="mt-1 max-w-prose text-[12.5px] leading-[1.6] text-ink-2">
           存在本机数据库里，不进任何会被提交的文件。改动立刻生效，不用重启服务。
         </p>
       </header>
 
-      {/*
-        封一个上限宽度。宽屏上让设置项一路铺到 1400px 并没有好处：控件离说明
-        太远，眼睛要在那一行里横跨半个屏幕才能对上号。左侧对齐，不居中——
-        这页全是左对齐的中文正文加等宽数字，居中会破坏那条竖直的读法。
-      */}
-      <div className="max-w-4xl px-6 py-6">
-        <SettingSection
-          title="往清单里加东西"
-          note="只写本机的清单，不联网、不读仓库内容。扫出来的东西还要你挑一遍才会进清单。"
-        >
-          <ScanSection />
-          <TagSection />
-        </SettingSection>
+      <SettingSection
+        title="往清单里加东西"
+        note="只写本机的清单，不联网、不读仓库内容。扫出来的东西还要你挑一遍才会进清单。"
+      >
+        <ScanSection />
+        <TagSection />
+      </SettingSection>
 
-        <SettingSection
-          title="联网检查与更新"
-          note="这一组会让全部仓库联网。只 fetch 远程引用，绝不碰工作区——更新永远由你勾选后触发，并且只做 fast-forward。"
-          emphasis
-        >
-          <GitSection />
-          <CommandsSection />
-        </SettingSection>
-      </div>
+      <SettingSection
+        title="联网检查与更新"
+        note="这一组会让全部仓库联网。只 fetch 远程引用，绝不碰工作区——更新永远由你勾选后触发，并且只做 fast-forward。"
+        emphasis
+      >
+        <GitSection />
+        <CommandsSection />
+      </SettingSection>
     </div>
   )
 }
