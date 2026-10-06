@@ -315,7 +315,10 @@ function Toolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-line bg-paper px-4 py-2">
-      <div className="w-56">
+      {/* 搜索框是这一行里唯一允许被压缩的东西，别的都不行：
+          按钮一旦被压到文字竖排（「扫/描」两行），就成了整屏最难看的那个点。
+          给它一个下限，窄下去时先丢的是搜索框的宽度。 */}
+      <div className="w-56 min-w-32">
         <Input
           id="project-search"
           value={filters.q}
@@ -325,16 +328,16 @@ function Toolbar({
         />
       </div>
       {filtering ? (
-        <Button onClick={clearFilters}>
+        <Button className="shrink-0" onClick={clearFilters}>
           <Eraser size={14} aria-hidden />
           清掉筛选
         </Button>
       ) : null}
-      <span className="font-mono text-[12px] text-ink-3">
+      <span className="shrink-0 font-mono text-[12px] text-ink-3">
         {total} 个项目
         {selectedCount > 0 ? ` · 已选 ${selectedCount}` : ''}
       </span>
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-2">
         {/* 「联网」两个字是必须的：详情页还有一个只读本地的按钮，
             两个都叫「检查更新」的话，用户没法从名字看出哪个会联网。
             这里**不再有「检查中…」态**：进度和报告都在随后打开的弹窗里，
