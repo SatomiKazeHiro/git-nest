@@ -109,3 +109,71 @@ describe('设置里的数字字段', () => {
     expect(patches).toHaveLength(0)
   })
 })
+
+/**
+ * 「上一轮跑了哪些仓库」这条摘要。
+ *
+ * 原来那条命令日志查询是 `enabled: open`——理由是「这是个排查视图，别在后台
+ * 一直请求」。可摘要与日志列表是**同一份响应里的两个字段**，共用一个开关的
+ * 结果是：摘要也被关在了外面，它在结构上永远显示「还没跑过」，除非用户先
+ * 点开命令日志去看。
+ *
+ * 这条钉住的是「进页面就取一次」。真正该省的是每 5 秒一次的轮询，那条仍然
+ * 只在展开日志时才开——见 CommandsSection 里的 `refetchInterval`。
+ */
+describe('上一轮的结果', () => {
+  it('不进命令日志面板也能读到数字', async () => {
+    let asked = 0
+    server.use(
+      http.get('/api/commands', () => {
+        asked += 1
+        return HttpResponse.json({
+          entries: [],
+          total: 0,
+          lastAutoFetch: {
+            at: new Date().toISOString(),
+            projects: 2,
+            checked: 3,
+            skipped: 1,
+            failed: 0,
+          },
+        })
+      }),
+    )
+
+    renderPage()
+
+    await waitFor(() => expect(asked).toBeGreaterThan(0))
+    // 三个计数各自带标签，不再是用斜杠串起来的一句话
+    expect(screen.getByText('有结论')).toBeTruthy()
+    expect(screen.getByText('3')).toBeTruthy()
+    expect(screen.getByText('跳过')).toBeTruthy()
+    expect(screen.getByText('1')).toBeTruthy()
+    // 日志面板仍是关着的
+    expect(screen.queryByText('还没有命令记录')).toBeNull()
+  })
+
+  it('失败数大于 0 时那个数字才用告警色（0 个失败不该被涂红）', async () => {
+    server.use(
+      http.get('/api/commands', () =>
+        HttpResponse.json({
+          entries: [],
+          total: 0,
+          lastAutoFetch: {
+            at: new Date().toISOString(),
+            projects: 2,
+            checked: 3,
+            skipped: 0,
+            failed: 2,
+          },
+        }),
+      ),
+    )
+
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('失败')).toBeTruthy())
+    const bad = screen.getByText('2')
+    expect(bad.className).toContain('text-signal-bad')
+  })
+})

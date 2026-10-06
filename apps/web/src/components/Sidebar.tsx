@@ -129,7 +129,7 @@ function Dest({
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div>
-      <h2 className="mb-1.5 px-2 text-[11px] font-medium uppercase tracking-wide text-ink-3">
+      <h2 className="mb-1.5 px-2 text-[11px] font-medium text-ink-3">
         {title}
       </h2>
       <div className="flex flex-col">{children}</div>

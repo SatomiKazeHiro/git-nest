@@ -126,7 +126,7 @@ export function ProjectDetailPage() {
           读到的一块。
         */}
         <section>
-          <h2 className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-ink-3">
+          <h2 className="mb-1.5 text-[11px] font-medium text-ink-3">
             记录
           </h2>
           <RecordView record={project.record} />
@@ -349,7 +349,7 @@ export function StatusPanel({
         拉了会不会出事。
       */}
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
-        <h2 className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+        <h2 className="text-[11px] font-medium text-ink-3">
           推不推荐更新
         </h2>
         {hasRemoteCheck ? (

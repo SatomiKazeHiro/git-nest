@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, Eraser, RefreshCw, Terminal } from 'lucide-react'
 import { Button, ErrorNote } from '@/components/ui'
+import { SettingRow } from './SettingRow'
 import { ApiError, api } from '@/lib/api'
 
 /**
@@ -50,8 +51,17 @@ export function CommandsSection() {
   const { data, isPending, error } = useQuery({
     queryKey: commandKeys.all,
     queryFn: () => api.get<CommandsResponse>(`/commands?limit=${SHOW}`),
-    // 只在展开时轮询：这是个排查视图，不该在后台一直请求
-    enabled: open,
+    /*
+      **一定要在关闭状态下也发这一次请求。**
+
+      原来这里是 `enabled: open`——「这是个排查视图，别在后台一直请求」。
+      于是「上一轮跑了哪些仓库」那条摘要也一起被关在了外面：它在结构上
+      永远显示「还没跑过」，除非用户先点开命令日志。摘要与日志列表是同一份
+      响应里的两个字段，却因为共用一个开关而绑在了一起。
+
+      现在：进页面取一次（50 条，本地服务，微不足道），**轮询**仍然只在展开时开
+      ——真正该省的是每 5 秒一次的轮询，不是这一次。
+    */
     refetchInterval: open ? 5_000 : false,
   })
 
@@ -74,48 +84,61 @@ export function CommandsSection() {
 
   return (
     <section>
-      <h2 className="text-[15px] font-semibold text-ink">自动 fetch 与命令日志</h2>
-      <p className="mt-0.5 text-[13px] text-ink-2">
-        服务启动 30 秒后自动跑一轮 fetch，之后每 30 分钟一轮——让「落后多少 / 推不推荐更新」
-        的数字保持新鲜。<strong>它只更新远程跟踪引用，绝不碰你的工作区</strong>
-        （不 pull、不快进、不改文件）。personal 分类默认跳过，跟着上面那个开关走。
-      </p>
-
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <Button onClick={() => runNow.mutate()} disabled={runNow.isPending}>
-          <RefreshCw size={14} aria-hidden className={runNow.isPending ? 'animate-spin' : ''} />
-          {runNow.isPending ? '正在跑…' : '现在跑一轮'}
-        </Button>
-        <Button onClick={() => setOpen((v) => !v)}>
-          {open ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
-          <Terminal size={14} aria-hidden />
-          {open ? '收起命令日志' : '看命令日志'}
-        </Button>
-        {open ? (
-          <Button onClick={() => clear.mutate()} disabled={clear.isPending}>
-            <Eraser size={14} aria-hidden />
-            清空
+      <SettingRow
+        label="自动 fetch"
+        hint="服务启动 30 秒后跑一轮，之后每 30 分钟一轮，让「落后多少 / 推不推荐更新」的数字保持新鲜。它只更新远程跟踪引用，不 pull、不快进、不改文件。personal 分类默认跳过，跟着上面那个开关走。"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => runNow.mutate()} disabled={runNow.isPending}>
+            <RefreshCw size={14} aria-hidden className={runNow.isPending ? 'animate-spin' : ''} />
+            {runNow.isPending ? '正在跑…' : '现在跑一轮'}
           </Button>
-        ) : null}
-        {readFailed ? (
-          <span className="font-mono text-[12px] text-signal-bad">读不到状态</span>
-        ) : last ? (
-          <span className="font-mono text-[12px] text-ink-3">
-            上轮：{last.checked} 个有结论 / {last.skipped} 跳过 / {last.failed} 失败
-          </span>
-        ) : (
-          <span className="font-mono text-[12px] text-ink-3">还没跑过</span>
-        )}
-      </div>
+          <Button onClick={() => setOpen((v) => !v)}>
+            {open ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
+            <Terminal size={14} aria-hidden />
+            {open ? '收起命令日志' : '看命令日志'}
+          </Button>
+          {open ? (
+            <Button onClick={() => clear.mutate()} disabled={clear.isPending}>
+              <Eraser size={14} aria-hidden />
+              清空
+            </Button>
+          ) : null}
+        </div>
+      </SettingRow>
 
       {banner ? (
-        <div className="mt-2">
+        <div className="py-3">
           <ErrorNote message={banner} />
         </div>
       ) : null}
 
+      {/*
+        上一轮的结果是**三个计数**，不是一句话。
+        原来写成 `上轮：2 个有结论 / 0 跳过 / 0 失败`——用斜杠串起来的一行字，
+        眼睛要顺着读完才知道哪一个是几。这里拆成三格，标签在上、数字在下：
+        哪个数字对应哪件事不用读，读到就看见了。
+      */}
+      <SettingRow
+        label="上一轮"
+        hint="这轮自动 fetch 跑了哪些仓库。它只读，不改任何文件。"
+      >
+        {readFailed ? (
+          <p className="font-mono text-[12px] text-signal-bad">读不到状态</p>
+        ) : last ? (
+          <div className="flex gap-6">
+            <Stat label="有结论" value={last.checked} />
+            <Stat label="跳过" value={last.skipped} />
+            <Stat label="失败" value={last.failed} bad={last.failed > 0} />
+            <span className="self-end pb-0.5 text-[11.5px] text-ink-3">{agoOf(last.at)}</span>
+          </div>
+        ) : (
+          <p className="text-[12.5px] text-ink-3">还没跑过。等下一轮，或者上面手动跑一次。</p>
+        )}
+      </SettingRow>
+
       {open ? (
-        <div className="mt-3 border border-line-soft bg-panel">
+        <div className="border border-line-soft bg-panel">
           {isPending ? (
             <p className="px-3 py-2 font-mono text-[12px] text-ink-3">读取中…</p>
           ) : readFailed ? (
@@ -142,6 +165,29 @@ export function CommandsSection() {
       ) : null}
     </section>
   )
+}
+
+/** 一个计数：标签在上、数字在下。数字是等宽的，免得刷新时左右跳。 */
+function Stat({ label, value, bad }: { label: string; value: number; bad?: boolean }) {
+  return (
+    <div>
+      <p className="text-[11px] text-ink-3">{label}</p>
+      <p className={`font-mono text-[18px] leading-tight ${bad ? 'text-signal-bad' : 'text-ink'}`}>
+        {value}
+      </p>
+    </div>
+  )
+}
+
+function agoOf(iso: string): string {
+  const t = new Date(iso).getTime()
+  if (Number.isNaN(t)) return ''
+  const mins = Math.round((Date.now() - t) / 60_000)
+  if (mins < 1) return '刚刚'
+  if (mins < 60) return `${mins} 分钟前`
+  const hours = Math.round(mins / 60)
+  if (hours < 24) return `${hours} 小时前`
+  return `${Math.round(hours / 24)} 天前`
 }
 
 function CommandRow({ entry }: { entry: CommandLogEntry }) {

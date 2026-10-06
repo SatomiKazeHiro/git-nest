@@ -4,7 +4,8 @@ import { Link, useLocation } from 'react-router'
 import { Check, Download, Eraser, FolderSearch, Loader, Trash2, X } from 'lucide-react'
 import { MAX_SCAN_RESULTS, type ScannedRepo } from '@git-nest/core'
 import { ApiError, api } from '@/lib/api'
-import { Button, Dialog, ErrorNote, Field, Input } from '@/components/ui'
+import { Button, Dialog, ErrorNote, Input } from '@/components/ui'
+import { SettingRow } from './SettingRow'
 import { useSaveSettings, useSettings } from './queries'
 import { useRemoveProject, useInvalidate } from '@/features/projects/queries'
 
@@ -162,61 +163,51 @@ export function ScanSection() {
 
   return (
     <section ref={sectionRef} id="scan">
-      <h2 className="text-[15px] font-semibold text-ink">扫描目录</h2>
-      <p className="mt-0.5 text-[13px] text-ink-2">
-        扫描只读：它只看有哪些仓库，不写清单也不动磁盘。你挑中的那几个才会添加进来。
-      </p>
+      <SettingRow
+        label="目录"
+        hint="填一个已存在的本机目录。只扫直接子目录；也可以填到上层再往下扫。扫描只读，不写清单也不动磁盘——你挑中的那几个才会进来。"
+      >
+        <div className="flex items-center gap-2">
+          <Input
+            ref={dirRef}
+            value={dir}
+            onChange={(e) => setDir(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && runScan(dir, true)}
+            placeholder="D:/Git"
+            aria-label="要扫描的目录"
+            className="!w-64"
+          />
+          {/*
+            `shrink-0` 不能省。上一版把它和输入框放进同一个 flex 行却没防压缩，
+            控件列一窄按钮就被挤到 70px 宽，「扫描」两个字竖着排成两行——
+            一个标准化的尺寸配上被压扁的控件，比原来更扎眼。
+          */}
+          <Button
+            className="shrink-0"
+            onClick={() => runScan(dir, true)}
+            disabled={!dir.trim() || scan.isPending}
+          >
+            {scan.isPending ? (
+              <Loader size={14} aria-hidden className="animate-spin" />
+            ) : (
+              <FolderSearch size={14} aria-hidden />
+            )}
+            {scan.isPending ? '扫描中…' : '扫描'}
+          </Button>
+        </div>
+      </SettingRow>
 
-      {/*
-        扫描按钮和「目录」输入框在**同一个 flex 行**里。
-
-        原来它是这一行的兄弟节点，配 `sm:items-end` 对齐——而那对齐的是
-        `Field` 的底边，也就是**提示文字**的底，不是输入框的底，于是按钮比
-        输入框低了将近二十像素（提示文字的高度 + 间距）。想改回来就得往按钮上
-        加一个「Field 的标签有多高」的魔数，而那个数会随字号与行高悄悄失效。
-        放进同一行让 `items-center` 自己对齐，什么数都不用写。
-      */}
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start">
-        <Field label="目录" hint="只扫直接子目录；也可以填到上层再往下扫">
-          {(id) => (
-            <div className="flex items-center gap-2">
-              <Input
-                id={id}
-                ref={dirRef}
-                value={dir}
-                onChange={(e) => setDir(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && runScan(dir, true)}
-                placeholder="D:/Git"
-                className="w-72"
-              />
-              <Button
-                onClick={() => runScan(dir, true)}
-                disabled={!dir.trim() || scan.isPending}
-              >
-                {scan.isPending ? (
-                  <Loader size={14} aria-hidden className="animate-spin" />
-                ) : (
-                  <FolderSearch size={14} aria-hidden />
-                )}
-                {scan.isPending ? '扫描中…' : '扫描'}
-              </Button>
-            </div>
-          )}
-        </Field>
-        <Field label="往下扫几层" hint="1 = 只看子目录">
-          {(id) => (
-            <Input
-              id={id}
-              type="number"
-              min={1}
-              max={3}
-              value={depth}
-              onChange={(e) => setDepth(Math.min(Math.max(Number(e.target.value) || 1, 1), 3))}
-              className="!w-24"
-            />
-          )}
-        </Field>
-      </div>
+      <SettingRow label="往下扫几层" hint="1 = 只看直接子目录。层数越多耗时越长。">
+        <Input
+          type="number"
+          min={1}
+          max={3}
+          value={depth}
+          onChange={(e) => setDepth(Math.min(Math.max(Number(e.target.value) || 1, 1), 3))}
+          aria-label="往下扫几层"
+          className="!w-24"
+        />
+      </SettingRow>
 
       {settings && settings.scanDirs.length > 0 ? (
         <div className="mt-3">
