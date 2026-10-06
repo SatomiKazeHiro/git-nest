@@ -167,18 +167,40 @@ export function ScanSection() {
         扫描只读：它只看有哪些仓库，不写清单也不动磁盘。你挑中的那几个才会添加进来。
       </p>
 
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+      {/*
+        扫描按钮和「目录」输入框在**同一个 flex 行**里。
+
+        原来它是这一行的兄弟节点，配 `sm:items-end` 对齐——而那对齐的是
+        `Field` 的底边，也就是**提示文字**的底，不是输入框的底，于是按钮比
+        输入框低了将近二十像素（提示文字的高度 + 间距）。想改回来就得往按钮上
+        加一个「Field 的标签有多高」的魔数，而那个数会随字号与行高悄悄失效。
+        放进同一行让 `items-center` 自己对齐，什么数都不用写。
+      */}
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start">
         <Field label="目录" hint="只扫直接子目录；也可以填到上层再往下扫">
           {(id) => (
-            <Input
-              id={id}
-              ref={dirRef}
-              value={dir}
-              onChange={(e) => setDir(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && runScan(dir, true)}
-              placeholder="D:/Git"
-              className="sm:w-80"
-            />
+            <div className="flex items-center gap-2">
+              <Input
+                id={id}
+                ref={dirRef}
+                value={dir}
+                onChange={(e) => setDir(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && runScan(dir, true)}
+                placeholder="D:/Git"
+                className="w-72"
+              />
+              <Button
+                onClick={() => runScan(dir, true)}
+                disabled={!dir.trim() || scan.isPending}
+              >
+                {scan.isPending ? (
+                  <Loader size={14} aria-hidden className="animate-spin" />
+                ) : (
+                  <FolderSearch size={14} aria-hidden />
+                )}
+                {scan.isPending ? '扫描中…' : '扫描'}
+              </Button>
+            </div>
           )}
         </Field>
         <Field label="往下扫几层" hint="1 = 只看子目录">
@@ -194,17 +216,6 @@ export function ScanSection() {
             />
           )}
         </Field>
-        <Button
-          onClick={() => runScan(dir, true)}
-          disabled={!dir.trim() || scan.isPending}
-        >
-          {scan.isPending ? (
-            <Loader size={14} aria-hidden className="animate-spin" />
-          ) : (
-            <FolderSearch size={14} aria-hidden />
-          )}
-          {scan.isPending ? '扫描中…' : '扫描'}
-        </Button>
       </div>
 
       {settings && settings.scanDirs.length > 0 ? (

@@ -2,9 +2,24 @@ import { useEffect, useId, useRef, type ButtonHTMLAttributes, type ReactNode } f
 import { enterOverlay } from '@/lib/commands'
 
 type Variant = 'primary' | 'ghost' | 'danger'
+/**
+ * 按钮尺寸只有两档。
+ *
+ * 桌面软件里的控件高度是**有分级的**：一屏里全是大按钮会让人不知道哪个才是
+ * 主动作。曾经这一栏只有一个尺寸，于是「重读本地状态」这种维护性动作跟旁边
+ * 的「编辑资料」「联网检查更新」一样高、一样重——它被挤在卡片头上时尤其刺眼，
+ * 视觉重量和它的分量完全不配。
+ *
+ * - `md`（默认，28px）：工具条、弹窗底部、抬头这一层的主要动作
+ * - `sm`（24px）：卡片头、状态栏、表格行内这类**塞在别的东西里面**的次要动作
+ *
+ * 拿不准时用 `md`。`sm` 是例外，不是常态。
+ */
+type Size = 'sm' | 'md'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant
+  size?: Size
 }
 
 const VARIANTS: Record<Variant, string> = {
@@ -15,11 +30,16 @@ const VARIANTS: Record<Variant, string> = {
   danger: 'bg-panel text-signal-bad border border-line hover:border-signal-bad',
 }
 
-export function Button({ variant = 'ghost', className = '', ...rest }: ButtonProps) {
+const SIZES: Record<Size, string> = {
+  sm: 'h-6 gap-1 px-2 text-[12px]',
+  md: 'h-7 gap-1.5 px-3 text-[13px]',
+}
+
+export function Button({ variant = 'ghost', size = 'md', className = '', ...rest }: ButtonProps) {
   return (
     <button
       {...rest}
-      className={`inline-flex cursor-pointer items-center gap-1.5 rounded-[3px] px-3 py-1.5 text-[13px] font-medium transition-colors disabled:cursor-not-allowed ${VARIANTS[variant]} ${className}`}
+      className={`inline-flex cursor-pointer items-center rounded-[3px] font-medium transition-colors disabled:cursor-not-allowed ${SIZES[size]} ${VARIANTS[variant]} ${className}`}
     />
   )
 }
@@ -51,6 +71,12 @@ export function Field({ label, hint, error, children }: FieldProps) {
   )
 }
 
+/*
+  高度**不放进共享类**：单行输入框与按钮同为 28px（`h-7`），在工具条里
+  才能对齐；而多行文本框必须跟着内容长，写死高度会把它压成一行。
+  28px 是桌面软件的常规控件高度——原来 13px 字 + py-1.5 算出来是 33.5px，
+  那个数是字号的副产物，不是谁定下来的规格。
+*/
 const inputClass =
   'w-full rounded-[3px] border border-line bg-panel px-2.5 py-1.5 font-mono text-[13px] text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none'
 
@@ -61,7 +87,7 @@ type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
 
 export function Input(props: InputProps) {
   const { className = '', ...rest } = props
-  return <input {...rest} className={`${inputClass} ${className}`} />
+  return <input {...rest} className={`${inputClass} h-7 ${className}`} />
 }
 
 export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {

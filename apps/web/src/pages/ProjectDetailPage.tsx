@@ -368,11 +368,12 @@ export function StatusPanel({
         )}
         <Button
           className="ml-auto"
+          size="sm"
           disabled={isFetching}
           onClick={onRefresh}
           title="不联网：只重读本机的 git 状态（绕开几秒缓存）。要问远程用上面的「联网检查更新」"
         >
-          <RefreshCw size={14} aria-hidden className={isFetching ? 'animate-spin' : ''} />
+          <RefreshCw size={12} aria-hidden className={isFetching ? 'animate-spin' : ''} />
           {isFetching ? '重读中…' : '重读本地状态'}
         </Button>
       </div>
@@ -386,39 +387,48 @@ export function StatusPanel({
         <Recommendation recommendation={status.recommendation} />
       </div>
 
-      <div
-        data-testid="status-summary"
-        className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-line px-3 py-2.5"
-      >
-        <span className={`text-[14px] font-medium ${toneFor(verdict, freshness)}`}>
-          {textFor(verdict, freshness)}
-        </span>
-        {status.behind ? <Delta n={status.behind} dir="behind" /> : null}
-        {status.ahead ? <Delta n={status.ahead} dir="ahead" /> : null}
-        {status.upstream ? (
-          <span className="font-mono text-[11.5px] text-ink-3">上游 {status.upstream}</span>
-        ) : null}
-        {status.lastCommit ? (
-          <span className="text-[11.5px] text-ink-3">
-            上游最后提交 {formatRelative(status.lastCommit.date)}
-          </span>
-        ) : null}
-        {status.dirty ? (
-          <span className="text-[11.5px] text-ink-3" title={dirtyHint(status)}>
-            · {dirtyLabel(status)}
-          </span>
-        ) : null}
-      </div>
-
       {/*
-        说明行只在**真的有额外信息**时才显示（比如「这是本地看到的，没联网确认」）。
-        新鲜度刚查过时 statusTitle 返回的就是上面那行结论本身，再印一遍纯属噪音。
+        事实行与下面那句说明是**一组**，不是两块：说明就是在解释上面这些数字
+        的来路（「它们来自上次 fetch，不联网」）。所以它们共用一个容器、共用
+        一条上边框，中间不插任何分隔线——插了就是在暗示「这是另一件事」。
+
+        主次靠字号与颜色分开，而不是靠线：事实 14px 带语气色，说明 11.5px 灰。
+        原来两行都是 12.5px/ink-2，挨在一起糊成一段，读者分不清哪句是结论、
+        哪句是补充。
       */}
-      {detailTitle === textFor(verdict, freshness) ? null : (
-        <p className="mt-2 text-[12.5px] text-ink-2" title={detailTitle}>
-          {detailTitle}
-        </p>
-      )}
+      <div className="border-t border-line px-3 py-2.5">
+        <div
+          data-testid="status-summary"
+          className="flex flex-wrap items-baseline gap-x-3 gap-y-1"
+        >
+          <span className={`text-[14px] font-medium ${toneFor(verdict, freshness)}`}>
+            {textFor(verdict, freshness)}
+          </span>
+          {status.behind ? <Delta n={status.behind} dir="behind" /> : null}
+          {status.ahead ? <Delta n={status.ahead} dir="ahead" /> : null}
+          {status.upstream ? (
+            <span className="font-mono text-[11.5px] text-ink-3">上游 {status.upstream}</span>
+          ) : null}
+          {status.lastCommit ? (
+            <span className="text-[11.5px] text-ink-3">
+              上游最后提交 {formatRelative(status.lastCommit.date)}
+            </span>
+          ) : null}
+          {status.dirty ? (
+            <span className="text-[11.5px] text-ink-3" title={dirtyHint(status)}>
+              · {dirtyLabel(status)}
+            </span>
+          ) : null}
+        </div>
+
+        {/*
+          说明行只在**真的有额外信息**时才显示（比如「这是本地看到的，没联网确认」）。
+          新鲜度刚查过时 statusTitle 返回的就是上面那行结论本身，再印一遍纯属噪音。
+        */}
+        {detailTitle === textFor(verdict, freshness) ? null : (
+          <p className="mt-1.5 text-[11.5px] leading-5 text-ink-3">{detailTitle}</p>
+        )}
+      </div>
     </section>
   )
 }
