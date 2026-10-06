@@ -140,6 +140,16 @@
   overflow: auto;
 }
 
+/*
+  清单栏是「收列断点」的判定基准。
+  `container-type: inline-size` 让下面那些 `@container` 问的是
+  「表格自己有多宽」，而不是「窗口有多宽」——三栏布局里这两件事
+  已经没有任何关系了（窗口拖宽，清单栏照样可以很窄）。
+*/
+.list-scroll {
+  container-type: inline-size;
+}
+
 /* 外壳不参与文本选择：标题栏、状态栏、表头、行内操作按钮——
    桌面软件里按住拖一下只会选中一堆没用的字。数据格仍然可选。 */
 .chrome,
@@ -234,7 +244,14 @@
 */
 .list-table th,
 .list-table td {
-  padding: 0.375rem 0.5rem;
+  /* 上下内边距 0.3rem（原来 0.375rem）是这一版唯一真正生效的密度改动：
+     行高从 33.5px 落到 31px（量出来的），一屏多出两三行。桌面软件的清单表
+     就是这个密度，而且 31px 仍比 14px 的勾选框宽松得多。 */
+  padding: 0.3rem 0.5rem;
+  /* 给一个下限。表格单元格里 `height` 是**最小高度**而不是固定高度，
+     它保证的只是「行不会因为某个格子里塞了更高的东西而单独长高一截」——
+     真的把它压到 30px 的是上面那行 padding，两条得一起改。 */
+  height: 1.875rem;
   overflow: hidden;
   white-space: nowrap;
   vertical-align: middle;
@@ -254,49 +271,74 @@
   border-bottom: 1px solid var(--color-line);
 }
 
-/* 列宽。表头与数据行共用；窄屏用 display:none 收列，table 会自动重算剩下的宽度。 */
+/*
+  列宽。表头与数据行共用；窄了用 display:none 收列，table 会自动重算剩下的宽度。
+
+  数字比原来收了一圈。清单现在是三栏里的一栏——窗口 1440px 宽时它只剩
+  约 850px（还要分掉导航 208 与详情 480），而按原来的宽度，光是除路径以外
+  的固定列就要 752px，等于说路径列在任何正常窗口下都只剩几十像素，
+  正好被压成「D:/…/…」那种断头话。
+*/
 .col-check {
   width: 1.75rem;
 }
 .col-name {
   width: 13rem;
 }
-/* 路径要能念出来，所以给得宽一些；再长的部分靠 tooltip */
+/* 路径是唯一吸收剩余宽度的列（width: auto）：栏变窄先压它，到阈值再整列收掉 */
 .col-path {
   width: auto;
 }
 .col-tags {
-  width: 6rem;
-}
-.col-behind {
-  width: 5.5rem;
-}
-.col-author {
-  width: 6rem;
-}
-.col-recommend {
   width: 5rem;
 }
+.col-behind {
+  width: 4rem;
+}
+.col-author {
+  width: 5rem;
+}
+.col-recommend {
+  width: 4.5rem;
+}
 .col-checked {
-  width: 6rem;
+  width: 5rem;
 }
 .col-actions {
-  width: 3.75rem;
+  width: 3rem;
   text-align: right;
 }
-@media (width < 80rem) {
-  .col-author {
-    display: none;
-  }
-}
-@media (width < 64rem) {
+
+/*
+  收列的阈值看的是**清单栏自己有多宽**，不是窗口有多宽。
+
+  原来挂在 `@media (width < …)` 上，三栏之后就不成立了：窗口 1440px 时
+  视口仍然大于 64rem，于是路径列不会收起，而是被压到几十像素——恰好是
+  当初特意截短、又注明「断头话没什么用」的那个形态。判断基准必须是
+  装得下它的那个容器（`.list-scroll` 在 CSS 里声明了 container-type）。
+
+  阈值是按「收掉这一列之后，剩下的还装得下」算的：固定列合计 41rem，
+  路径至少还要 8rem 才念得出来，所以 50rem 以下先收路径；往下依次是
+  远程更新、标签、上次检查。**「落后」和「推荐」不收**——这两列是这个
+  清单存在的理由，窗口再窄也得留着。
+*/
+@container (width < 50rem) {
   .col-path {
     display: none;
   }
 }
-@media (width < 48rem) {
-  .col-tags,
-  .col-recommend {
+@container (width < 41rem) {
+  .col-author {
+    display: none;
+  }
+}
+@container (width < 35rem) {
+  .col-tags {
+    display: none;
+  }
+}
+@container (width < 30rem) {
+  .col-checked {
     display: none;
   }
 }

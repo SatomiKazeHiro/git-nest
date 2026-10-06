@@ -289,7 +289,7 @@ function ProjectRow({
       <td className="col-name">
         <Link
           to={`/projects/${p.id}`}
-          className="block truncate text-[13.5px] font-medium text-ink hover:text-accent"
+          className="block cursor-pointer truncate text-[13.5px] font-medium text-ink hover:text-accent"
         >
           {p.name}
         </Link>
@@ -339,7 +339,7 @@ function ProjectRow({
             onClick={() => openEdit(p.id)}
             title="编辑资料"
             aria-label={`编辑资料 ${p.name}`}
-            className="rounded-[3px] p-1 text-ink-2 hover:bg-paper hover:text-ink"
+            className="cursor-pointer rounded-[3px] p-1 text-ink-2 hover:bg-paper hover:text-ink"
           >
             <Pencil size={13} aria-hidden />
           </button>
@@ -347,7 +347,7 @@ function ProjectRow({
             onClick={onRemove}
             title="移出清单"
             aria-label={`移出清单 ${p.name}`}
-            className="rounded-[3px] p-1 text-ink-2 hover:bg-paper hover:text-signal-bad"
+            className="cursor-pointer rounded-[3px] p-1 text-ink-2 hover:bg-paper hover:text-signal-bad"
           >
             <Trash2 size={13} aria-hidden />
           </button>

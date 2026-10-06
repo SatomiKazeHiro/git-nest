@@ -18,7 +18,7 @@ export function Button({ variant = 'ghost', className = '', ...rest }: ButtonPro
   return (
     <button
       {...rest}
-      className={`inline-flex items-center gap-1.5 rounded-[3px] px-3 py-1.5 text-[13px] font-medium transition-colors disabled:cursor-not-allowed ${VARIANTS[variant]} ${className}`}
+      className={`inline-flex cursor-pointer items-center gap-1.5 rounded-[3px] px-3 py-1.5 text-[13px] font-medium transition-colors disabled:cursor-not-allowed ${VARIANTS[variant]} ${className}`}
     />
   )
 }
