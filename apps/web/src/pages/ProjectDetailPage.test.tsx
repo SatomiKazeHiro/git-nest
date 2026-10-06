@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { render, screen } from '@testing-library/react'
-import type { RepoStatus } from '@git-nest/core'
+import { cleanup, render, screen } from '@testing-library/react'
+import { VERDICT_LABEL, type RepoStatus, type UpdateVerdict } from '@git-nest/core'
 import { StatusPanel, RecordView, RemoteRow, isWebUrl } from './ProjectDetailPage'
 
 /**
@@ -123,6 +123,71 @@ describe('git 状态摘要', () => {
   it('显示上游最后一次提交的相对时间（回答「作者上次更新是什么时候」）', () => {
     renderPanel(makeStatus())
     expect(screen.getByText(/上游最后提交/)).toBeTruthy()
+  })
+})
+
+/**
+ * 判决块的底色。
+ *
+ * **绿色只给 `safe` 一个判决。** 这条很容易写坏：写成 `bad ? 红底 : 绿底`
+ * 之后，`diverged`（要你决定）、`gone`（上游已被删）、`no_upstream`（没有上游）
+ * 会被一律涂成绿色——而绿色在这个应用里只表示「可以安全快进」。
+ * 「上游已被删」涂成绿色，正是本仓库反复要避免的**用颜色替用户下结论**。
+ *
+ * 而且颜色不能是唯一线索：无论底色如何，判决词本身必须以文字出现。
+ */
+describe('判决块的底色', () => {
+  const verdictOf = (): HTMLElement => screen.getByTestId('recommendation')
+
+  function withVerdict(verdict: UpdateVerdict): void {
+    renderPanel(
+      makeStatus({
+        recommendation: {
+          verdict,
+          ahead: null,
+          behind: 0,
+          canPull: verdict === 'safe',
+          reason: '理由',
+        },
+      }),
+    )
+  }
+
+  it('safe：绿底（唯一可以安全快进的判决）', () => {
+    withVerdict('safe')
+    expect(verdictOf().className).toContain('bg-wash-ok')
+  })
+
+  it.each<UpdateVerdict>(['rewritten', 'unrelated'])('%s：红底（别拉）', (verdict) => {
+    withVerdict(verdict)
+    expect(verdictOf().className).toContain('bg-wash-bad')
+  })
+
+  it.each<UpdateVerdict>(['diverged', 'gone', 'no_upstream'])(
+    '%s：不着色（既不是「可以」也不是「别拉」，是你得自己看一眼）',
+    (verdict) => {
+      withVerdict(verdict)
+      const cls = verdictOf().className
+      expect(cls).not.toContain('bg-wash-ok')
+      expect(cls).not.toContain('bg-wash-bad')
+    },
+  )
+
+  it('没查过时：不着色，且说清为什么给不出结论', () => {
+    renderPanel(makeStatus({ recommendation: null }))
+    const block = verdictOf()
+    expect(block.className).not.toContain('bg-wash-ok')
+    expect(block.className).not.toContain('bg-wash-bad')
+    expect(block.textContent).toContain('还没查过')
+    expect(block.textContent).toContain('本地是看不出来')
+  })
+
+  it('判决词始终以文字出现，不靠颜色单独传意', () => {
+    for (const verdict of ['safe', 'rewritten', 'unrelated', 'gone'] as UpdateVerdict[]) {
+      cleanup()
+      withVerdict(verdict)
+      expect(verdictOf().textContent).toContain(VERDICT_LABEL[verdict])
+    }
   })
 })
 

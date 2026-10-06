@@ -234,8 +234,12 @@ export function Delta({ n, dir }: { n: number; dir: 'ahead' | 'behind' }) {
 /**
  * 判决 → 颜色。**只有「可更新」给绿色，「别拉」给红色**——
  * 其余都是「你得自己看一眼」，那就别用颜色替用户下结论。
+ *
+ * 导出给详情栏的判决卡用：那里是同一个判决的放大版，**必须与清单里那一格
+ * 同一个颜色**，两处各写一份映射的话，改了一处忘了另一处就会让同一个判决
+ * 在屏幕上出现两种颜色。
  */
-const VERDICT_TONE: Record<UpdateVerdict, string> = {
+export const VERDICT_TONE: Record<UpdateVerdict, string> = {
   safe: 'text-signal-ok',
   diverged: 'text-signal-ahead',
   rewritten: 'text-signal-bad',

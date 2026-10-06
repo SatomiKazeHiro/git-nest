@@ -1,13 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
-import { Pencil, RefreshCw } from 'lucide-react'
-import { isRemoteCheckStatus, deriveStatus, VERDICT_LABEL, type RepoStatus, type UpdateRecommendation, type UpdateStatus } from '@git-nest/core'
+import { AlertTriangle, CheckCircle2, HelpCircle, Pencil, RefreshCw } from 'lucide-react'
+import { isRemoteCheckStatus, deriveStatus, VERDICT_LABEL, type RepoStatus, type UpdateRecommendation, type UpdateStatus, type UpdateVerdict } from '@git-nest/core'
 import { Button, ErrorNote, Meta } from '@/components/ui'
 import { formatRelative } from '@/lib/format'
 import { registerCommand } from '@/lib/commands'
 import { useUiStore } from '@/store/ui'
 import { useProjectStatus } from '@/features/status/queries'
-import { Delta, statusTitle, textFor, toneFor, freshnessOf } from '@/features/status/StatusCell'
+import { Delta, VERDICT_TONE, statusTitle, textFor, toneFor, freshnessOf } from '@/features/status/StatusCell'
 import { UpdatePanel } from '@/features/updates/UpdatePanel'
 import { useProject } from '@/features/projects/queries'
 
@@ -46,28 +46,33 @@ export function ProjectDetailPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 px-4 py-4">
-      {status?.status === 'missing' ? (
-        <div className="border-l-2 border-signal-bad bg-panel px-4 py-3">
-          <p className="text-[13.5px] font-medium text-signal-bad">这个目录不在了</p>
-          <p className="mt-1 text-[13px] text-ink-2">
-            清单里这一条还在（你写的记录、标签都留着），只是磁盘上找不到
-            <span className="font-mono text-[12px]"> {project.path}</span>。
-            仓库如果是搬了家或改了名，点「编辑资料」把路径指到新位置就行；要是不用了就「移出清单」。
-          </p>
-        </div>
-      ) : null}
+    <div className="flex min-h-full flex-col">
+      {status?.status === 'missing' ? <MissingNotice /> : null}
 
-      <div>
-        {/* 原来这里有一个「← 清单」的返回链接。现在它是窗口右边的详情栏，
-            清单一直就在左边——返回链接指向一个从没离开过的地方，是网页的遗留。 */}
-        <div className="flex items-start gap-2">
-          <h1 className="text-[18px] font-semibold leading-tight text-ink">{project.name}</h1>
+      {/*
+        抬头：名字 + 动作 + 路径。
+
+        **路径在这里，不在下面的键值表里，而且不截断。**
+        它是「哪一份」的唯一凭据——清单里可能有两个同名仓库，只有路径能分开它们。
+        原来它是个 `truncate` 的表格单元，栏一窄就变成「D:/…/…」，正是本仓库
+        早就判定过的「断头话」；窄栏里该做的是让它换行，不是把它砍掉
+        （WCAG 对「区分性名称」的要求是完整可读，不是为了排版整齐而裁掉）。
+
+        `min-w-0` 配 `wrap-anywhere`：路径是不可预测的长串（深目录、Windows 的
+        超长前缀、目录里有空格），必须允许在任何位置断开，否则会把整个栏撑宽。
+        不用 `break-all` ——那会把正常汉字也逐个拆开。
+      */}
+      <header className="flex flex-wrap items-start gap-x-3 gap-y-2 border-b border-line px-4 py-3">
+        <h1 className="min-w-0 flex-1 text-[17px] font-semibold leading-tight text-ink [overflow-wrap:anywhere]">
+          {project.name}
+        </h1>
+        <div className="flex shrink-0 items-center gap-1.5">
           <Button onClick={() => openEdit(project.id)}>
             <Pencil size={14} aria-hidden />
             编辑资料
           </Button>
           <Button
+            variant="primary"
             onClick={() => setUpdating(true)}
             title="联网 fetch 远程，再分析落后多少、推不推荐更新"
           >
@@ -75,58 +80,100 @@ export function ProjectDetailPage() {
             联网检查更新
           </Button>
         </div>
-      </div>
+        <p
+          className="w-full min-w-0 font-mono text-[12px] leading-5 text-ink-2 [overflow-wrap:anywhere]"
+          title={project.path}
+        >
+          {project.path}
+        </p>
+      </header>
 
-      <dl className="grid grid-cols-[7rem_1fr] gap-y-2 border-y border-line-soft py-4 text-[13px]">
-        <dt className="text-ink-3">本地路径</dt>
-        <dd className="min-w-0 truncate font-mono text-[12.5px] text-ink">{project.path}</dd>
+      <div className="flex flex-1 flex-col gap-4 px-4 py-4">
+        <StatusPanel
+          status={status}
+          isFetching={refresh.isPending}
+          onRefresh={() => refresh.mutate()}
+          lastCheckAt={project.latestCheck?.checkedAt ?? null}
+          lastCheckStatus={project.latestCheck?.status ?? null}
+        />
 
         <RemoteRow url={project.remoteUrl} />
 
-        <dt className="text-ink-3">分类</dt>
-        <dd className="font-mono text-[12.5px] text-ink">{project.category || '未分类'}</dd>
+        {/*
+          分类与标签并成一行 chip。
+          原来它们各占一个 7rem 标签列 + 右边一个 chip 盒——**包了两层**：
+          「分类」两个字、然后一个等宽字、再然后一个带框的小块。
+          这一行里没有真正的「值」需要和「标签」对齐，chip 自己就是值。
+        */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          <span className="text-[11px] text-ink-3">分类</span>
+          <Chip>{project.category || '未分类'}</Chip>
+          {project.tags.length > 0 ? (
+            <>
+              <span className="ml-1 text-[11px] text-ink-3">标签</span>
+              {project.tags.map((t) => (
+                <Chip key={t.id}>{t.name}</Chip>
+              ))}
+            </>
+          ) : null}
+        </div>
 
-        <dt className="text-ink-3">标签</dt>
-        <dd className="flex flex-wrap items-center gap-1">
-          {project.tags.length === 0 ? (
-            <span className="text-ink-3">—</span>
-          ) : (
-            project.tags.map((t) => (
-              <span
-                key={t.id}
-                className="rounded-[2px] border border-line px-1 font-mono text-[11.5px] text-ink-2"
-              >
-                {t.name}
-              </span>
-            ))
-          )}
-        </dd>
-
-        {/* 记录排在标签之后、添加时间之前：它在库里就是 `projects` 表上的一列，
-            和上面这几行**同级**。原来它是个和「git 状态」并排的 `<h2>` 分区——
-            那是沿用了旧的「备注」列表的位置（列表配得上分区标题），
-            换成单列之后就不该再抬一级。 */}
-        <dt className="text-ink-3">记录</dt>
-        <dd>
+        {/*
+          记录单独立一段，且是**正文**字号与颜色。
+          它原来是个 `text-ink-2` 的灰字、还缩在标签列右边那一格宽里，
+          跟「添加时间」一个权重——而它是这个项目里**唯一由你写的东西**，
+          剩下的字段都是从 git 读来的。自己写的话不该是这个项目里最不容易被
+          读到的一块。
+        */}
+        <section>
+          <h2 className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-ink-3">
+            记录
+          </h2>
           <RecordView record={project.record} />
-        </dd>
+        </section>
+      </div>
 
-        <dt className="text-ink-3">添加时间</dt>
-        <dd className="font-mono text-[12.5px] text-ink-2">{formatRelative(project.addedAt)}</dd>
-      </dl>
-
-      <StatusPanel
-        status={status}
-        isFetching={refresh.isPending}
-        onRefresh={() => refresh.mutate()}
-        lastCheckAt={project.latestCheck?.checkedAt ?? null}
-        lastCheckStatus={project.latestCheck?.status ?? null}
-      />
+      {/* 添加时间是整栏里最不重要的一个事实：沉到最底下，用最小的字。
+          顺带它终于不用等宽了——那不是代码。 */}
+      <footer className="mt-auto border-t border-line px-4 py-2 text-[11px] text-ink-3">
+        加入清单于 {formatRelative(project.addedAt)}
+      </footer>
 
       {/* 「编辑资料」弹窗挂在窗口外壳上（整个应用只此一份），这里不再挂。
-          报告是弹窗：插在流里会把「身份信息」和「git 状态」切开（而且那时它还是个
-          与「git 状态」同级的区域） */}
+          报告是弹窗：插在流里会把上面的判断切开。 */}
       {updating ? <UpdatePanel ids={[project.id]} onClose={() => setUpdating(false)} /> : null}
+    </div>
+  )
+}
+
+/** 分类与标签共用的那一枚小标记 */
+function Chip({ children }: { children: string }) {
+  return (
+    <span className="rounded-[2px] border border-line px-1.5 py-px font-mono text-[11.5px] text-ink-2">
+      {children}
+    </span>
+  )
+}
+
+/**
+ * 「这个目录不在了」。
+ *
+ * 原来是页面顶部一条左边框的横幅，路径挤在句子中间。现在路径已经单独成行了，
+ * 所以这里只说**发生了什么、怎么办**，并把那个动词（编辑资料 / 移出清单）
+ * 直接说成动作名——用户照着做就行，不必自己翻译。
+ */
+function MissingNotice() {
+  return (
+    <div className="border-b border-signal-bad bg-wash-bad px-4 py-3">
+      <p className="flex items-center gap-1.5 text-[13px] font-medium text-signal-bad">
+        <AlertTriangle size={14} aria-hidden />
+        这个目录不在了
+      </p>
+      <p className="mt-1 text-[12.5px] text-ink-2">
+        清单里这一条还在（你写的记录、标签都留着），只是磁盘上找不到这个路径。
+        仓库如果是搬了家或改了名，在上面「编辑资料」里把路径指到新位置；
+        要是不用了就「移出清单」。
+      </p>
     </div>
   )
 }
@@ -138,24 +185,56 @@ export function ProjectDetailPage() {
  * **尤其是 `rewritten` / `unrelated` 这两种「别拉」**，用户需要知道为什么，
  * 否则只会觉得这软件在拦他。
  */
+/**
+ * 判决块的「长相」：底色 + 图标。
+ *
+ * **绿色只给 `safe` 一个判决。** 这一点很容易写坏：曾经写成
+ * `bad ? 红底 : 绿底`，于是 `diverged`（要你决定）、`gone`（上游已被删）、
+ * `no_upstream`（没有上游）全被涂成了绿色——而绿色在这个应用里只表示
+ * 「可以安全快进」。「上游已被删」涂成绿色，正是本仓库反复要避免的
+ * **用颜色替用户下结论**。
+ *
+ * 那三个判决既不是「可以」也不是「别拉」，是**「你自己看一眼」**：
+ * 不着色（跟卡片一个底）、配一个中性的问号图标，让它既不绿也不红。
+ */
+const VERDICT_LOOK: Record<UpdateVerdict, { wash: string; Icon: typeof CheckCircle2 }> = {
+  safe: { wash: 'bg-wash-ok', Icon: CheckCircle2 },
+  rewritten: { wash: 'bg-wash-bad', Icon: AlertTriangle },
+  unrelated: { wash: 'bg-wash-bad', Icon: AlertTriangle },
+  diverged: { wash: '', Icon: HelpCircle },
+  gone: { wash: '', Icon: HelpCircle },
+  no_upstream: { wash: '', Icon: HelpCircle },
+}
+
 function Recommendation({ recommendation }: { recommendation: UpdateRecommendation | null }) {
   if (!recommendation) {
     return (
-      <p className="mt-2 text-[12.5px] text-ink-3">
-        还没检查过更新，所以给不出「推不推荐」——作者有没有改写历史，本地是看不出来的。
-      </p>
+      <div className="px-3 py-2.5" data-testid="recommendation">
+        <p className="flex items-center gap-1.5 text-[15px] font-semibold text-ink-3">
+          <HelpCircle size={15} aria-hidden />
+          还没查过
+        </p>
+        <p className="mt-1 text-[12.5px] leading-5 text-ink-2">
+          所以给不出「推不推荐」——作者有没有改写历史，本地是看不出来的。点上面「联网检查更新」问一次远程。
+        </p>
+      </div>
     )
   }
-  const bad = recommendation.verdict === 'rewritten' || recommendation.verdict === 'unrelated'
+  const { wash, Icon } = VERDICT_LOOK[recommendation.verdict]
   return (
-    <div
-      className={`mt-2 border-l-2 pl-3 ${bad ? 'border-signal-bad' : 'border-line-soft'}`}
-      data-testid="recommendation"
-    >
-      <p className={`text-[13px] font-medium ${bad ? 'text-signal-bad' : 'text-ink'}`}>
-        推不推荐更新：{VERDICT_LABEL[recommendation.verdict]}
+    // 「别拉」这块整块换成浅红底，而不是只给一根红竖线：一根线在密集的等宽字里
+    // 很容易看漏，而这是全应用唯一会拦住你动作的地方。
+    // 颜色之外始终有文字与图标（判决词本身），所以不靠颜色单独传意。
+    <div className={`px-3 py-2.5 ${wash}`} data-testid="recommendation">
+      <p
+        className={`flex items-center gap-1.5 text-[15px] font-semibold ${VERDICT_TONE[recommendation.verdict]}`}
+      >
+        <Icon size={15} aria-hidden />
+        {VERDICT_LABEL[recommendation.verdict]}
       </p>
-      <p className="mt-0.5 max-w-prose text-[12.5px] text-ink-2">{recommendation.reason}</p>
+      <p className="mt-1 text-[12.5px] leading-5 text-ink-2 [overflow-wrap:anywhere]">
+        {recommendation.reason}
+      </p>
     </div>
   )
 }
@@ -252,9 +331,27 @@ export function StatusPanel({
   )
 
   return (
-    <section>
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <h2 className="text-[15px] font-semibold text-ink">git 状态</h2>
+    /*
+      一张卡。**边框而不是阴影**——阴影在这么窄的一栏里会往外糊，
+      而一条 1px 的线就够把「这块是关于 git 的」圈出来（极简主义那条
+      「clean borders, no box-shadow unless necessary」就是指这个）。
+
+      卡里分三层，从上到下是「结论 → 依据 → 说明」：
+      判决在最上面，因为它是这个软件一阶段最要紧的一条输出；
+      事实行给它当依据；说明行只在真的有额外信息时才有。
+    */
+    <section className="overflow-hidden rounded-[4px] border border-line">
+      {/*
+        这一行**不铺底色**。原来给卡片头和判决块都上了一层极浅的灰绿
+        （#eef1f3 与 #eaf0ec，三个通道各差 4–5，肉眼等于同色），
+        于是「可更新」那块有颜色的判决和它上面的标题糊成一片。
+        现在卡里**只有判决那一块着色**——颜色于是只表示一件事：
+        拉了会不会出事。
+      */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
+        <h2 className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+          推不推荐更新
+        </h2>
         {hasRemoteCheck ? (
           <Meta
             label="远程检查"
@@ -280,38 +377,38 @@ export function StatusPanel({
         </Button>
       </div>
 
+      {/*
+        判决会随一次后台检查异步变掉，所以它是**一个完整的状态区域**而不是
+        几段飘着的字：读屏用户听到的是「3 个仓库可安全快进」这样一句完整的话，
+        而不是先念「2」再跳到别处去。
+      */}
+      <div role="status" aria-atomic="true">
+        <Recommendation recommendation={status.recommendation} />
+      </div>
+
       <div
         data-testid="status-summary"
-        className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-y border-line-soft py-3"
+        className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-line px-3 py-2.5"
       >
-        <span className={`text-[15px] font-medium ${toneFor(verdict, freshness)}`}>
+        <span className={`text-[14px] font-medium ${toneFor(verdict, freshness)}`}>
           {textFor(verdict, freshness)}
         </span>
         {status.behind ? <Delta n={status.behind} dir="behind" /> : null}
         {status.ahead ? <Delta n={status.ahead} dir="ahead" /> : null}
         {status.upstream ? (
-          <span className="font-mono text-[12px] text-ink-3">上游 {status.upstream}</span>
+          <span className="font-mono text-[11.5px] text-ink-3">上游 {status.upstream}</span>
         ) : null}
         {status.lastCommit ? (
-          <span className="font-mono text-[12px] text-ink-3">
+          <span className="text-[11.5px] text-ink-3">
             上游最后提交 {formatRelative(status.lastCommit.date)}
           </span>
         ) : null}
         {status.dirty ? (
-          <span
-            className="font-mono text-[12px] text-ink-3"
-            title={dirtyHint(status)}
-          >
+          <span className="text-[11.5px] text-ink-3" title={dirtyHint(status)}>
             · {dirtyLabel(status)}
           </span>
         ) : null}
       </div>
-
-      {/*
-        「推不推荐更新」单独一行——它比上面那串事实更需要被看见，
-        而且它的依据（上次检查）和上面那些本地 refs 不是一回事，混在一行会说不清。
-      */}
-      <Recommendation recommendation={status.recommendation} />
 
       {/*
         说明行只在**真的有额外信息**时才显示（比如「这是本地看到的，没联网确认」）。
@@ -342,19 +439,17 @@ export function StatusPanel({
 export function RemoteRow({ url }: { url: string | null }) {
   if (!url || !isWebUrl(url)) return null
   return (
-    <>
-      <dt className="text-ink-3">远程</dt>
-      <dd className="min-w-0 truncate font-mono text-[12.5px] text-ink">
-        <a
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          className="text-accent hover:underline"
-        >
-          {url}
-        </a>
-      </dd>
-    </>
+    <div className="flex items-baseline gap-2">
+      <span className="shrink-0 text-[11px] text-ink-3">远程</span>
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="min-w-0 font-mono text-[12px] text-accent hover:underline [overflow-wrap:anywhere]"
+      >
+        {url}
+      </a>
+    </div>
   )
 }
 
@@ -382,10 +477,18 @@ export function isWebUrl(url: string): boolean {
  */
 export function RecordView({ record }: { record: string }) {
   if (!record) {
-    return <p className="text-[13px] text-ink-3">还没写。点上方「编辑资料」写。</p>
+    return (
+      <p className="border border-dashed border-line px-3 py-3 text-[12.5px] text-ink-3">
+        还没写。在上面「编辑资料」里写一句「怎么找到它的、有什么想法」——这一栏留给你，
+        别的字段都是从 git 读来的。
+      </p>
+    )
   }
   return (
-    <p className="max-w-prose whitespace-pre-wrap text-[13.5px] leading-6 text-ink-2">
+    // 正文尺寸与颜色：这是**你自己写的话**，是这个项目里唯一不是从 git 读来的
+    // 内容。原来它是 `text-ink-2` 的灰字、还缩在标签列右边一格宽里，读起来像脚注。
+    // 宽度上不再用 max-w-prose 压着——这一栏本来就不宽，压了只剩两三行。
+    <p className="whitespace-pre-wrap text-[13px] leading-6 text-ink [overflow-wrap:anywhere]">
       {withLinks(record)}
     </p>
   )

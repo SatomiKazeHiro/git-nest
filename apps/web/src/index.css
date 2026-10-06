@@ -27,6 +27,12 @@
   --color-signal-behind: #14506e;
   --color-signal-ahead: #8a5a17;
   --color-signal-bad: #a32d2d;
+
+  /* 卡片底色。信号色本身是**文字与线条**用的，字号 13–15px 起步；
+     直接拿它当大面积底色会既刺眼又压过文字。所以另配两个极浅的底：
+     一个给「可以更新」，一个给「别拉」。它们只出现在卡片上。 */
+  --color-wash-ok: #eaf0ec;
+  --color-wash-bad: #f7ecec;
 }
 
 @layer base {
