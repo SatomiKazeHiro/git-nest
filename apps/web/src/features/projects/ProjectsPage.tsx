@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { groupBy, orderBy } from 'es-toolkit'
 import { useDebounce } from 'ahooks'
@@ -6,6 +6,7 @@ import { Eraser, FolderSearch, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-re
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
 import { Button, Dialog, EmptyState, ErrorNote, Input } from '@/components/ui'
 import { ApiError } from '@/lib/api'
+import { registerCommand } from '@/lib/commands'
 import { formatRelative, shortenPath } from '@/lib/format'
 import { UNCATEGORIZED, useSelectedCount, useSelectedIds, useUiStore } from '@/store/ui'
 import { useProjects, useRemoveProject } from './queries'
@@ -58,6 +59,96 @@ export function ProjectsPage() {
       ['asc', 'asc'],
     ).map(([name, items]) => ({ name, items, filterable: name !== UNCATEGORIZED }))
   }, [projects])
+
+  /** 表里从上到下的行顺序——上下键要按这个走，而不是按 `projects` 的原顺序 */
+  const ordered = useMemo(() => groups.flatMap((g) => g.items), [groups])
+
+  /*
+    注册只有清单页算得出来的命令：「全选」要知道当前筛出了哪些行，
+    「检查更新」要决定检查勾选的那些还是当前筛选出的全部。
+    挂载时注册、卸载时注销——菜单栏与快捷键问的就是这张表。
+  */
+  const setSelection = useUiStore((s) => s.setSelection)
+  const clearSelection = useUiStore((s) => s.clearSelection)
+  const openCreate = useUiStore((s) => s.openCreate)
+  const toggleSelected = useUiStore((s) => s.toggleSelected)
+
+  useEffect(() => {
+    const ids = ordered.map((p) => p.id)
+    const offs = [
+      registerCommand('select-all', () => setSelection(ids)),
+      registerCommand('clear-selection', clearSelection),
+      registerCommand('open-create', openCreate),
+      registerCommand('check-updates', () => setPanelOpen(true)),
+      registerCommand('open-scan', () => navigate('/settings#scan')),
+      registerCommand('focus-search', () => {
+        document.getElementById('project-search')?.focus()
+      }),
+    ]
+    return () => offs.forEach((off) => off())
+  }, [ordered, setSelection, clearSelection, openCreate, navigate])
+
+  /* 行焦点：roving tabindex，整张表在 Tab 序里只占一个停靠点。 */
+  const [focusedId, setFocusedId] = useState<number | null>(null)
+  const tbodyRef = useRef<HTMLTableSectionElement>(null)
+
+  const focusRow = useCallback((id: number | null) => {
+    setFocusedId(id)
+    tbodyRef.current?.querySelector<HTMLElement>(`[data-row="${id}"]`)?.focus()
+  }, [])
+
+  /** 相对 `from` 移动 delta 行 */
+  const moveFocus = (from: number | null, delta: number) => {
+    if (ordered.length === 0) return
+    const at = from === null ? -1 : ordered.findIndex((p) => p.id === from)
+    const next = at < 0 ? 0 : Math.min(ordered.length - 1, Math.max(0, at + delta))
+    const row = ordered[next]
+    if (row) focusRow(row.id)
+  }
+
+  const onTableKeyDown = (e: React.KeyboardEvent<HTMLTableSectionElement>) => {
+    /*
+      「现在是哪一行」**从事件所在的行读，不从 state 读**。
+      state 只用来画 tabindex（让整张表在 Tab 序里只占一个停靠点），
+      真要移动焦点时却去读它，就会踩到「刚点完一行、还没重渲染就按键」的时序：
+      handler 闭包里的 focusedId 还是上一次的值，于是按 ↓ 停在原地。
+      从 DOM 读永远是准的——行焦点本来就是 DOM 的事。
+    */
+    const row = (e.target as HTMLElement).closest('tr[data-row]') as HTMLElement | null
+    const here = row ? Number(row.dataset.row) : null
+
+    // 名字是链接、勾选框是 input、行内还有两个按钮——它们各自有原生行为，
+    // 这里一律不插手。尤其 Space：焦点在勾选框上时浏览器自己会切换它，
+    // 我们再来一次就是**双翻转**（按一下没反应或反着来）。
+    const inControl = (e.target as HTMLElement).closest('input, a, button') !== null
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault()
+        moveFocus(here, 1)
+        return
+      case 'ArrowUp':
+        e.preventDefault()
+        moveFocus(here, -1)
+        return
+      case ' ':
+        if (inControl || here === null) return
+        e.preventDefault()
+        toggleSelected(here)
+        return
+      case 'Enter':
+        if (inControl || here === null) return
+        e.preventDefault()
+        navigate(`/projects/${here}`)
+        return
+      case 'Delete':
+        if (inControl || here === null) return
+        e.preventDefault()
+        setPendingRemoval(ordered.find((p) => p.id === here) ?? null)
+        return
+      default:
+    }
+  }
 
   if (error) {
     return (
@@ -112,7 +203,7 @@ export function ProjectsPage() {
           */
           <table className="list-table">
             <ColumnHeader />
-            <tbody>
+            <tbody ref={tbodyRef} onKeyDown={onTableKeyDown}>
               {groups.flatMap((group) =>
                 group.items.map((p) => (
                   <ProjectRow
@@ -120,6 +211,8 @@ export function ProjectsPage() {
                     project={p}
                     status={statuses?.get(p.id)}
                     current={currentId === p.id}
+                    focused={focusedId === p.id}
+                    onFocus={() => setFocusedId(p.id)}
                     onOpen={() => navigate(`/projects/${p.id}`)}
                     onRemove={() => setPendingRemoval(p)}
                   />
@@ -224,6 +317,7 @@ function Toolbar({
     <div className="flex flex-wrap items-center gap-2 border-b border-line bg-paper px-4 py-2">
       <div className="w-56">
         <Input
+          id="project-search"
           value={filters.q}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="按名称、路径、远程地址搜"
@@ -270,6 +364,8 @@ function ProjectRow({
   project: p,
   status,
   current,
+  focused,
+  onFocus,
   onOpen,
   onRemove,
 }: {
@@ -277,6 +373,9 @@ function ProjectRow({
   status: RepoStatus | undefined
   /** 这一行是不是正显示在右边详情栏里的那个 */
   current: boolean
+  /** 行焦点（roving tabindex）：整张表在 Tab 序里只占一个停靠点 */
+  focused: boolean
+  onFocus: () => void
   onOpen: () => void
   onRemove: () => void
 }) {
@@ -288,6 +387,9 @@ function ProjectRow({
 
   return (
     <tr
+      data-row={p.id}
+      tabIndex={focused ? 0 : -1}
+      onFocus={onFocus}
       className={`row-link ${current ? 'row-current' : ''} ${gone ? 'opacity-50' : ''}`}
       title={gone ? '目录不在了。点「编辑资料」可以把它指到新位置。' : undefined}
       onClick={(e) => {

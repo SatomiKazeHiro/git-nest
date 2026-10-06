@@ -86,7 +86,7 @@
 */
 .app {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   height: 100%;
   overflow: hidden;
 }
@@ -96,6 +96,11 @@
   grid-template-columns: var(--w-nav, 13rem) minmax(0, 1fr);
   min-height: 0;
 }
+/* 折叠：整条轨道收成 0，剩下的一栏自然铺满——比给 aside 加 display:none
+   再改 grid 简单，也不会留下一条空轨道。 */
+.body-nav-hidden {
+  grid-template-columns: minmax(0, 1fr);
+}
 
 /* 内容区按路由分两种形态：清单页是「列表 + 详情」，设置页整块自己排 */
 .split {
@@ -103,6 +108,9 @@
   grid-template-columns: minmax(0, 1fr) var(--w-detail, 30rem);
   height: 100%;
   min-height: 0;
+}
+.split-no-detail {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 /*

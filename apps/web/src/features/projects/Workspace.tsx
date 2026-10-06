@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router'
 import { List } from 'lucide-react'
+import { useUiStore } from '@/store/ui'
 import { ProjectsPage } from './ProjectsPage'
 
 /**
@@ -14,12 +15,21 @@ import { ProjectsPage } from './ProjectsPage'
  * 打开 `/projects/5` 就是「清单 + 5 号项目的详情」。
  */
 export function Workspace() {
+  const detailOpen = useUiStore((s) => s.detailOpen)
   return (
-    <div className="split">
+    <div className={`split ${detailOpen ? '' : 'split-no-detail'}`}>
       <ProjectsPage />
-      <aside className="detail border-l border-line bg-panel">
-        <Outlet />
-      </aside>
+      {/*
+        详情栏折叠时**整块不渲染**，而不只是把它压成 0 宽。
+        「正在看哪个项目」住在 URL 里（`/projects/:id`），所以折叠再展开，
+        右边还是那一个项目——不需要另外存一份「折叠前选中的是谁」。
+        不渲染 `<Outlet>` 是安全的：路由照样匹配，只是内容没被画出来。
+      */}
+      {detailOpen ? (
+        <aside className="detail border-l border-line bg-panel">
+          <Outlet />
+        </aside>
+      ) : null}
     </div>
   )
 }

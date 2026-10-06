@@ -1,4 +1,5 @@
 import { X } from 'lucide-react'
+import { ROW_COMMANDS } from '@/lib/keys'
 import { useSelectedCount, useUiStore } from '@/store/ui'
 
 /**
@@ -29,6 +30,20 @@ export function StatusBar() {
           <span className="text-ink-3">勾选后点「联网检查更新」，只会检查这几个</span>
         </>
       ) : null}
+
+      {/*
+        行内按键的提示。没有它这些键等于不存在——桌面软件不会弹「你可以试试
+        按空格」的气泡，而行内那几条（↑↓ / Space / Enter / Delete）**不带
+        修饰键**，用户根本猜不到它们属于这个列表。
+        文案直接读 `ROW_COMMANDS`，跟真正处理它们的那张表同源。
+      */}
+      <span className="ml-auto flex shrink-0 items-center gap-3 font-mono text-[11px] text-ink-3">
+        {ROW_COMMANDS.map((c) => (
+          <span key={c.combo} title={c.label}>
+            {c.combo}
+          </span>
+        ))}
+      </span>
     </footer>
   )
 }

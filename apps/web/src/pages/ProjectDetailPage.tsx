@@ -1,9 +1,10 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { Pencil, RefreshCw } from 'lucide-react'
 import { isRemoteCheckStatus, deriveStatus, VERDICT_LABEL, type RepoStatus, type UpdateRecommendation, type UpdateStatus } from '@git-nest/core'
 import { Button, ErrorNote, Meta } from '@/components/ui'
 import { formatRelative } from '@/lib/format'
+import { registerCommand } from '@/lib/commands'
 import { useUiStore } from '@/store/ui'
 import { useProjectStatus } from '@/features/status/queries'
 import { Delta, statusTitle, textFor, toneFor, freshnessOf } from '@/features/status/StatusCell'
@@ -19,6 +20,16 @@ export function ProjectDetailPage() {
   const { data: project, isPending, error } = useProject(validId)
   // 状态提到页面这一层：missing 的提示要出现在页面最上面，不只是状态面板里
   const { data: status, refresh } = useProjectStatus(validId)
+
+  /*
+    F5 = 重读本地状态（不联网）。
+
+    在浏览器里 F5 是刷新页面，所以这条快捷键现在被浏览器抢着——但那只是
+    「还没打包成桌面软件」的临时状态。包成应用之后窗口里没有地址栏，
+    F5 再没人接手就变成了一个纯空的键，而「重读本机状态」恰好是最该一键
+    可做的事（它绕开服务端那 3 秒短缓存，是本地最快的刷新）。
+  */
+  useEffect(() => registerCommand('refresh-local', () => refresh.mutate()), [refresh])
 
   if (error) {
     return (

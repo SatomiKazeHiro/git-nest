@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { enterOverlay } from '@/lib/commands'
 
 type Variant = 'primary' | 'ghost' | 'danger'
 
@@ -104,6 +105,16 @@ export function Dialog({
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [])
+
+  /*
+    弹窗开着的时候，全局快捷键整个让位。
+
+    否则用户在更新报告弹窗里按 Ctrl+A，想全选的是弹窗里那一列，
+    实际被全选的是**背后那张清单**——而屏幕上没有任何东西提示过这件事。
+    这里只登记「有一个浮层开着」，真正的拦截在全局键盘处理器里（那里才有
+    哪些键、哪些命令的上下文）。
+  */
+  useEffect(() => enterOverlay(), [])
 
   useEffect(() => {
     panelRef.current?.querySelector<HTMLElement>('input, textarea, button')?.focus()
