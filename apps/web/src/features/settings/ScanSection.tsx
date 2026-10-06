@@ -71,10 +71,11 @@ export function ScanSection() {
   // 从清单页点「扫描目录」跳过来时（/settings#scan），直接把焦点放到输入框
   const { hash } = useLocation()
   const dirRef = useRef<HTMLInputElement>(null)
-  const sectionRef = useRef<HTMLElement>(null)
   useEffect(() => {
     if (hash !== '#scan') return
-    sectionRef.current?.scrollIntoView({ block: 'start' })
+    // 锚点 id 挂在「目录」那一行自己身上（SettingRow 的 id）。原来挂在一个
+    // 包裹用的 <section> 上，而那层包装现在去掉了——它存在的唯一理由就是挂 id。
+    document.getElementById('scan')?.scrollIntoView({ block: 'start' })
     dirRef.current?.focus()
   }, [hash])
 
@@ -162,8 +163,9 @@ export function ScanSection() {
   }
 
   return (
-    <section ref={sectionRef} id="scan">
+    <>
       <SettingRow
+        id="scan"
         name="目录"
         desc="填一个已存在的本机目录"
         note="扫描只读，不写清单也不动磁盘"
@@ -361,7 +363,7 @@ export function ScanSection() {
           }}
         />
       ) : null}
-    </section>
+    </>
   )
 }
 

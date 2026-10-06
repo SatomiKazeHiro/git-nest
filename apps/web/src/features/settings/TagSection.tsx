@@ -29,7 +29,7 @@ export function TagSection() {
   }
 
   return (
-    <section>
+    <>
       {error ? (
         <div className="mb-3">
           <ErrorNote message="读不到标签列表。" />
@@ -116,6 +116,6 @@ export function TagSection() {
           </div>
         </div>
       </div>
-    </section>
+    </>
   )
 }
