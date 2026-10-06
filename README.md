@@ -154,13 +154,16 @@ GET    /api/health
 
 GET    /api/projects?category=&tag=&q=
 POST   /api/projects               路径必须是已存在的目录；不填 remoteUrl 时从 git 的 origin 自动填
+                                   （`git remote get-url`：会套用 url.*.insteadOf，与 `git remote -v`
+                                   看到的一致——扫描预览、添加项目、导入三处取的是同一个来源）
 GET    /api/projects/:id           单个项目（含标签、记录、最近一次检查）
 PATCH  /api/projects/:id           部分更新：只提交的字段会被改（可改 path 重新指路，record 就是那段记录）
 DELETE /api/projects/:id           只删 DB 记录，绝不动磁盘仓库
 
 GET    /api/projects/:id/status    实时 git 状态（?fresh=true 绕开服务端 3 秒短缓存）
 GET    /api/projects/:id/log?max=  当前检出分支的提交记录（一阶段界面不显示，留给二阶段 Agent；max 上限 1000，默认 200）
-GET    /api/status?ids=1,2,3       批量状态，列表页一次拿全（一次最多 200 个）
+GET    /api/status?ids=1,2,3       批量状态，列表页一次拿全（一次最多 200 个；前端**自动分块**，
+                                   所以项目再多也不会撞上限）
 
 PUT    /api/projects/:id/tags      整体替换项目的标签集合（不存在的标签名按需创建）
 GET    /api/tags                  标签列表（带每个标签的项目数）
@@ -170,7 +173,8 @@ DELETE /api/tags/:id              删标签（注意要带 :id；没有对集合
 POST   /api/scan                   扫一层子目录预览（只读；remember=true 记进常用目录；depth 1–3；
                                    一次最多列出 500 个仓库——超了响应里 truncated=true，界面会说清
                                    「只列了前 N 个」而不是假装就这么多）
-POST   /api/projects/import        把扫出来的目录添加进清单（一个事务：要么全进、要么全不进）
+POST   /api/projects/import        把扫出来的目录添加进清单（一个事务：要么全进、要么全不进；
+                                   一次最多 500 条 = 扫描能列出的最大数量，同一个常量）
 GET    /api/settings               读设置
 PATCH  /api/settings              改设置（personal 是否参与检查、git 超时、并发、确认阈值、常用目录）
 
@@ -178,11 +182,18 @@ GET    /api/commands              最近执行过的 git 命令（?limit=，默�
 DELETE /api/commands              清空命令日志（内存里的事，重启也会清）
 POST   /api/auto-fetch            手动跑一轮自动 fetch（定时器最快也要等 30 秒）
 
-POST   /api/updates/check         批量 fetch+分析，202 返回 taskId（ids 省略 = 全部非 personal）
+POST   /api/updates/check         批量 fetch+分析，202 返回 taskId（ids 省略 = 全部非 personal；
+                                   一次最多 1000 个——前端也读这个数，超了会在面板里说清并禁用按钮）
 GET    /api/updates/:taskId       任务快照
 GET    /api/updates/:taskId/events  进度 SSE（?cursor= 可取历史事件；服务端会重放缓冲）
-POST   /api/updates/apply         对勾选的仓库逐个 pull --ff-only，同样 202 + SSE
+POST   /api/updates/apply         对勾选的仓库逐个 pull --ff-only，同样 202 + SSE（一次最多 1000 个）
 ```
+
+**批量上限只有一份来源**：`packages/core/src/limits.ts`（`MAX_STATUS_IDS` 200 /
+`MAX_BATCH_IDS` 1000 / `MAX_SCAN_RESULTS` 500）。服务端按它校验，**前端也读它**——
+状态那一列按 200 自动分块、检查面板超过 1000 提前说清并禁用按钮、扫描与导入共用
+500。这些数字原来散在五处、前端一个都不知道，于是项目超过 200 个时列表页的状态列
+会静默变成「读状态…」，批量动作只回一句「参数有误」。
 
 **超时怎么调**：没有 `GIT_NEST_GIT_TIMEOUT` 这个环境变量——超时是设置表里的
 `gitTimeoutMs`（默认 120s，允许 1s–600s），在设置页改，或 `PATCH /api/settings`。
