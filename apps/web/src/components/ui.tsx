@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { useEffect, useId, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
 
 type Variant = 'primary' | 'ghost' | 'danger'
 
@@ -31,7 +31,10 @@ interface FieldProps {
 }
 
 export function Field({ label, hint, error, children }: FieldProps) {
-  const id = useRef(`f${Math.random().toString(36).slice(2, 9)}`).current
+  // useId 而不是 `useRef(Math.random())`：后者每次渲染都要算一个随机串再丢掉，
+  // 而且「这一轮的 id」和「上一轮的 id」不是同一个值——label 的 htmlFor 只是在
+  // 同一个组件实例里恰好对上了。useId 在挂载期间稳定，正是这里要的语义。
+  const id = useId()
   return (
     <div className="flex flex-col gap-1">
       <label htmlFor={id} className="text-[12px] font-medium text-ink-2">

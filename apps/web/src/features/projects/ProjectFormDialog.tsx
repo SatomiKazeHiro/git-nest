@@ -257,9 +257,9 @@ export function ProjectFormDialog() {
           {(id) => <Textarea id={id} rows={8} value={form.record} onChange={set('record')} />}
         </Field>
 
-        {/* 标签也只有一个编辑器，就是这个字段。 */}
+        {/* 标签也只有一个编辑器，就是这个字段。id 传下去，label 才真的关联到输入框。 */}
         <Field label="标签" hint="标签只在这里改">
-          {() => <TagPicker tags={tags} value={tagNames} onChange={setTagNames} />}
+          {(id) => <TagPicker id={id} tags={tags} value={tagNames} onChange={setTagNames} />}
         </Field>
 
         <div className="mt-1 flex justify-end gap-2 border-t border-line-soft pt-3">
