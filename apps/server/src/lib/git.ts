@@ -2,10 +2,10 @@ import {
   Scheduler,
   analyzeUpdates,
   getLog,
-  getRemoteUrl as coreGetRemoteUrl,
   getRepoStatus,
   getRepoStatuses,
   pullRepo,
+  readRemoteUrl,
   readRepoFacts,
   scanDirectory,
   type RepoFacts,
@@ -215,11 +215,16 @@ export function repoLog(path: string, max: number, branch = 'HEAD') {
 
 /**
  * 扫目录：同样必须走这一个 scheduler，否则扫描会绕开并发上限。
+ * `maxResults` 由调用方（路由）显式给，值来自 core 的 `MAX_SCAN_RESULTS`。
  */
-export function scan(dir: string, options: { maxDepth?: number; trackedPaths?: Iterable<string> }): Promise<ScanResult> {
+export function scan(
+  dir: string,
+  options: { maxDepth?: number; maxResults?: number; trackedPaths?: Iterable<string> },
+): Promise<ScanResult> {
   const { gitTimeoutMs } = current()
   return scanDirectory(dir, {
     maxDepth: options.maxDepth,
+    maxResults: options.maxResults,
     trackedPaths: options.trackedPaths,
     timeoutMs: gitTimeoutMs,
     scheduler,
@@ -227,16 +232,18 @@ export function scan(dir: string, options: { maxDepth?: number; trackedPaths?: I
 }
 
 /**
- * 只读 origin 地址。也要走这一个 scheduler 与设置里的超时：
- * 它读的是同一个仓库的配置，不该在别人 pull 的时候插进去并发跑。
+ * 读 origin 地址（`git remote get-url origin` = **git 真正会用的那个地址**，
+ * 会套用 `url.<base>.insteadOf`；扫描预览、添加项目、批量导入三处统一用它，
+ * 所以预览里看到的地址就是入库后那条记录的地址）。
  *
- * 注意传下去的 options **故意不带 scheduler**：core 的 `getRemoteUrl` 自己也会
- * `scheduler.schedule`，两处都传就是「同一个 key 的 schedule 里再 schedule」，
- * 直接自锁（core 的 scheduler.ts 文件头写着这条）。外面这层排队已经够了。
+ * 排队**只在这一层做**：调用 core 的**纯实现** `readRemoteUrl`，而不是那个自带
+ * `scheduler.schedule` 的外壳 `getRemoteUrl` —— 两处都排队就是「同一个 key 的
+ * schedule 里再 schedule」，直接自锁。core 那边现在已经把这两件事拆成两个函数，
+ * 这条约定不再靠「谁忘了传 scheduler」来维持。
  */
 export function getRemoteUrl(path: string): Promise<string | null> {
   const { gitTimeoutMs } = current()
-  return scheduler.schedule(path, () => coreGetRemoteUrl(path, { timeoutMs: gitTimeoutMs }))
+  return scheduler.schedule(path, () => readRemoteUrl(path, { timeoutMs: gitTimeoutMs }))
 }
 
 /**

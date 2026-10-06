@@ -29,7 +29,12 @@ export function ProjectsPage() {
     q: debouncedQuery,
   })
 
-  const { data: statuses } = useStatuses((projects ?? []).map((p) => p.id))
+  const {
+    data: statuses,
+    error: statusesError,
+    isFetching: statusesLoading,
+    refetch: refetchStatuses,
+  } = useStatuses((projects ?? []).map((p) => p.id))
 
   /**
    * 行按分类排序——**但分类只是排序依据，不是表里的结构**。
@@ -63,6 +68,24 @@ export function ProjectsPage() {
       />
 
       <div className="flex-1 px-6 pb-24">
+        {/*
+          状态那一列读不出来时必须说出来。原来这个错误被丢掉了（只解构了 data），
+          于是超过服务端上限、后端挂了、超时——用户看到的都是每一行「读状态…」，
+          永远不恢复，也没有任何解释。清单本身是好的，所以这里只挂一条可重试的提示，
+          不把整页变成错误页。
+        */}
+        {statusesError && projects && projects.length > 0 ? (
+          <div className="mt-3 flex flex-wrap items-center gap-3 border-l-2 border-signal-bad bg-panel px-3 py-2">
+            <span className="text-[13px] text-signal-bad">
+              读不到仓库状态：{statusesError instanceof ApiError ? statusesError.message : '服务端没应答'}
+              <span className="text-ink-3">（清单本身没问题，只有「落后 / 远程更新 / 上次检查」这几列是空的）</span>
+            </span>
+            <Button onClick={() => void refetchStatuses()} disabled={statusesLoading}>
+              {statusesLoading ? '重试中…' : '重试'}
+            </Button>
+          </div>
+        ) : null}
+
         {isPending ? (
           <p className="py-10 font-mono text-[13px] text-ink-3">正在读清单…</p>
         ) : !projects || projects.length === 0 ? (

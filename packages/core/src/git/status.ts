@@ -1,6 +1,5 @@
-import { toGitError, runGit, type RunOptions } from './runner.ts'
+import { probe, toGitError, runGit, type RunOptions } from './runner.ts'
 import type { Scheduler } from './scheduler.ts'
-import { readRepoFacts } from './inspect/via-lib.ts'
 import { readRepoStatus, readRepoStatuses, type ReadStatusOptions, type StatusProfile } from './inspect/index.ts'
 import type { RepoStatus } from './types.ts'
 
@@ -52,22 +51,48 @@ export async function getRepoStatuses(
 export { deriveStatus, type DeriveInput } from '../types.ts'
 
 /**
- * 只读 origin 地址。清单里的 remote_url 在添加项目时用它自动填。
+ * 读 origin 地址。**纯实现，自己不排队。**
  *
- * 走库读 `.git/config`（这一条只需要一个文件，不必为此起一次 git.exe）。
- * 接受 `timeoutMs` / `scheduler`：调用方（server）要让它受设置里的超时约束，
- * 并且和同一个仓库的其它操作共用一把锁。
+ * 走 `git remote get-url origin`，而不是读 `.git/config` 里的 `remote.origin.url`。
+ * 两者在配了 `url.<base>.insteadOf` 的机器上**不一样**：前者会套用重写规则。
+ * 这个值要落库、还要在详情页变成一个可点的链接，所以取「git 真正会用的那个地址」
+ * ——insteadOf 恰恰是 SSH 仓库换成 HTTPS 的常见做法（`gh` / 镜像都这么干），
+ * 拿配置里的原文反而给不出链接。它也和用户 `git remote -v` 看到的一致，好对账。
+ *
+ * 需要「是不是仓库」那一类事实时别用它：那是 `readRepoFacts` 的事（读 config，
+ * 0 进程，只用来判有没有 remote）。
+ *
+ * **自己排队**这件事和这个函数无关：要限流就用 `getRemoteUrl`（外壳），
+ * 或者由调用方自己 `scheduler.schedule(path, () => readRemoteUrl(path))`。
+ * 拆成两个函数就是为了让「谁排队」这件事只有一个答案——原来只有一个函数，
+ * 它既排队又能被调用方再包一层排队，于是 server 侧只能靠**故意不传 scheduler**
+ * 来避免同 key 自锁；谁顺手补上那个参数就是死锁（见 `scheduler.ts` 文件头）。
  */
-export async function getRemoteUrl(
+export async function readRemoteUrl(
+  path: string,
+  options: { timeoutMs?: number } = {},
+): Promise<string | null> {
+  const result = await probe(['remote', 'get-url', 'origin'], {
+    cwd: path,
+    timeoutMs: options.timeoutMs,
+  })
+  if (!result.ok) return null
+  const url = result.stdout.trim()
+  return url.length > 0 ? url : null
+}
+
+/**
+ * `readRemoteUrl` + 同仓库串行。调用方**要么**用它（scheduler 由这里管），
+ * **要么**自己用 `scheduler.schedule(path, () => readRemoteUrl(path))`，
+ * 不要两者都做（那就是同一个 key 的 schedule 里再 schedule，直接自锁）。
+ */
+export function getRemoteUrl(
   path: string,
   options: { timeoutMs?: number; scheduler?: Scheduler } = {},
 ): Promise<string | null> {
-  const task = async () => {
-    const facts = await readRepoFacts(path, { timeoutMs: options.timeoutMs })
-    return facts.error ? null : facts.remoteUrl
-  }
+  const read = () => readRemoteUrl(path, { timeoutMs: options.timeoutMs })
   const scheduler = options.scheduler
-  return scheduler ? scheduler.schedule(path, task) : task()
+  return scheduler ? scheduler.schedule(path, read) : read()
 }
 
 /** 读工作区改动行数。pull 的前置检查用它——那是安全闸，必须与 git 逐字节一致。 */

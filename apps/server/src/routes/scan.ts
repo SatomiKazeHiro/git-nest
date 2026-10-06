@@ -1,6 +1,7 @@
 import path from 'node:path'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
+import { MAX_SCAN_RESULTS } from '@git-nest/core'
 import type { DB } from '../db/index.ts'
 import { badRequest, conflict } from '../lib/errors.ts'
 import { getRemoteUrl, scan } from '../lib/git.ts'
@@ -10,8 +11,15 @@ import { readSettings, writeSettings } from '../lib/settings.ts'
 
 const trimmed = z.string().trim()
 
-/** 一次最多扫 / 导入多少个，防止手滑把整块硬盘塞进清单 */
-const MAX_BATCH = 200
+/**
+ * 一次导入最多几条路径。
+ *
+ * **必须等于一次扫描最多列出的数量**（core 的 `limits.ts` 里是同一个常量）：
+ * 扫描负责「列出候选」、导入负责「把选中的加进清单」，如果扫描能列出 500 而导入
+ * 只收 200，用户就会在「全选 → 添加」这一步撞墙，而这堵墙从前端完全看不出来。
+ * 现在还多一层保障：前端也读这个常量，超了会提前拦下并说清原因。
+ */
+const MAX_BATCH = MAX_SCAN_RESULTS
 const MAX_DEPTH = 3
 
 const scanSchema = z.object({
@@ -45,9 +53,11 @@ export const scanRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
 
     const tracked = trackedProjects(db)
     // 走 lib/git.ts 的 scan()：它会把 server 的 scheduler 与设置里的超时一起传下去，
-    // 免得扫描绕开并发上限
+    // 免得扫描绕开并发上限。上限**显式**传（不用 core 的缺省值），
+    // 这样「扫描列出的数量」与「导入能吃的数量」是同一个常量，改一处两边同时变。
     const result = await scan(abs, {
       maxDepth: depth ?? 1,
+      maxResults: MAX_SCAN_RESULTS,
       trackedPaths: tracked.keys(),
     })
 

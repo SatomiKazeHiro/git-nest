@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { RepoStatus } from '@git-nest/core'
+import { MAX_STATUS_IDS, type RepoStatus } from '@git-nest/core'
 import { api } from '@/lib/api'
 
 export interface ProjectStatus {
@@ -22,21 +22,38 @@ export const statusKeys = {
   one: (id: number) => ['status', 'one', id] as const,
 }
 
+function idList(ids: number[]): number[] {
+  return [...new Set(ids)].sort((a, b) => a - b)
+}
+
 function sortedIds(ids: number[]): string {
-  return [...new Set(ids)].sort((a, b) => a - b).join(',')
+  return idList(ids).join(',')
 }
 
 /**
- * 列表页一次问全部状态。ids 为空时不发请求。
- * 后端有 3 秒短缓存，连着切两次筛选不会把 git 跑两遍。
+ * 列表页一次问全部状态（**超过上限会自动分块**）。
+ *
+ * 原来是一发一条、把当前筛出的全部 id 都塞进 URL：项目超过 200 个时服务端 400，
+ * 而页面把那个错误丢掉了 —— 于是每一行永远显示「读状态…」，用户看不出是为什么。
+ * 现在按服务端同一个常量（`MAX_STATUS_IDS`）切片，正常路径永远碰不到那条上限。
+ *
+ * 分块是**顺序**的：服务端的 scheduler 本来就是全局并发上限（默认 4），同时打几发
+ * 只会互相抢那几个槽、还容易把 3 秒短缓存打散。失败由调用方负责显示出来
+ * （`useStatuses` 的 error）——静默失败比慢更糟。
  */
 export function useStatuses(ids: number[]) {
   return useQuery({
     queryKey: statusKeys.batch(ids),
-    queryFn: () =>
-      api
-        .get<{ statuses: ProjectStatus[] }>(`/status?ids=${sortedIds(ids)}`)
-        .then((r) => new Map(r.statuses.map((s) => [s.projectId, s.status]))),
+    queryFn: async () => {
+      const all = idList(ids)
+      const merged = new Map<number, RepoStatus>()
+      for (let i = 0; i < all.length; i += MAX_STATUS_IDS) {
+        const chunk = all.slice(i, i + MAX_STATUS_IDS)
+        const res = await api.get<{ statuses: ProjectStatus[] }>(`/status?ids=${chunk.join(',')}`)
+        for (const s of res.statuses) merged.set(s.projectId, s.status)
+      }
+      return merged
+    },
     enabled: ids.length > 0,
     staleTime: 3_000,
   })

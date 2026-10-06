@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { MAX_BATCH_IDS } from '@git-nest/core'
 import { buildApp } from '../src/app.ts'
 import { openDatabase, type DB } from '../src/db/index.ts'
 
@@ -222,11 +223,14 @@ describe('POST /api/updates/check', () => {
   })
 
   it('id 超过上限直接拒绝', async () => {
+    // 上限集中在 core 的 limits.ts（前端读同一个常量，超了会提前拦下并说清原因）。
+    // 这条用例从「超过 200 就拒」改成「超过 MAX_BATCH_IDS 就拒」，
+    // 免得以后调上限时它变成一个**假绿**（201 个现在是被接受的）。
     const res = await app.inject({
       method: 'POST',
       url: '/api/updates/check',
       headers: json,
-      payload: { ids: Array.from({ length: 201 }, (_, i) => i + 1) },
+      payload: { ids: Array.from({ length: MAX_BATCH_IDS + 1 }, (_, i) => i + 1) },
     })
     expect(res.statusCode).toBe(422)
   })

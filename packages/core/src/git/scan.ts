@@ -1,7 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { probe } from './runner.ts'
+import { readRemoteUrl } from './status.ts'
 import { defaultScheduler, type Scheduler } from './scheduler.ts'
+import { MAX_SCAN_RESULTS } from '../limits.ts'
 import type { ScanResult, ScannedRepo } from './types.ts'
 
 export interface ScanOptions {
@@ -11,19 +13,19 @@ export interface ScanOptions {
   /** 已经在清单里的路径，小写斜杠形式，用于标记 alreadyTracked */
   trackedPaths?: Iterable<string>
   /**
-   * 最多**列给用户看**多少个仓库，缺省 `DEFAULT_MAX_RESULTS`。
+   * 最多**列给用户看**多少个仓库，缺省 `MAX_SCAN_RESULTS`。
    *
-   * 为什么要有上限：每找到一个候选仓库都要问两次 git（origin、没有 README 时再问一次
+   * 为什么要有上限：每找到一个候选仓库都要问 git（origin、没有 README 时再问一次
    * 最后一次提交），而扫描的范围完全由用户填的那个目录决定——随手填一个盘根目录 +
    * depth 3 就是几千个候选、上万次 git 进程，界面上只有一个「扫描中…」，也没有取消。
    * 超出的部分**不静默丢掉**：`truncated` / `candidates` 如实报出去，让界面说清
    * 「只列了前 N 个」。
+   *
+   * 缺省值就是**导入能接受的最大条数**（`MAX_SCAN_RESULTS`）：扫描列出的候选
+   * 永远不该超过导入能吃的量，否则用户会在「全选 → 添加」那一步撞墙。
    */
   maxResults?: number
 }
-
-/** 一次扫描最多列出的仓库数（正常用法碰不到；它只是把「随手扫整个盘」的工作量封顶） */
-export const DEFAULT_MAX_RESULTS = 500
 
 const README_NAMES = ['README.md', 'readme.md', 'README.MD', 'README', 'README.txt']
 
@@ -41,7 +43,7 @@ const MAX_README_BYTES = 2 * 1024 * 1024
 export async function scanDirectory(dir: string, options: ScanOptions = {}): Promise<ScanResult> {
   const scheduler = options.scheduler ?? defaultScheduler
   const depth = options.maxDepth ?? 1
-  const maxResults = Math.max(1, options.maxResults ?? DEFAULT_MAX_RESULTS)
+  const maxResults = Math.max(1, options.maxResults ?? MAX_SCAN_RESULTS)
   const tracked = new Set([...(options.trackedPaths ?? [])].map(comparisonKey))
 
   const walk = await findRepoDirs(dir, depth, maxResults)
@@ -117,16 +119,17 @@ async function describeRepo(
   tracked: Set<string>,
   options: ScanOptions,
 ): Promise<ScannedRepo | null> {
-  const cwd = { cwd: dir, timeoutMs: options.timeoutMs }
-  const remote = await probe(['remote', 'get-url', 'origin'], cwd)
-  const remoteUrl = remote.ok ? remote.stdout.trim() : null
+  // 与「添加项目」「导入」走**同一个**实现：预览里显示的地址，就是入库后那条记录的
+  // 地址。原来预览走 `git remote get-url`、入库走库读 config，在配了 insteadOf 的
+  // 机器上两者不一样——预览和结果对不上，是最难查的那种不一致。
+  const remoteUrl = await readRemoteUrl(dir, { timeoutMs: options.timeoutMs })
 
   const readme = await readReadmeSummary(dir)
   let summary = readme
   let summarySource: ScannedRepo['summarySource'] = readme ? 'readme' : 'none'
 
   if (!summary) {
-    const subject = await probe(['log', '-1', '--format=%s'], cwd)
+    const subject = await probe(['log', '-1', '--format=%s'], { cwd: dir, timeoutMs: options.timeoutMs })
     if (subject.ok && subject.stdout.trim()) {
       summary = subject.stdout.trim().slice(0, 60)
       summarySource = 'commit'

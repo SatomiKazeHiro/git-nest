@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import { z } from 'zod'
-import { VERDICT_LABEL, VERDICT_REASON, type UpdateVerdict } from '@git-nest/core'
+import { MAX_BATCH_IDS, VERDICT_LABEL, VERDICT_REASON, type UpdateVerdict } from '@git-nest/core'
 import type { DB } from '../db/index.ts'
 import { badRequest, notFound } from '../lib/errors.ts'
 import {
@@ -29,8 +29,17 @@ import {
   type Task,
 } from '../lib/tasks.ts'
 
-/** 一次最多处理多少个仓库——再多就该先用扫描目录分批了 */
-const MAX_BATCH = 200
+/**
+ * 一次批量检查 / 更新最多几个仓库。
+ *
+ * 数字在 core 的 `limits.ts`：**前端也读它**（超过就在界面上说清「一次最多 N 个，
+ * 先勾选一部分或收窄筛选」，而不是等一个 422「参数有误」）。原来是 server 这边
+ * 一个私有常量，前端不知道，于是超限时用户只看到一句看不懂的错。
+ *
+ * 它不等于「能力上限」：check / apply 是后台任务 + SSE 进度 + 确认阈值，
+ * 本来就为处理很多个设计的；这个数只是别让「随手一次点击」把整个清单都卷进去。
+ */
+const MAX_BATCH = MAX_BATCH_IDS
 const SSE_POLL_MS = 150
 const SSE_HEARTBEAT_MS = 25_000
 

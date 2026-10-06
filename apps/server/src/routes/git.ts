@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { idParamSchema, type RepoStatus } from '@git-nest/core'
+import { MAX_STATUS_IDS, idParamSchema, type RepoStatus } from '@git-nest/core'
 import type { DB } from '../db/index.ts'
 import { repoFacts, repoLog, repoStatus, repoStatusesLean } from '../lib/git.ts'
 import { badRequest, notFound } from '../lib/errors.ts'
@@ -28,7 +28,14 @@ export const gitRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
       .filter((n): n is number => n !== null)
 
     if (ids.length === 0) return { statuses: [] }
-    if (ids.length > 200) throw badRequest('一次最多查 200 个仓库')
+    /*
+      上限与前端分块用的是**同一个常量**（core 的 limits.ts）：前端按它切片，
+      所以正常路径永远碰不到这一条。留着是给直接打接口的人一个明确的边界——
+      原来前端不知道这个数，超过 200 个项目时整列状态会静默变成「读状态…」。
+    */
+    if (ids.length > MAX_STATUS_IDS) {
+      throw badRequest(`一次最多查 ${MAX_STATUS_IDS} 个仓库`)
+    }
 
     const paths = loadPaths(db, ids)
     const statuses = await repoStatusesLean(paths)

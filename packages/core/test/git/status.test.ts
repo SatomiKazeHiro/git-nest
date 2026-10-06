@@ -1,13 +1,72 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { getRepoStatus, getRepoStatuses } from '../../src/git/status.ts'
+import { Scheduler } from '../../src/git/scheduler.ts'
+import { getRemoteUrl, getRepoStatus, getRepoStatuses, readRemoteUrl } from '../../src/git/status.ts'
 import { cleanup, commit, git, initClone, initRepo, tempDir } from '../helpers/repo.ts'
 
 const dirs: string[] = []
 const track = <T>(dir: T): T => (dirs.push(dir as unknown as string), dir)
 
 afterAll(() => cleanup(...dirs))
+
+/**
+ * 「远程地址」这件事只有一个来源、一个答案。
+ *
+ * 从前它有两个来源：扫描预览走 `git remote get-url`（会套用 `url.<base>.insteadOf`
+ * 改写），添加项目 / 导入走读 `.git/config` 的原文。绝大多数机器上两者一模一样，
+ * 配了改写规则（把 `gh:` 或 SSH 前缀统一换成 https，gh / 镜像的常见配法）的机器上
+ * 不一样 —— 于是**预览里显示的地址和入库后那条记录的地址可能对不上**，
+ * 而详情页会不会给可点链接全看这个值。
+ *
+ * 现在统一取「git 真正会用的那个地址」，理由：改写规则多半就是把 SSH 换成 HTTPS，
+ * 那正是能点开的那个；而且它和用户 `git remote -v` 看到的一致，出问题好对账。
+ */
+describe('readRemoteUrl：读的是 git 真正会用的地址', () => {
+  it('套用 url.<base>.insteadOf 的改写（实测过的行为）', async () => {
+    const dir = track(initRepo())
+    git(dir, 'remote', 'add', 'origin', 'gh:someone/some-repo.git')
+    git(dir, 'config', 'url.https://github.com/.insteadOf', 'gh:')
+
+    // 配置文件里写的是 gh:someone/some-repo.git，
+    // 但 git 联网时会用 https://github.com/...（`git remote -v` 显示的也是它）
+    expect(await readRemoteUrl(dir)).toBe('https://github.com/someone/some-repo.git')
+  })
+
+  it('没有 origin → null（不是空串）', async () => {
+    const dir = track(initRepo())
+    expect(await readRemoteUrl(dir)).toBeNull()
+  })
+
+  it('不是仓库 → null，不抛错', async () => {
+    const dir = track(tempDir())
+    expect(await readRemoteUrl(dir)).toBeNull()
+  })
+
+  it('是**纯实现**：可以在同一个 key 的 schedule 里直接调，不会自锁', async () => {
+    /*
+      这条钉的是 R4 那个陷阱的结构性消除。原来只有一个 `getRemoteUrl`：它自己
+      `scheduler.schedule`，server 侧为了「同仓库串行」又在外面包了一层 schedule，
+      于是只能靠**故意不传 scheduler** 来避免同 key 自锁 —— 谁顺手把那个参数补上
+      就是永久挂起。现在纯实现（readRemoteUrl）与调度外壳（getRemoteUrl）分开了，
+      调用方用哪一半是有明文约定的：在外层排队就用纯的那个。
+    */
+    const dir = track(initRepo())
+    git(dir, 'remote', 'add', 'origin', 'https://example.invalid/x.git')
+    const scheduler = new Scheduler()
+
+    const url = await scheduler.schedule(dir, () => readRemoteUrl(dir))
+    expect(url).toBe('https://example.invalid/x.git')
+  })
+
+  it('外壳仍然自己排队（getRemoteUrl 保留原形）', async () => {
+    const dir = track(initRepo())
+    git(dir, 'remote', 'add', 'origin', 'https://example.invalid/y.git')
+    expect(await getRemoteUrl(dir, { scheduler: new Scheduler() })).toBe(
+      'https://example.invalid/y.git',
+    )
+  })
+})
 
 describe('getRepoStatus', () => {
   it('干净的仓库：分支 main、无远程', async () => {

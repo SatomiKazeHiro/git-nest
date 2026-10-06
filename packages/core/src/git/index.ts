@@ -31,6 +31,7 @@ export {
   getRepoStatus,
   getRepoStatuses,
   getRemoteUrl,
+  readRemoteUrl,
   deriveStatus,
   parseDirtyCount,
   type StatusOptions,

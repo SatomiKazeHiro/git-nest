@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useLocation } from 'react-router'
 import { Check, Download, Eraser, FolderSearch, Loader, Trash2, X } from 'lucide-react'
-import type { ScannedRepo } from '@git-nest/core'
+import { MAX_SCAN_RESULTS, type ScannedRepo } from '@git-nest/core'
 import { ApiError, api } from '@/lib/api'
 import { Button, Dialog, ErrorNote, Field, Input } from '@/components/ui'
 import { useSaveSettings, useSettings } from './queries'
@@ -123,6 +123,18 @@ export function ScanSection() {
   const overThreshold = picked.size > (settings?.confirmThreshold ?? 20)
 
   const doImport = () => {
+    /*
+      **服务端的硬上限**（core 的同一个常量）。构造上不可达——扫描列出的候选数
+      （`MAX_SCAN_RESULTS`）就等于导入能接受的最大条数，所以勾不出更多。
+      留这一句是为了「改扫描上限却忘了导入」时能当场看到原因，而不是吃一个
+      422「参数有误」；顺手也让这个约束在代码里显式存在，而不是靠两边数字碰巧相等。
+    */
+    if (picked.size > MAX_SCAN_RESULTS) {
+      setBanner(
+        `一次最多添加 ${MAX_SCAN_RESULTS} 个（现在勾了 ${picked.size} 个）：分两批添加，或把扫描目录填得更具体一些。`,
+      )
+      return
+    }
     if (overThreshold && !confirmingImport) {
       setConfirmingImport(true)
       return

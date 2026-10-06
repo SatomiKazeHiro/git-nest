@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import {
+  MAX_BATCH_IDS,
   VERDICT_LABEL,
   type UpdateRecommendation,
   type UpdateReport,
@@ -78,6 +79,12 @@ export function UpdatePanel({
   // 数量多时先确认范围：检查会联网 fetch 十几个仓库，不能一点就开跑
   const threshold = settings?.confirmThreshold ?? 20
   const overThreshold = ids.length > threshold
+  /*
+    服务端的硬上限（core 的 `limits.ts`，前端读同一个常量）。
+    原来前端不知道这个数：项目超过它时点「开始检查」直接吃一个 422「参数有误」，
+    用户根本看不出是数量问题。现在提前说清，并给出可操作的两条路。
+  */
+  const overLimit = ids.length > MAX_BATCH_IDS
 
   const toggle = (projectId: number) =>
     setPicked((prev) => {
@@ -88,6 +95,7 @@ export function UpdatePanel({
     })
 
   const startCheckNow = () => {
+    if (overLimit) return
     if (overThreshold && !confirming) {
       setConfirming(true)
       return
@@ -115,12 +123,19 @@ export function UpdatePanel({
               {connected ? null : <Meta label="连接" value="重连中" placeholder />}
             </>
           ) : null}
-          <Button onClick={startCheckNow} disabled={busy || ids.length === 0}>
+          <Button onClick={startCheckNow} disabled={busy || ids.length === 0 || overLimit}>
             {busy ? '检查中…' : task ? '重新检查' : '开始检查'}
           </Button>
         </>
       }
     >
+      {/* 超过服务端一次能处理的量：说清数字与两条出路，而不是让他去撞那个 422 */}
+      {overLimit ? (
+        <p className="mb-3 border-l-2 border-signal-ahead bg-panel px-3 py-2 text-[12.5px] text-signal-ahead">
+          一次最多检查 {MAX_BATCH_IDS} 个仓库，现在选中了 {ids.length} 个。
+          先在清单页勾选一部分再点这里，或者把筛选条件收窄一些。
+        </p>
+      ) : null}
       {confirming && overThreshold ? (
         <p className="flex flex-wrap items-center gap-3 border-b border-line-soft pb-3">
           <span className="text-[13px] text-signal-ahead">
