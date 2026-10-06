@@ -42,24 +42,22 @@ export function TagSection() {
       ) : null}
 
       {/*
-        标签本身是一个**列表**，不是一个设置项：它是已经存在的东西，不是可以
-        拨动的开关。所以它不套 `SettingRow`（那会把它伪装成一个配置项），
-        自己用一张窄的名单，占住左侧的标签列。
+        标签是**一份名单加一行新建表单**，不是「一个设置项的两个值」。
+        所以它整块占满卡片宽度，而不是塞进右边那块 15rem 的控件区——
+        那里放不下「名称 + 颜色 + 新建标签」，硬塞只会把三个都压扁。
       */}
-      <div className="grid gap-x-8 gap-y-1.5 border-b border-line-soft py-3.5 sm:grid-cols-[minmax(22rem,22rem)_minmax(0,1fr)] sm:items-start">
-        <div>
-          <p className="text-[13px] font-medium text-ink">标签</p>
-          <p className="mt-1 max-w-prose text-[12.5px] leading-[1.6] text-ink-2">
-            自由命名，删掉标签不会动到项目本身。标签只影响清单里的分组与筛选。
-          </p>
-        </div>
+      <div className="border-b border-line-soft px-4 py-2.5 last:border-b-0">
+        <p className="text-[13.5px] font-medium text-ink">标签</p>
+        <p className="mt-0.5 text-[12.5px] leading-[1.55] text-ink-2">
+          自由命名，删掉不会动到项目本身
+          <span className="text-ink-3">（只影响清单里的分组与筛选）</span>
+        </p>
 
-        <div className="min-w-0">
+        <div className="mt-2.5">
           {isPending ? (
             <p className="font-mono text-[12px] text-ink-3">…</p>
           ) : tags.length === 0 ? (
-            // 空状态要给出下一步动作，而不是只陈述「什么都没有」
-            <p className="border border-dashed border-line px-3 py-2.5 text-[12.5px] text-ink-3">
+            <p className="text-[12.5px] text-ink-3">
               还没有标签。下面加一个，之后就能在清单里按它筛。
             </p>
           ) : (
@@ -91,23 +89,21 @@ export function TagSection() {
             </ul>
           )}
 
-          {/* 允许换行：控件列在很窄的浏览器窗口里可能放不下这一组，
-              那就让「新建标签」掉到下一行，而不是把三个都压扁。 */}
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="mt-2.5 flex items-center gap-2">
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && submit()}
               placeholder="标签名"
               aria-label="新标签的名称"
-              className="!w-40"
+              className="!w-48"
             />
             <Input
               value={color}
               onChange={(e) => setColor(e.target.value)}
               placeholder="#14506E"
               aria-label="新标签的颜色，可留空"
-              className="!w-28"
+              className="!w-32"
             />
             <Button
               variant="primary"

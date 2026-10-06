@@ -5,7 +5,7 @@ import { useSaveSettings, useSettings } from '@/features/settings/queries'
 import { ScanSection } from '@/features/settings/ScanSection'
 import { CommandsSection } from '@/features/settings/CommandsSection'
 import { TagSection } from '@/features/settings/TagSection'
-import { SettingRow, SettingSection } from '@/features/settings/SettingRow'
+import { SettingGroup, SettingRow } from '@/features/settings/SettingRow'
 
 /**
  * 设置页。
@@ -26,29 +26,33 @@ export function SettingsPage() {
     // 不要再套一层滚动容器：`.content` 已经是外层滚动区了，嵌套的滚动区
     // 会抢同一个滚轮，而且内层那条滚动条永远用不上（内容总是恰好一样高）。
     <div className="settings-body px-6 py-6">
-      <header className="mb-8 border-b border-line pb-4">
-        <h1 className="text-[17px] font-semibold leading-tight text-ink">设置</h1>
-        <p className="mt-1 max-w-prose text-[12.5px] leading-[1.6] text-ink-2">
+      <header className="mb-7">
+        <h1 className="text-[20px] font-semibold leading-tight text-ink">设置</h1>
+        <p className="mt-1.5 max-w-prose text-[12.5px] leading-[1.6] text-ink-2">
           存在本机数据库里，不进任何会被提交的文件。改动立刻生效，不用重启服务。
         </p>
       </header>
 
-      <SettingSection
+      <SettingGroup
         title="往清单里加东西"
         note="只写本机的清单，不联网、不读仓库内容。扫出来的东西还要你挑一遍才会进清单。"
       >
         <ScanSection />
         <TagSection />
-      </SettingSection>
+      </SettingGroup>
 
-      <SettingSection
+      {/*
+        这一组是**唯一会让全部仓库联网、且在你勾选之后会动工作区**的。
+        那条边界写在这一组的说明里，因为它横跨下面每一行——单拎到某一行
+        下面反而会被读成「只对这一项成立」。
+      */}
+      <SettingGroup
         title="联网检查与更新"
         note="这一组会让全部仓库联网。只 fetch 远程引用，绝不碰工作区——更新永远由你勾选后触发，并且只做 fast-forward。"
-        emphasis
       >
         <GitSection />
         <CommandsSection />
-      </SettingSection>
+      </SettingGroup>
     </div>
   )
 }
@@ -84,8 +88,9 @@ function GitSection() {
       ) : null}
 
       <SettingRow
-        label="personal 分类"
-        hint="自己的项目自己清楚，默认不参与。打开后批量检查会带上它们，跳过了谁会在报告里说明。"
+        name="personal 分类也参与检查"
+        desc="自己的项目自己清楚，默认不参与"
+        note="打开后跳过了谁会在报告里说明"
       >
         <Toggle
           label="参与检查"
@@ -96,12 +101,12 @@ function GitSection() {
       </SettingRow>
 
       <SettingRow
-        label="git 超时"
-        hint="一条 git 命令超过这么久就放弃，毫秒。仓库大、网络慢的时候调高；卡死了要少等就调低。"
+        name="git 超时"
+        desc="一条 git 命令超过这么久就放弃"
+        note="毫秒，1000–600000"
       >
         <NumberField
           label="git 超时"
-          hint="毫秒，1000–600000"
           min={1_000}
           max={600_000}
           value={settings.gitTimeoutMs}
@@ -109,13 +114,9 @@ function GitSection() {
         />
       </SettingRow>
 
-      <SettingRow
-        label="并发上限"
-        hint="同时跑几个仓库。调高更快，但更容易撞上远程限流。"
-      >
+      <SettingRow name="并发上限" desc="同时跑几个仓库" note="1–16，越高越容易撞上远程限流">
         <NumberField
           label="并发上限"
-          hint="1–16"
           min={1}
           max={16}
           value={settings.concurrency}
@@ -123,13 +124,9 @@ function GitSection() {
         />
       </SettingRow>
 
-      <SettingRow
-        label="确认阈值"
-        hint="一次要检查的项目超过这么多个，先问一句再开跑。检查会让这些仓库全部联网。"
-      >
+      <SettingRow name="确认阈值" desc="一次检查超过这么多个项目，先问一句再开跑" note="1–200">
         <NumberField
           label="确认阈值"
-          hint="1–200"
           min={1}
           max={200}
           value={settings.confirmThreshold}
@@ -150,19 +147,20 @@ function GitSection() {
  * 2. 打一个字发一次请求，还把「正在输入」的语义交给了服务端。
  * 现在输入期间只动本地 state，按回车或失焦时才发一次；越界在前端就拦下来并说明。
  *
- * 数字框给固定宽度：控件列右边空着是故意的（所有控件左边缘对齐成一条竖线），
- * 但输入框本身跟着列拉宽就会变成一条难按的细长条。
+ * 数字框给固定宽度：它在右侧那块 15rem 的区域里居中，跟着内容伸缩就会变成
+ * 一条难按的细长条。
+ *
+ * 它**不印范围**——范围是左侧那句浅灰括号的事（`note`）。两处各印一次，
+ * 同一句话会在屏幕上出现两遍。
  */
 function NumberField({
   label,
-  hint,
   min,
   max,
   value,
   onCommit,
 }: {
   label: string
-  hint: string
   min: number
   max: number
   value: number
@@ -198,19 +196,17 @@ function NumberField({
   }
 
   return (
-    <div className="max-w-52">
+    <div className="w-32">
       {/*
-        这里**不再重复行标签**——左边那列已经写着「git 超时」了，控件里再印
-        一遍就成了同一句话出现两次。控件区只留两样东西：输入框，和它下面那行
-        范围提示（出错时同一个位置换成错误说明）。
-
-        可访问名交给 `aria-label`，于是读屏读到的仍然是「git 超时」，
-        `getByLabelText('git 超时')` 也照旧找得到。
+        这里**不再重复行标签**——左边已经写着「git 超时」了，控件里再印一遍
+        就成了同一句话出现两次。可访问名交给 `aria-label`，于是读屏读到的
+        仍然是「git 超时」，`getByLabelText('git 超时')` 也照旧找得到。
       */}
       <Input
         type="number"
         aria-label={label}
-        aria-describedby={describedBy}
+        aria-describedby={localError ? describedBy : undefined}
+        aria-invalid={localError ? true : undefined}
         min={min}
         max={max}
         value={draft}
@@ -223,12 +219,12 @@ function NumberField({
           }
         }}
       />
-      <p
-        id={describedBy}
-        className={`mt-1 text-[11.5px] ${localError ? 'text-signal-bad' : 'text-ink-3'}`}
-      >
-        {localError ?? hint}
-      </p>
+      {/* 只在出错时占一个位置——范围提示由左侧那句浅灰括号负责 */}
+      {localError ? (
+        <p id={describedBy} className="mt-1 text-[11.5px] text-signal-bad">
+          {localError}
+        </p>
+      ) : null}
     </div>
   )
 }

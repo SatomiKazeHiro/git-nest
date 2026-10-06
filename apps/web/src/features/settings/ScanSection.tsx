@@ -164,8 +164,9 @@ export function ScanSection() {
   return (
     <section ref={sectionRef} id="scan">
       <SettingRow
-        label="目录"
-        hint="填一个已存在的本机目录。只扫直接子目录；也可以填到上层再往下扫。扫描只读，不写清单也不动磁盘——你挑中的那几个才会进来。"
+        name="目录"
+        desc="填一个已存在的本机目录"
+        note="扫描只读，不写清单也不动磁盘"
       >
         <div className="flex items-center gap-2">
           <Input
@@ -175,7 +176,7 @@ export function ScanSection() {
             onKeyDown={(e) => e.key === 'Enter' && runScan(dir, true)}
             placeholder="D:/Git"
             aria-label="要扫描的目录"
-            className="!w-64"
+            className="!w-44"
           />
           {/*
             `shrink-0` 不能省。上一版把它和输入框放进同一个 flex 行却没防压缩，
@@ -197,7 +198,7 @@ export function ScanSection() {
         </div>
       </SettingRow>
 
-      <SettingRow label="往下扫几层" hint="1 = 只看直接子目录。层数越多耗时越长。">
+      <SettingRow name="往下扫几层" desc="只扫子目录" note="1 = 只看直接子目录，层数越多越慢">
         <Input
           type="number"
           min={1}
@@ -209,10 +210,10 @@ export function ScanSection() {
         />
       </SettingRow>
 
+      {/* 常用目录也是一行：左边说这是什么，右边是那一串可点的目录 */}
       {settings && settings.scanDirs.length > 0 ? (
-        <div className="mt-3">
-          <p className="text-[12px] text-ink-3">常用目录</p>
-          <ul className="mt-1 flex flex-wrap gap-1.5">
+        <SettingRow name="常用目录" desc="点一下直接扫这个目录">
+          <ul className="flex flex-wrap justify-center gap-1.5">
             {settings.scanDirs.map((d) => (
               <li key={d} className="flex items-center rounded-[3px] border border-line bg-panel">
                 <button
@@ -220,7 +221,7 @@ export function ScanSection() {
                     setDir(d)
                     runScan(d, true)
                   }}
-                  className="px-1.5 py-0.5 font-mono text-[11.5px] text-ink-2 hover:text-ink"
+                  className="cursor-pointer px-1.5 py-0.5 font-mono text-[11.5px] text-ink-2 hover:text-ink"
                 >
                   {d}
                 </button>
@@ -228,14 +229,14 @@ export function ScanSection() {
                   onClick={() => forgetDir(d)}
                   aria-label={`不再记住 ${d}`}
                   title="不再记住这个目录"
-                  className="inline-flex items-center border-l border-line px-1 py-0.5 text-ink-3 hover:bg-panel hover:text-signal-bad"
+                  className="inline-flex cursor-pointer items-center border-l border-line px-1 py-0.5 text-ink-3 hover:bg-panel hover:text-signal-bad"
                 >
                   <X size={11} aria-hidden />
                 </button>
               </li>
             ))}
           </ul>
-        </div>
+        </SettingRow>
       ) : null}
 
       {banner ? (

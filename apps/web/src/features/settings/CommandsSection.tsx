@@ -85,8 +85,9 @@ export function CommandsSection() {
   return (
     <section>
       <SettingRow
-        label="自动 fetch"
-        hint="服务启动 30 秒后跑一轮，之后每 30 分钟一轮，让「落后多少 / 推不推荐更新」的数字保持新鲜。它只更新远程跟踪引用，不 pull、不快进、不改文件。personal 分类默认跳过，跟着上面那个开关走。"
+        name="自动 fetch"
+        desc="服务启动 30 秒后跑一轮，之后每 30 分钟一轮"
+        note="让「落后多少 / 推不推荐更新」的数字保持新鲜"
       >
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={() => runNow.mutate()} disabled={runNow.isPending}>
@@ -120,8 +121,9 @@ export function CommandsSection() {
         哪个数字对应哪件事不用读，读到就看见了。
       */}
       <SettingRow
-        label="上一轮"
-        hint="这轮自动 fetch 跑了哪些仓库。它只读，不改任何文件。"
+        name="上一轮"
+        desc="这轮自动 fetch 跑了哪些仓库"
+        note="只读，不改任何文件"
       >
         {readFailed ? (
           <p className="font-mono text-[12px] text-signal-bad">读不到状态</p>

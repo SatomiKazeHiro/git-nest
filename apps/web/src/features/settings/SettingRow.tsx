@@ -1,72 +1,78 @@
 import type { ReactNode } from 'react'
 
 /**
- * 设置页的一行：**左边名称与说明，右边控件**。
+ * 设置页的排版模型：**左边说这是什么，右边居中放操作**。
  *
- * 原来整页是「标题 + 说明段落 + 控件」竖着堆在一列窄栏里（`max-w-2xl`），
- * 于是两件事同时变糟：那一大段解释（"服务启动 30 秒后自动跑一轮 fetch…"）
- * 被压成一条难读的窄行，而横向空间全部浪费。桌面软件的设置页反过来——
- * 说明放在它所描述的那个控件**旁边**，两边各拿到该有的宽度。
+ * 三个决定，都是从成熟软件的设置页上比出来的：
  *
- * **两列的宽度是写死的，不看窗口。** 外面那层 `.settings-body` 已经是固定
- * 宽度（见 `index.css`），行内不需要任何断点：标签列给 `minmax(22rem,22rem)`
- * 是因为**最小值不能是 0**——`minmax(0, …)` 允许这一列塌掉，于是窗口一窄
- * 控件列就被挤成一条缝（输入框溢出、按钮压成两行、底部冒出横向滚动条）。
- *
- * `sm:` 那个断点只是**浏览器里的兜底**：桌面包了最小宽度之后根本走不到它。
+ * 1. **控件在右侧的固定区域里居中**，不是一律靠左。控件本身宽窄不一
+ *    （开关 40px、输入框 120px、按钮组 240px），靠左对齐会让它们的左边缘
+ *    参差成一条锯齿；居中之后右半边被读成一个「动作区」，宽窄差异就消失了。
+ * 2. **一组设置装进一只带圆角的卡片**，行与行之间用卡内分隔线。行与行之间
+ *    用通栏分隔线的话，读起来是「一份有横线的文档」；装进卡片才是「一组设置」。
+ * 3. **描述一行，补充信息用浅灰括号接在后面**。整段两三行的说明会把页面
+ *    撑成散文；承重的那半句在前面，范围、快捷键这类补充挂在后面。
  */
-export function SettingRow({
-  label,
-  hint,
+
+/** 一组设置：光秃秃的粗体标题 + 一只装着各行的卡片。 */
+export function SettingGroup({
+  title,
+  note,
   children,
 }: {
-  label: string
-  hint?: string
+  title: string
+  /** 一句话说明这一组整体在做什么。跨所有行的那条事实放这里。 */
+  note?: string
   children: ReactNode
 }) {
   return (
-    <div className="grid gap-x-8 gap-y-1.5 border-b border-line-soft py-3.5 last:border-b-0 sm:grid-cols-[minmax(22rem,22rem)_minmax(0,1fr)] sm:items-start">
-      <div className="min-w-0">
-        <p className="text-[13px] font-medium text-ink">{label}</p>
-        {hint ? (
-          <p className="mt-1 max-w-prose text-[12.5px] leading-[1.6] text-ink-2">{hint}</p>
-        ) : null}
-      </div>
-      {/* 控件顶端与**名称**顶端对齐，不是与说明的底边对齐——后者会让控件
-          在带说明的行上比不带说明的行低一截，整列控件就不在一条线上了。 */}
-      <div className="min-w-0 sm:pt-px">{children}</div>
-    </div>
+    <section className="mb-9">
+      <h2 className="text-[15px] font-semibold text-ink">{title}</h2>
+      {note ? <p className="mt-1 max-w-prose text-[12.5px] leading-[1.6] text-ink-2">{note}</p> : null}
+      <div className="mt-2.5 overflow-hidden rounded-[4px] border border-line">{children}</div>
+    </section>
   )
 }
 
 /**
- * 一个分区。
+ * 一个设置项。
  *
- * `emphasis` 给左侧一道 2px 的强调线，用在**唯一能动你工作区的那一组**上。
- * 这不是装饰：颜色在这里表示「这组设置配错了会动你的文件」，与全应用
- * 「颜色只用来编码事实」那条约定同源。别的分区一律安静。
+ * `note` 是接在描述后面的**浅灰括号**——范围、快捷键这类补充放这里，
+ * 不必为它们单开一行。
  */
-export function SettingSection({
-  title,
+export function SettingRow({
+  name,
+  desc,
   note,
-  emphasis,
   children,
 }: {
-  title: string
-  /** 一句话说明这组设置**会做什么**——按后果写，不按功能名写 */
-  note: string
-  emphasis?: boolean
+  name: string
+  desc?: string
+  /** 范围之类的补充说明，显示成描述后面的浅灰括号 */
+  note?: string
   children: ReactNode
 }) {
   return (
-    <section
-      className={`mb-8 ${emphasis ? 'border-l-2 border-accent pl-4' : ''}`}
-    >
-      <header className="mb-1">
-        <h2 className="text-[15px] font-semibold text-ink">{title}</h2>
-        <p className="mt-1 max-w-prose text-[12.5px] leading-[1.6] text-ink-2">{note}</p>
-      </header>
-      <div className="mt-1">{children}</div>
-    </section>
+    <div className="flex items-center gap-6 border-b border-line-soft px-4 py-2.5 last:border-b-0">
+      <div className="min-w-0 flex-1">
+        <p className="text-[13.5px] font-medium text-ink">{name}</p>
+        {desc || note ? (
+          <p className="mt-0.5 text-[12.5px] leading-[1.55] text-ink-2">
+            {desc}
+            {note ? <span className="text-ink-3">{desc ? ' ' : ''}（{note}）</span> : null}
+          </p>
+        ) : null}
+      </div>
+      {/*
+        右侧是一块**固定宽度**的区域（15rem），控件在它里面居中。
+        宽度写死是这一条能成立的前提：区域随内容伸缩的话，「居中」就变成了
+        「每行各自贴着自己的控件」，等于没有对齐。
+
+        15rem 是从最宽的一行量出来的：路径输入框 11rem + 间隙 + 「扫描」按钮
+        ≈ 17.5rem，再宽它就装不下了——而装不下时溢出的是**按钮**，它会被卡片
+        的圆角裁掉，那是最难看的一种坏法。
+      */}
+      <div className="flex w-72 shrink-0 items-center justify-center gap-2">{children}</div>
+    </div>
   )
 }
