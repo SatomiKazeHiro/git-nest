@@ -86,7 +86,7 @@ export function CommandsSection() {
     <section>
       <SettingRow
         label="自动 fetch"
-        hint="服务启动 30 秒后跑一轮，之后每 30 分钟一轮，让「落后多少 / 推不推荐更新」的数字保持新鲜。"
+        hint="服务启动 30 秒后跑一轮，之后每 30 分钟一轮，让「落后多少 / 推不推荐更新」的数字保持新鲜。它只更新远程跟踪引用，不 pull、不快进、不改文件。personal 分类默认跳过，跟着上面那个开关走。"
       >
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={() => runNow.mutate()} disabled={runNow.isPending}>
