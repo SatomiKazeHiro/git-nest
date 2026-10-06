@@ -32,6 +32,7 @@
 @layer base {
   html {
     color-scheme: light;
+    height: 100%;
   }
 
   body {
@@ -42,6 +43,15 @@
     font-size: 14px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    height: 100%;
+    /* 窗口本身不滚：滚动归每一栏（`.nav` / `.list` / `.detail`）自己管。
+       网页是「文档滚动 + 粘性表头」，桌面软件是「窗口固定 + 栏内滚动」——
+       混着用的后果是粘性表头的偏移量永远对不上，而且浮层会盖住内容。 */
+    overflow: hidden;
+  }
+
+  #root {
+    height: 100%;
   }
 
   /* 数据位一律等宽：分支名、路径、计数 */
@@ -59,6 +69,82 @@
   ::selection {
     background: var(--color-accent-wash);
   }
+}
+
+/*
+  ── 窗口骨架 ────────────────────────────────────────────────────────────
+
+  一个窗口 = 标题栏 / 主体 / 状态栏。主体横向分两栏：左边的导航栏，
+  右边的内容区（内容区自己再按路由分清单+详情，或整页的设置）。
+
+  **`minmax(0, 1fr)` 与 `min-height: 0` 都不能省。** grid 与 flex 的子项默认
+  `min-height: auto`，意思是「至少装得下内容」——表格有几百行时，1fr 那条轨道
+  会被顶开到内容的高度，于是状态栏被推出窗口、每一栏的滚动条都消失，
+  整个壳看起来就「好好的，什么也点不着」。
+
+  栏宽写成变量是为了给拖拽调宽留接口（写的是 inline style，不是重新排版）。
+*/
+.app {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+  overflow: hidden;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: var(--w-nav, 13rem) minmax(0, 1fr);
+  min-height: 0;
+}
+
+/* 内容区按路由分两种形态：清单页是「列表 + 详情」，设置页整块自己排 */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--w-detail, 30rem);
+  height: 100%;
+  min-height: 0;
+}
+
+/*
+  导航栏三段：目的地 / 可滚的分类与标签 / 底部设置。
+  设置放最底是桌面软件的老规矩——它是「离开当前工作」的动作，
+  不该和「筛选清单」挤在同一列里。
+*/
+.nav {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+}
+
+/*
+  清单栏：工具条固定，表格自己滚。
+
+  **表头的粘性偏移是这么消掉的。** 网页做法是「工具条 sticky top-0 + 表头 sticky
+  top-[3.25rem]」，那个 3.25rem 是量出来的表头高度——工具条一改行高（多一个
+  按钮、换个字号）这个数字就悄悄对不上了，表头会浮在工具条下面或盖住第一行。
+  这里让工具条占掉一整行、滚动只发生在下面那个区域里，表头就永远贴着
+  滚动区顶部，`sticky top-0` 足够，一个魔数都不需要。
+*/
+.pane-list {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+/* 每栏各自滚。桌面软件不会有两个嵌套滚动区抢同一个滚轮。 */
+.nav-scroll,
+.content,
+.list-scroll,
+.detail {
+  min-height: 0;
+  overflow: auto;
+}
+
+/* 外壳不参与文本选择：标题栏、状态栏、表头、行内操作按钮——
+   桌面软件里按住拖一下只会选中一堆没用的字。数据格仍然可选。 */
+.chrome,
+.column-header {
+  user-select: none;
 }
 
 /*

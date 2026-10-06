@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
-import { ArrowLeft, Pencil, RefreshCw } from 'lucide-react'
+import { Pencil, RefreshCw } from 'lucide-react'
 import { isRemoteCheckStatus, deriveStatus, VERDICT_LABEL, type RepoStatus, type UpdateRecommendation, type UpdateStatus } from '@git-nest/core'
 import { Button, ErrorNote, Meta } from '@/components/ui'
 import { formatRelative } from '@/lib/format'
@@ -36,7 +36,7 @@ export function ProjectDetailPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-7 px-6 py-6">
+    <div className="flex flex-col gap-6 px-4 py-4">
       {status?.status === 'missing' ? (
         <div className="border-l-2 border-signal-bad bg-panel px-4 py-3">
           <p className="text-[13.5px] font-medium text-signal-bad">这个目录不在了</p>
@@ -49,15 +49,10 @@ export function ProjectDetailPage() {
       ) : null}
 
       <div>
-        <Link
-          to="/"
-          className="inline-flex items-center gap-1 font-mono text-[12px] text-ink-3 hover:text-accent hover:underline"
-        >
-          <ArrowLeft size={13} aria-hidden />
-          清单
-        </Link>
-        <div className="mt-1.5 flex items-start gap-2">
-          <h1 className="text-[22px] font-semibold leading-tight text-ink">{project.name}</h1>
+        {/* 原来这里有一个「← 清单」的返回链接。现在它是窗口右边的详情栏，
+            清单一直就在左边——返回链接指向一个从没离开过的地方，是网页的遗留。 */}
+        <div className="flex items-start gap-2">
+          <h1 className="text-[18px] font-semibold leading-tight text-ink">{project.name}</h1>
           <Button onClick={() => openEdit(project.id)}>
             <Pencil size={14} aria-hidden />
             编辑资料

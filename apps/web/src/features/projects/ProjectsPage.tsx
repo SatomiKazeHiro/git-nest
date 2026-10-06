@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { groupBy, orderBy } from 'es-toolkit'
 import { useDebounce } from 'ahooks'
-import { Eraser, FolderSearch, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react'
+import { Eraser, FolderSearch, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
 import { Button, Dialog, EmptyState, ErrorNote, Input } from '@/components/ui'
 import { ApiError } from '@/lib/api'
@@ -60,14 +60,14 @@ export function ProjectsPage() {
   }
 
   return (
-    <div className="flex min-h-full flex-col">
+    <div className="pane-list">
       <Toolbar
         total={projects?.length ?? 0}
         onCheckUpdates={() => setPanelOpen(true)}
         onScan={() => navigate('/settings#scan')}
       />
 
-      <div className="flex-1 px-6 pb-24">
+      <div className="list-scroll px-4 pb-6">
         {/*
           状态那一列读不出来时必须说出来。原来这个错误被丢掉了（只解构了 data），
           于是超过服务端上限、后端挂了、超时——用户看到的都是每一行「读状态…」，
@@ -102,7 +102,7 @@ export function ProjectsPage() {
             现在表里**完全没有分区这回事**：分类是侧栏的事（点一下就筛那一类），
             在表里再来一层就是重复。行按分类排序，同类自然连在一起。
           */
-          <table className="list-table pt-1">
+          <table className="list-table">
             <ColumnHeader />
             <tbody>
               {groups.flatMap((group) =>
@@ -120,7 +120,6 @@ export function ProjectsPage() {
         )}
       </div>
 
-      <SelectionBar />
       {pendingRemoval ? (
         <RemoveDialog project={pendingRemoval} onClose={() => setPendingRemoval(null)} />
       ) : null}
@@ -177,7 +176,7 @@ function EmptyList({ filtering }: { filtering: boolean }) {
  */
 function ColumnHeader() {
   return (
-    <thead className="tr-tint sticky top-[3.25rem] z-[5]">
+    <thead className="tr-tint column-header sticky top-0 z-[5]">
       <tr className="border-b border-line text-[11px] text-ink-3">
         <th className="col-check" />
         <th className="col-name">名称</th>
@@ -213,8 +212,8 @@ function Toolbar({
   const filtering = Boolean(filters.category || filters.tag || filters.q)
 
   return (
-    <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-line bg-paper/95 px-6 py-3 backdrop-blur">
-      <div className="w-64">
+    <div className="flex flex-wrap items-center gap-2 border-b border-line bg-paper px-4 py-2">
+      <div className="w-56">
         <Input
           value={filters.q}
           onChange={(e) => setQuery(e.target.value)}
@@ -253,26 +252,6 @@ function Toolbar({
           <Plus size={14} aria-hidden />
           添加项目
         </Button>
-      </div>
-    </div>
-  )
-}
-
-function SelectionBar() {
-  const selectedIds = useSelectedIds()
-  const clearSelection = useUiStore((s) => s.clearSelection)
-  if (selectedIds.length === 0) return null
-  return (
-    <div className="fixed inset-x-0 bottom-0 border-t border-line bg-panel/95 px-6 py-2.5 backdrop-blur">
-      <div className="flex items-center gap-3">
-        <span className="font-mono text-[13px] text-ink-2">已选 {selectedIds.length} 个项目</span>
-        <Button onClick={clearSelection}>
-          <X size={14} aria-hidden />
-          取消选择
-        </Button>
-        <span className="text-[12px] text-ink-3">
-          勾选后点「联网检查更新」，只会检查这几个
-        </span>
       </div>
     </div>
   )
