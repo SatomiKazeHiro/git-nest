@@ -95,8 +95,8 @@ beforeEach(() => {
     formOpen: false,
     editingId: null,
   })
-  // 清单页会顺带渲染「编辑资料」弹窗，它要标签列表；不 mock 的话 msw 会报
-  // 「拦截到没有 handler 的请求」，那种噪音会盖住真正的失败
+  // 「编辑资料」弹窗现在挂在窗口外壳上，不在这棵树里；这条 mock 是留给
+  // 将来清单页自己要用标签时准备的。留着无害，去掉也不会红。
   server.use(http.get('/api/tags', () => HttpResponse.json({ tags: [] })))
 })
 

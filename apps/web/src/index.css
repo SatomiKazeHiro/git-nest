@@ -171,6 +171,20 @@
 .row-link:hover {
   background-color: var(--color-accent-wash);
 }
+/*
+  正显示在右边详情栏里的那一行。
+
+  底色与 hover 同色、再加一道左侧强调条：底色只能标到「这一行」，
+  而左边那道 2px 的竖线在几十行里一眼就能定位，跟文件管理器、
+  编辑器的「当前文件」是同一个手法。写在 `td` 上而不是 `tr`——
+  `border-collapse: collapse` 下 `tr` 的 box-shadow 各家实现不一致。
+*/
+.list-table tr.row-current > td {
+  background-color: var(--color-accent-wash);
+}
+.list-table tr.row-current > td:first-child {
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
 /* 行操作按钮平时不显眼，指到这一行才露出来（原来靠 tailwind 的 group-hover） */
 .row-link .row-actions {
   opacity: 0;

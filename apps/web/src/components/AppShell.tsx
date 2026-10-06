@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { ProjectFormDialog } from '@/features/projects/ProjectFormDialog'
 import { StatusBar } from './StatusBar'
 import { TitleBar } from './TitleBar'
 
@@ -25,6 +26,16 @@ export function AppShell({ sidebar, children }: { sidebar?: ReactNode; children:
         <main className="content">{children}</main>
       </div>
       <StatusBar />
+      {/*
+        「编辑资料」弹窗在整个应用里**只挂这一个**。
+
+        它原来被清单页和详情页各渲染了一次——清单页的行上有「编辑资料」，
+        详情页顶上也有一个，两处各挂一份是可行的，因为 `formOpen` 是全局的、
+        后渲染的那份只是没被看见。但两处挂载本身就是「同一个编辑器、两个门」
+        的松散实现：一旦两处同时可见（比如三栏布局）就会有两个实例。
+        挂到外壳上，「项目的可写字段只在这里改」这条约定就有了唯一落点。
+      */}
+      <ProjectFormDialog />
     </div>
   )
 }

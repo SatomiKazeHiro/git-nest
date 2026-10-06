@@ -1,7 +1,9 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
+import { http, HttpResponse } from 'msw'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { server } from '@/test/mocks/server'
 import { App } from './App'
 
 /**
@@ -18,6 +20,18 @@ vi.mock('@/pages/ProjectDetailPage', () => ({
     throw new Error('详情页炸了')
   },
 }))
+
+/**
+ * 「编辑资料」弹窗挂在窗口外壳上（整个应用只此一份），它无条件拉一次标签列表。
+ *
+ * 不 mock 的话 msw 会报「拦截到没有 handler 的请求」——而这个报错**不一定
+ * 让用例变红**（查询失败被 react-query 吞掉，测试可能已经结束了）。
+ * 也就是说过日子它会变成一条「测试通过但压根没打到接口」的假绿，
+ * 而这里恰恰要证明的是外壳的接线。加一条空的标签列表把这条路堵上。
+ */
+beforeEach(() => {
+  server.use(http.get('/api/tags', () => HttpResponse.json({ tags: [] })))
+})
 
 afterEach(() => {
   vi.restoreAllMocks()

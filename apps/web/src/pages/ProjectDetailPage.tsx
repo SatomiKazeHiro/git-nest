@@ -5,7 +5,6 @@ import { isRemoteCheckStatus, deriveStatus, VERDICT_LABEL, type RepoStatus, type
 import { Button, ErrorNote, Meta } from '@/components/ui'
 import { formatRelative } from '@/lib/format'
 import { useUiStore } from '@/store/ui'
-import { ProjectFormDialog } from '@/features/projects/ProjectFormDialog'
 import { useProjectStatus } from '@/features/status/queries'
 import { Delta, statusTitle, textFor, toneFor, freshnessOf } from '@/features/status/StatusCell'
 import { UpdatePanel } from '@/features/updates/UpdatePanel'
@@ -113,8 +112,8 @@ export function ProjectDetailPage() {
         lastCheckStatus={project.latestCheck?.status ?? null}
       />
 
-      <ProjectFormDialog />
-      {/* 报告是弹窗：插在流里会把「身份信息」和「git 状态」切开（而且那时它还是个
+      {/* 「编辑资料」弹窗挂在窗口外壳上（整个应用只此一份），这里不再挂。
+          报告是弹窗：插在流里会把「身份信息」和「git 状态」切开（而且那时它还是个
           与「git 状态」同级的区域） */}
       {updating ? <UpdatePanel ids={[project.id]} onClose={() => setUpdating(false)} /> : null}
     </div>

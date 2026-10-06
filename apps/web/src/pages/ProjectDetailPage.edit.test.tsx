@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import type { RepoStatus } from '@git-nest/core'
 import { server } from '@/test/mocks/server'
 import { ProjectDetailPage } from '@/pages/ProjectDetailPage'
+import { ProjectFormDialog } from '@/features/projects/ProjectFormDialog'
 import { useUiStore } from '@/store/ui'
 
 /**
@@ -68,6 +69,10 @@ function renderDetail(client = makeClient()) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/projects/5']}>
+        {/* 「编辑资料」弹窗挂在窗口外壳上（整个应用只此一份），
+            这里按应用现在的真实接法把它带上——测的是保存后的失效链路，
+            不是弹窗挂在哪一层。 */}
+        <ProjectFormDialog />
         <Routes>
           <Route path="/projects/:id" element={<ProjectDetailPage />} />
         </Routes>

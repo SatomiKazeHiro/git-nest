@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 import { groupBy, orderBy } from 'es-toolkit'
 import { useDebounce } from 'ahooks'
 import { Eraser, FolderSearch, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
@@ -8,7 +8,6 @@ import { Button, Dialog, EmptyState, ErrorNote, Input } from '@/components/ui'
 import { ApiError } from '@/lib/api'
 import { formatRelative, shortenPath } from '@/lib/format'
 import { UNCATEGORIZED, useSelectedCount, useSelectedIds, useUiStore } from '@/store/ui'
-import { ProjectFormDialog } from './ProjectFormDialog'
 import { useProjects, useRemoveProject } from './queries'
 import { RecommendationCell, StatusCell } from '@/features/status/StatusCell'
 import { useStatuses } from '@/features/status/queries'
@@ -16,6 +15,15 @@ import { UpdatePanel } from '@/features/updates/UpdatePanel'
 
 export function ProjectsPage() {
   const navigate = useNavigate()
+  /*
+    「右栏正在看谁」住在 URL 里（`/projects/:id`），不是 store。
+    理由是它和「勾选了哪些」是两件不同的事：勾选决定批量动作作用于谁，
+    URL 决定详情栏显示谁——一个是工作集，一个是游标。混进同一个 Set 的话，
+    点开一个项目就会把它算进「已选」，接着点「联网检查更新」就带上了一个
+    用户没勾过的项目。
+  */
+  const { id } = useParams()
+  const currentId = Number(id) || null
   const filters = useUiStore((s) => s.filters)
   // 用内容稳定的 id 列表，而不是 `s.selected` 那个每次都换引用的 Set
   const selectedIds = useSelectedIds()
@@ -111,6 +119,8 @@ export function ProjectsPage() {
                     key={p.id}
                     project={p}
                     status={statuses?.get(p.id)}
+                    current={currentId === p.id}
+                    onOpen={() => navigate(`/projects/${p.id}`)}
                     onRemove={() => setPendingRemoval(p)}
                   />
                 )),
@@ -123,7 +133,6 @@ export function ProjectsPage() {
       {pendingRemoval ? (
         <RemoveDialog project={pendingRemoval} onClose={() => setPendingRemoval(null)} />
       ) : null}
-      <ProjectFormDialog />
       {/* 报告是弹窗，不再插进页面流里（插进去会推移清单表，而且和表是同一套盒子语汇，
           屏幕上就同时出现两张「表」）。 */}
       {panelOpen ? (
@@ -260,10 +269,15 @@ function Toolbar({
 function ProjectRow({
   project: p,
   status,
+  current,
+  onOpen,
   onRemove,
 }: {
   project: ProjectListItem
   status: RepoStatus | undefined
+  /** 这一行是不是正显示在右边详情栏里的那个 */
+  current: boolean
+  onOpen: () => void
   onRemove: () => void
 }) {
   const selected = useUiStore((s) => s.selected.has(p.id))
@@ -274,8 +288,20 @@ function ProjectRow({
 
   return (
     <tr
-      className={`row-link ${gone ? 'opacity-50' : ''}`}
+      className={`row-link ${current ? 'row-current' : ''} ${gone ? 'opacity-50' : ''}`}
       title={gone ? '目录不在了。点「编辑资料」可以把它指到新位置。' : undefined}
+      onClick={(e) => {
+        /*
+          整行可点。桌面软件的清单表是「点哪一行就选中哪一行」，
+          只让名称那几个像素可点是网页的做法。
+
+          但**行里有三个自带行为的元件**：勾选框、编辑、删除、名称链接。
+          点到它们时不能顺带跳走——用户明明在点「删除」，却发现右栏
+          也换了项目，那是在跟他抢点击。`closest` 一把排除掉。
+        */
+        if ((e.target as HTMLElement).closest('button, a, input')) return
+        onOpen()
+      }}
     >
       <td className="col-check">
         <input
@@ -289,6 +315,7 @@ function ProjectRow({
       <td className="col-name">
         <Link
           to={`/projects/${p.id}`}
+          aria-current={current ? 'page' : undefined}
           className="block cursor-pointer truncate text-[13.5px] font-medium text-ink hover:text-accent"
         >
           {p.name}
