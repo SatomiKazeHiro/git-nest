@@ -16,6 +16,10 @@ export interface ScannedRepoWithProject extends ScannedRepo {
 
 interface ScanResponse {
   dir: string
+  /** 这次一共发现多少个仓库目录（可能多于 found.length） */
+  candidates: number
+  /** 是否因为「一次扫描最多列 N 个」而少列了 */
+  truncated: boolean
   found: ScannedRepoWithProject[]
 }
 
@@ -231,7 +235,7 @@ export function ScanSection() {
           <header className="flex flex-wrap items-center gap-2 border-b border-line-soft px-3 py-2">
             <span className="min-w-0 truncate font-mono text-[12px] text-ink-2">{result.dir}</span>
             <span className="text-[12px] text-ink-3">
-              找到 {result.found.length} 个仓库{untracked.length > 0 ? `，${untracked.length} 个还没添加` : ''}
+              找到 {result.candidates} 个仓库{untracked.length > 0 ? `，${untracked.length} 个还没添加` : ''}
             </span>
             {untracked.length > 0 ? (
               <button
@@ -248,6 +252,18 @@ export function ScanSection() {
               </button>
             ) : null}
           </header>
+
+          {/*
+            被上限截断时必须说出来：静默少列几个，用户会以为「这个目录下就这么多仓库」，
+            而那是假话（扫描是把目录树变成工作量的动作，不封顶的话一个盘根 + depth 3
+            就是上万次 git 进程）。
+          */}
+          {result.truncated ? (
+            <p className="border-b border-line-soft bg-panel px-3 py-2 text-[12.5px] text-signal-ahead">
+              这个目录下的仓库比一次能列出的多：上面只是前 {result.found.length} 个（共发现{' '}
+              {result.candidates} 个）。把目录填得更具体一些，或者关掉往下的层数再扫一次。
+            </p>
+          ) : null}
 
           {result.found.length === 0 ? (
             <p className="px-3 py-4 text-[13px] text-ink-3">

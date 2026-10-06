@@ -114,6 +114,13 @@ describe('POST /api/scan', () => {
     expect(res.json().found.map((r: { name: string }) => r.name)).toEqual(['deep'])
   })
 
+  it('响应里带着「一共发现几个 / 有没有被截断」（界面要靠它说真话）', async () => {
+    const res = await post('/api/scan', { dir: root })
+    const body = res.json()
+    expect(body.candidates).toBe(body.found.length)
+    expect(body.truncated).toBe(false)
+  })
+
   it('没有 origin 的仓库 remoteUrl 为空', async () => {
     const res = await post('/api/scan', { dir: root })
     const gamma = res.json().found.find((r: { name: string }) => r.name === 'gamma')

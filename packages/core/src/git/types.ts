@@ -166,4 +166,17 @@ export interface ScannedRepo {
 export interface ScanResult {
   dir: string
   found: ScannedRepo[]
+  /**
+   * 这次一共发现多少个仓库目录。没触发上限时等于 `found.length`；
+   * 触发时它更大，多出来的那部分没有列进 `found`（见 `truncated`）。
+   */
+  candidates: number
+  /**
+   * 是否因为「一次扫描最多列 N 个」而少列了仓库。
+   *
+   * **必须如实报出去**：扫描是把一棵目录树变成工作量的动作（每个候选都要问两次 git），
+   * 悄悄截断等于让用户以为「这个目录下就这么多仓库」——那是假话，
+   * 假话比「没扫完，换个更具体的目录」坏得多。
+   */
+  truncated: boolean
 }

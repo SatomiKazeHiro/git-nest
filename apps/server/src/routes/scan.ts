@@ -53,6 +53,9 @@ export const scanRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
 
     return {
       dir: result.dir,
+      // 上限信息一起报出去：界面要说清「只列了前 N 个」（悄悄截断等于说假话）
+      candidates: result.candidates,
+      truncated: result.truncated,
       found: result.found
         // 按路径排，保证两次扫描的顺序一致，方便用户比对
         .sort((a, b) => a.dir.localeCompare(b.dir))

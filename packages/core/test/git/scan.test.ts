@@ -70,5 +70,58 @@ describe('scanDirectory', () => {
   it('目录不存在时返回空列表，不抛错', async () => {
     const result = await scanDirectory(path.join(tempDir(), 'nope'))
     expect(result.found).toEqual([])
+    expect(result.candidates).toBe(0)
+    expect(result.truncated).toBe(false)
+  })
+
+  /*
+    扫描是把一棵目录树变成工作量的动作：每个候选都要问两次 git，而范围完全由用户
+    填的那个目录决定（盘根 + depth 3 = 上万次进程，界面上只有一个「扫描中…」）。
+    上限本身可以接受，**悄悄截断不行**——那会让用户以为「这个目录下就这么多仓库」。
+    所以这里钉两件事：真的截断了，而且截断这件事被如实报出来。
+  */
+  it('候选超过上限时只列前 N 个，但如实报出被截断', async () => {
+    const root = track(tempDir())
+    for (const name of ['repo-a', 'repo-b', 'repo-c']) {
+      const dir = path.join(root, name)
+      fs.mkdirSync(dir, { recursive: true })
+      fs.mkdirSync(path.join(dir, '.git'))
+    }
+
+    const result = await scanDirectory(root, { maxResults: 2 })
+
+    expect(result.found.map((r) => r.name)).toEqual(['repo-a', 'repo-b'])
+    expect(result.candidates, '一共发现几个要说真话').toBe(3)
+    expect(result.truncated).toBe(true)
+  })
+
+  it('没到上限时 candidates 等于列出的数量，truncated 为 false', async () => {
+    const root = track(tempDir())
+    for (const name of ['repo-a', 'repo-b']) {
+      const dir = path.join(root, name)
+      fs.mkdirSync(dir, { recursive: true })
+      fs.mkdirSync(path.join(dir, '.git'))
+    }
+
+    const result = await scanDirectory(root, { maxResults: 10 })
+
+    expect(result.found).toHaveLength(2)
+    expect(result.candidates).toBe(2)
+    expect(result.truncated).toBe(false)
+  })
+
+  it('结果始终按完整路径排序（两次扫描要能比对）', async () => {
+    const root = track(tempDir())
+    for (const name of ['z-repo', 'a-repo', 'm-repo']) {
+      const dir = path.join(root, name)
+      fs.mkdirSync(dir, { recursive: true })
+      fs.mkdirSync(path.join(dir, '.git'))
+    }
+
+    const first = await scanDirectory(root)
+    const second = await scanDirectory(root)
+
+    expect(first.found.map((r) => r.name)).toEqual(['a-repo', 'm-repo', 'z-repo'])
+    expect(second.found.map((r) => r.dir)).toEqual(first.found.map((r) => r.dir))
   })
 })
