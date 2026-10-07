@@ -67,29 +67,34 @@ export function Sidebar() {
         <Dest to="/" active={inList} Icon={List} label="清单" />
       </div>
 
-      {/*
-        「我自己的」独立成一项，与分类/标签**分开一行分隔**。
-
-        它和那两组不是一层的东西：分类与标签是「按名字分组」，这一项是
-        「一个真布尔」。放进任何一个分组里都会显得像多了一个分类。
-        计数跟分类/标签同一个口径——按完整清单统计，不受搜索影响。
-      */}
-      {ownCount > 0 ? (
-        <div className="border-t border-line px-2 pb-2">
-          <Item
-            label="我自己的"
-            count={ownCount}
-            active={own === '1'}
-            onClick={() => setOwnOnly(own !== '1')}
-          />
-        </div>
-      ) : null}
-
       <div className="nav-scroll flex flex-col gap-5 px-2 pb-4">
+        {/*
+          「我自己的」放在可滚动区的最上面，与下面的分组之间一条线。
+
+          两件事：
+          - 它和分类/标签不是一层的东西（那边是「按名字分组」，这里是「一个真
+            布尔」），所以给它分隔而不是塞进某一组里
+          - **它必须住在这个 `flex flex-col` 里面。** 之前我把它单独包了个
+            block div，于是里面的按钮不撑宽——选中时是一块 83px 的短条，
+            上下那些 191px 的行全都不对齐。而且 block div 会变成左栏 grid 的
+            第四个孩子，把 `.nav-scroll` 挤到隐式行上，**它就不再是那个可滚动的
+            1fr 行了**，分类一多「设置」会被顶出视野。
+        */}
         {loading ? (
           <p className="px-2 py-1 font-mono text-[12px] text-ink-3">…</p>
         ) : (
           <>
+            {ownCount > 0 ? (
+              <div className="flex flex-col border-b border-line pb-3">
+                <Item
+                  label="我自己的"
+                  count={ownCount}
+                  active={own === '1'}
+                  onClick={() => setOwnOnly(own !== '1')}
+                />
+              </div>
+            ) : null}
+
             <Section title="分类">
               {categories.length === 0 ? <Hint>还没有项目</Hint> : null}
               {categories.map(([name, n]) => (
@@ -179,7 +184,9 @@ function Item({
     <button
       onClick={onClick}
       disabled={!onClick}
-      className={`flex cursor-pointer items-baseline gap-2 rounded-[3px] px-2 py-1 text-left text-[13px] ${
+      // `py-1.5` 与上面那些目的地（Dest）同高：原来这里是 py-1，比它们矮 4px，
+      // 同一列里相邻两行差 4px 看着就像没对齐
+      className={`flex cursor-pointer items-baseline gap-2 rounded-[3px] px-2 py-1.5 text-left text-[13px] ${
         active ? 'bg-accent-wash text-accent' : 'text-ink-2 hover:bg-paper hover:text-ink'
       } disabled:cursor-default disabled:text-ink-3 disabled:hover:bg-transparent`}
     >
