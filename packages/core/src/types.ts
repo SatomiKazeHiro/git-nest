@@ -31,6 +31,34 @@ export const INITIAL_CATEGORIES = [
   'tools',
 ] as const
 
+/**
+ * 分类的**显示名**。键是存进数据库的字面值，值是界面上给人看的中文。
+ *
+ * **只翻显示，不翻数据。** 存进库的永远是 `personal` / `backups` 这些英文——
+ * 排序、筛选、还有「哪些算自己的项目」那条规则（`includePersonal` 默认关掉时
+ * 跳过 personal 分类）全都读原始值，一处也不该经过这里。
+ *
+ * 放一张表而不是把中文硬编码进各个组件，是为了将来做国际化时只改这一处；
+ * 现在先把「显示名」这个概念立住，翻译成什么语言都好办。
+ */
+export const CATEGORY_LABELS: Record<string, string> = {
+  personal: '我自己的项目',
+  'knowledge-base': '知识库',
+  backups: '备份',
+  experiments: '试验',
+  tools: '工具',
+}
+
+/**
+ * 界面上显示的分类名。
+ *
+ * 没登记过的**原样返回**：用户可以自由填写分类，硬把不认识的值换成「未知分类」
+ * 之类的说法只会让他以为自己填错了。
+ */
+export function categoryLabel(value: string): string {
+  return CATEGORY_LABELS[value] ?? value
+}
+
 export type InitialCategory = (typeof INITIAL_CATEGORIES)[number]
 
 export interface Tag {

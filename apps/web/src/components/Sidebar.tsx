@@ -2,6 +2,7 @@ import { useMemo, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router'
 import { FolderGit2, List, Settings } from 'lucide-react'
 import { orderBy } from 'es-toolkit'
+import { categoryLabel } from '@git-nest/core'
 import { UNCATEGORIZED, useUiStore } from '@/store/ui'
 import { useProjects } from '@/features/projects/queries'
 
@@ -38,9 +39,12 @@ export function Sidebar() {
       for (const t of p.tags) tagCounts.set(t.name, (tagCounts.get(t.name) ?? 0) + 1)
     }
     return {
+      // 排序按**显示名**而不是存进库的英文：既然界面上给的是中文，按英文排
+      // 出来的顺序对读者就毫无道理（会看到 备份 / 试验 / 知识库 这种交错）。
+      // 用户自己填的分类没登记过，categoryLabel 原样返回，按它排也一样有道理。
       categories: orderBy(
         [...cats.entries()],
-        [([name]) => (name === UNCATEGORIZED ? 1 : 0), ([name]) => name.toLowerCase()],
+        [([name]) => (name === UNCATEGORIZED ? 1 : 0), ([name]) => categoryLabel(name)],
         ['asc', 'asc'],
       ),
       tags: orderBy([...tagCounts.entries()], [([name]) => name.toLowerCase()], ['asc']),
@@ -68,7 +72,7 @@ export function Sidebar() {
               {categories.map(([name, n]) => (
                 <Item
                   key={name}
-                  label={name}
+                  label={categoryLabel(name)}
                   count={n}
                   active={name !== UNCATEGORIZED && category === name}
                   onClick={name === UNCATEGORIZED ? undefined : () => setCategory(name)}

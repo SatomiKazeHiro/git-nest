@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { groupBy, orderBy } from 'es-toolkit'
 import { useDebounce } from 'ahooks'
 import { Eraser, FolderSearch, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
-import type { ProjectListItem, RepoStatus } from '@git-nest/core'
+import { categoryLabel, type ProjectListItem, type RepoStatus } from '@git-nest/core'
 import { Button, Dialog, EmptyState, ErrorNote, Input } from '@/components/ui'
 import { ApiError } from '@/lib/api'
 import { registerCommand } from '@/lib/commands'
@@ -55,7 +55,8 @@ export function ProjectsPage() {
     const byCategory = groupBy(projects ?? [], (p) => p.category || UNCATEGORIZED)
     return orderBy(
       Object.entries(byCategory),
-      [([name]) => (name === UNCATEGORIZED ? 1 : 0), ([name]) => name.toLowerCase()],
+      // 与左栏同一套：按显示名排，而不是按存进库的英文
+      [([name]) => (name === UNCATEGORIZED ? 1 : 0), ([name]) => categoryLabel(name)],
       ['asc', 'asc'],
     ).map(([name, items]) => ({ name, items, filterable: name !== UNCATEGORIZED }))
   }, [projects])

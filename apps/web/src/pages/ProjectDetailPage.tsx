@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { AlertTriangle, CheckCircle2, HelpCircle, Pencil, RefreshCw } from 'lucide-react'
-import { isRemoteCheckStatus, deriveStatus, VERDICT_LABEL, type RepoStatus, type UpdateRecommendation, type UpdateStatus, type UpdateVerdict } from '@git-nest/core'
+import { categoryLabel, isRemoteCheckStatus, deriveStatus, VERDICT_LABEL, type RepoStatus, type UpdateRecommendation, type UpdateStatus, type UpdateVerdict } from '@git-nest/core'
 import { Button, ErrorNote, Meta } from '@/components/ui'
 import { formatRelative } from '@/lib/format'
 import { registerCommand } from '@/lib/commands'
@@ -107,7 +107,7 @@ export function ProjectDetailPage() {
         */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
           <span className="text-[11px] text-ink-3">分类</span>
-          <Chip>{project.category || '未分类'}</Chip>
+          <Chip>{project.category ? categoryLabel(project.category) : '未分类'}</Chip>
           {project.tags.length > 0 ? (
             <>
               <span className="ml-1 text-[11px] text-ink-3">标签</span>

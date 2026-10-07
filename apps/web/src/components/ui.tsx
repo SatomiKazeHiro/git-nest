@@ -46,7 +46,8 @@ export function Button({ variant = 'ghost', size = 'md', className = '', ...rest
 
 interface FieldProps {
   label: string
-  hint?: string
+  /** 提示文字。允许传节点——有的提示本身带标记（比如分类那行列出了一组对照）。 */
+  hint?: ReactNode
   error?: string
   children: (id: string) => ReactNode
 }

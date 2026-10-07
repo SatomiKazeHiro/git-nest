@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Plus, X } from 'lucide-react'
-import { createProjectSchema, categorySuggestions } from '@git-nest/core'
+import { createProjectSchema, categoryLabel, categorySuggestions } from '@git-nest/core'
 import { ApiError } from '@/lib/api'
 import { Button, Dialog, ErrorNote, Field, Input, Textarea } from '@/components/ui'
 import { TagPicker } from './TagPicker'
@@ -233,9 +233,31 @@ export function ProjectFormDialog() {
           )}
         </Field>
 
-        <Field label="分类" error={errors['category']} hint="自由填写">
+        <Field
+          label="分类"
+          error={errors['category']}
+          hint={
+            <>
+              自由填写。常用值：
+              {categorySuggestions.map((c, i) => (
+                <span key={c}>
+                  {i > 0 ? '、' : ''}
+                  <span className="font-mono text-ink-3">{c}</span>
+                  <span className="text-ink-3">（{categoryLabel(c)}）</span>
+                </span>
+              ))}
+            </>
+          }
+        >
           {(id) => (
             <>
+              {/*
+                存进数据库的永远是英文，界面上给人看中文——所以**这个输入框里
+                显示的是原文**，不是翻译过的：在这里改成「我自己的项目」，
+                「哪些算自己的项目」那条规则（精确匹配 personal）就再也
+                对不上了，而且不会有任何提示。
+                datalist 里的 value 同理，保持原样。
+              */}
               <Input id={id} value={form.category} onChange={set('category')} list="categories" />
               <datalist id="categories">
                 {categorySuggestions.map((c) => (
