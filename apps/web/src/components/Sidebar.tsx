@@ -24,19 +24,23 @@ export function Sidebar() {
   const { pathname } = useLocation()
   const category = useUiStore((s) => s.filters.category)
   const tag = useUiStore((s) => s.filters.tag)
+  const own = useUiStore((s) => s.filters.own)
   const setCategory = useUiStore((s) => s.setCategory)
   const setTag = useUiStore((s) => s.setTag)
+  const setOwnOnly = useUiStore((s) => s.setOwnOnly)
 
   const inList = pathname === '/' || pathname.startsWith('/projects/')
   const inSettings = pathname.startsWith('/settings')
 
-  const { categories, tags } = useMemo(() => {
+  const { categories, tags, ownCount } = useMemo(() => {
     const cats = new Map<string, number>()
     const tagCounts = new Map<string, number>()
+    let ownN = 0
     for (const p of projects ?? []) {
       const c = p.category || UNCATEGORIZED
       cats.set(c, (cats.get(c) ?? 0) + 1)
       for (const t of p.tags) tagCounts.set(t.name, (tagCounts.get(t.name) ?? 0) + 1)
+      if (p.isOwn) ownN += 1
     }
     return {
       // 排序按**显示名**而不是存进库的英文：既然界面上给的是中文，按英文排
@@ -48,6 +52,7 @@ export function Sidebar() {
         ['asc', 'asc'],
       ),
       tags: orderBy([...tagCounts.entries()], [([name]) => name.toLowerCase()], ['asc']),
+      ownCount: ownN,
     }
   }, [projects])
 
@@ -61,6 +66,24 @@ export function Sidebar() {
       <div className="p-2">
         <Dest to="/" active={inList} Icon={List} label="清单" />
       </div>
+
+      {/*
+        「我自己的」独立成一项，与分类/标签**分开一行分隔**。
+
+        它和那两组不是一层的东西：分类与标签是「按名字分组」，这一项是
+        「一个真布尔」。放进任何一个分组里都会显得像多了一个分类。
+        计数跟分类/标签同一个口径——按完整清单统计，不受搜索影响。
+      */}
+      {ownCount > 0 ? (
+        <div className="border-t border-line px-2 pb-2">
+          <Item
+            label="我自己的"
+            count={ownCount}
+            active={own === '1'}
+            onClick={() => setOwnOnly(own !== '1')}
+          />
+        </div>
+      ) : null}
 
       <div className="nav-scroll flex flex-col gap-5 px-2 pb-4">
         {loading ? (

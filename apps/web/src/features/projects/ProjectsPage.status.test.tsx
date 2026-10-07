@@ -91,7 +91,7 @@ beforeEach(() => {
   seen = new Set()
   useUiStore.setState({
     selected: new Set<number>(),
-    filters: { q: '', category: null, tag: null },
+    filters: { q: '', category: null, tag: null, own: null },
     formOpen: false,
     editingId: null,
   })

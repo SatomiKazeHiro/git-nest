@@ -52,6 +52,13 @@ export const listProjectsQuerySchema = z.object({
   category: trimmed.optional(),
   tag: trimmed.optional(),
   q: trimmed.optional(),
+  /**
+   * 只看我自己的项目。查询参数是字符串，所以只认 `1` / `0`。
+   *
+   * **它和 category / tag 是叠加的，不是互斥的**：「我的 tools」是一个
+   * 完全合理的查询，所以这里不提供「取消其它筛选」的三态。
+   */
+  own: z.enum(['1', '0']).optional(),
 })
 
 export const createTagSchema = z.object({

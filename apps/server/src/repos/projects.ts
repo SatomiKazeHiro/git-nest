@@ -43,6 +43,8 @@ export interface ListProjectsOptions {
   category?: string
   tag?: string
   q?: string
+  /** '1' = 只看我自己的项目；'0' = 只看不是自己的；不传 = 都要 */
+  own?: '1' | '0'
 }
 
 export function listProjects(db: DB, opts: ListProjectsOptions = {}): ProjectListItem[] {
@@ -52,6 +54,10 @@ export function listProjects(db: DB, opts: ListProjectsOptions = {}): ProjectLis
   if (opts.category) {
     where.push('p.category = @category')
     params['category'] = opts.category
+  }
+  if (opts.own !== undefined) {
+    where.push(`p.is_own = @own`)
+    params['own'] = opts.own === '1' ? '1' : '0'
   }
   if (opts.q) {
     // 记录也参与搜索：那里面常写着「怎么找到的」，是找得回一个项目的线索

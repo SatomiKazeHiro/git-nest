@@ -12,8 +12,7 @@ export interface TagWithUsage extends Tag {
  * 加一个 key 就要改三处）。
  */
 export const queryKeys = {
-  projects: (params: { category?: string | null; tag?: string | null; q?: string }) =>
-    ['projects', params] as const,
+  projects: (params: ListParams) => ['projects', params] as const,
   project: (id: number) => ['project', id] as const,
   /** 所有项目详情的**前缀**：失效时用它，不要用 `project(0)`（见 useInvalidate） */
   projectAll: ['project'] as const,
@@ -22,16 +21,28 @@ export const queryKeys = {
   settings: ['settings'] as const,
 }
 
-function toQuery(params: { category?: string | null; tag?: string | null; q?: string }) {
+/** 列表查询的参数。`own` 是 '1'/'0'，与 category / tag **叠加**而非互斥。 */
+export interface ListParams {
+  category?: string | null
+  tag?: string | null
+  q?: string
+  /** 三态：'1' 只看自己的 / '0' 只看不是自己的 / 不传都要。store 里是 null。 */
+  own?: '1' | '0' | null
+}
+
+function toQuery(params: ListParams) {
   const search = new URLSearchParams()
   if (params.category) search.set('category', params.category)
   if (params.tag) search.set('tag', params.tag)
   if (params.q) search.set('q', params.q)
+  // 布尔要显式发 '0'：只发 '1' 的话「关掉筛选」与服务端返回的「不过滤」同义，
+  // 切回「都要」就没有请求能发出去了
+  if (params.own) search.set('own', params.own)
   const qs = search.toString()
   return qs ? `?${qs}` : ''
 }
 
-export function useProjects(params: { category?: string | null; tag?: string | null; q?: string }) {
+export function useProjects(params: ListParams) {
   return useQuery({
     queryKey: queryKeys.projects(params),
     queryFn: () =>

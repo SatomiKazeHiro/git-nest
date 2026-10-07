@@ -8,6 +8,14 @@ export interface Filters {
   q: string
   category: string | null
   tag: string | null
+  /**
+   * 只看我自己的项目。
+   *
+   * **和 category / tag 叠加，不互斥**——「我的 tools」是一个合理的查询。
+   * 所以 `setOwnOnly` 不去动另外两个条件（只有左栏的分类/标签项会互相取消，
+   * 因为它们本来就是同一层的两种分组方式）。
+   */
+  own: '1' | '0' | null
 }
 
 interface UiState {
@@ -22,6 +30,7 @@ interface UiState {
   setQuery: (q: string) => void
   setCategory: (c: string | null) => void
   setTag: (t: string | null) => void
+  setOwnOnly: (v: boolean) => void
   clearFilters: () => void
   toggleSelected: (id: number) => void
   setSelection: (ids: number[]) => void
@@ -33,7 +42,7 @@ interface UiState {
   toggleDetail: () => void
 }
 
-const emptyFilters: Filters = { q: '', category: null, tag: null }
+const emptyFilters: Filters = { q: '', category: null, tag: null, own: null }
 
 export const useUiStore = create<UiState>((set) => ({
   filters: emptyFilters,
@@ -50,6 +59,8 @@ export const useUiStore = create<UiState>((set) => ({
     })),
   setTag: (tag) =>
     set((s) => ({ filters: { ...s.filters, tag: s.filters.tag === tag ? null : tag } })),
+  // 点第二下就是取消：只有 true / false 两个取值，不做三态
+  setOwnOnly: (v) => set((s) => ({ filters: { ...s.filters, own: v ? '1' : null } })),
   clearFilters: () => set({ filters: emptyFilters }),
 
   toggleSelected: (id) =>

@@ -36,6 +36,8 @@ export function ProjectsPage() {
     category: filters.category,
     tag: filters.tag,
     q: debouncedQuery,
+    // 「我自己的」与分类 / 标签**叠加**，所以原样传下去
+    own: filters.own,
   })
 
   const {
@@ -312,7 +314,7 @@ function Toolbar({
   const clearFilters = useUiStore((s) => s.clearFilters)
   const openCreate = useUiStore((s) => s.openCreate)
   const selectedCount = useSelectedCount()
-  const filtering = Boolean(filters.category || filters.tag || filters.q)
+  const filtering = Boolean(filters.category || filters.tag || filters.q || filters.own)
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-line bg-paper px-4 py-2">
