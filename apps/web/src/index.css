@@ -99,7 +99,9 @@
 
 .body {
   display: grid;
-  grid-template-columns: var(--w-nav, 13rem) minmax(0, 1fr);
+  /* 活动栏：60px 的图标栏（见 Sidebar 的说明）。窄成图标栏的另一个好处
+     是「这一列里每一项都是页面」——分类/标签那些已经搬到过滤面板了 */
+  grid-template-columns: var(--w-nav, 3.75rem) minmax(0, 1fr);
   min-height: 0;
 }
 /* 折叠：整条轨道收成 0，剩下的一栏自然铺满——比给 aside 加 display:none
@@ -108,15 +110,40 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* 内容区按路由分两种形态：清单页是「列表 + 详情」，设置页整块自己排 */
+/*
+  清单页是**三列**：过滤面板 / 清单表 / 详情栏。
+
+  为什么过滤面板不跟侧栏挤在一起：侧栏是**导航**（清单、设置——去别的页面），
+  过滤面板是**清单页自己的控件**（我自己的、分类、标签——只筛这一页的内容）。
+  两者混在一列里时，「分类」看起来像一个能点过去的页面，点了却只是筛了
+  眼前这张表。分成两列，「属于哪儿」就不用解释了。
+
+  三列的宽度是**写死的**：过滤面板的内容是一串 chip（最宽的是分类名 + 计数），
+  它的宽度跟窗口无关；详情栏同理。所以行内不需要任何断点。
+
+  「清单最少 412px 才保得住名称/落后/推荐三列」是这套布局的下限来源：
+  60（活动栏）+ 168（过滤）+ 412 + 480（详情）= 1120，所以**最小窗口宽度
+  是 1160**（见 README）。低于它清单列就压到 412 以下了。
+
+  侧栏从 160 缩到 60 是这里最值的一步：省下的 100px 全给了清单与详情，
+  而这一列里每一项都是一个页面（分类 / 标签已经在过滤面板那一列了），
+  将来加页面只是多一个图标，不占横向空间。
+*/
 .split {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--w-detail, 30rem);
+  grid-template-columns: var(--w-filter, 10.5rem) minmax(0, 1fr) var(--w-detail, 30rem);
   height: 100%;
   min-height: 0;
 }
+/* 详情栏折叠：过滤面板与清单表各占一条 */
 .split-no-detail {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: var(--w-filter, 10.5rem) minmax(0, 1fr);
+}
+
+/* 过滤面板自己会滚——分类和标签多了以后只滚这一列，侧栏与清单表不动 */
+.filter-panel {
+  min-height: 0;
+  overflow: auto;
 }
 
 /*

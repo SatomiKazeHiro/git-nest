@@ -1,0 +1,160 @@
+import { useMemo, type ReactNode } from 'react'
+import { orderBy } from 'es-toolkit'
+import { categoryLabel } from '@git-nest/core'
+import { UNCATEGORIZED, useUiStore } from '@/store/ui'
+import { useProjects } from './queries'
+
+/**
+ * 过滤面板：**清单页自己的控件**，只筛这一页的内容。
+ *
+ * 它以前和侧栏（导航）混在同一列里，于是「分类」看起来像一个能点过去的
+ * 页面，点了却只是筛了眼前这张表。分成两列之后「属于哪儿」不用解释：
+ *
+ * ```
+ * 清单页：| sidebar | filter panel | content |
+ * 设置页：| sidebar | content |
+ * ```
+ *
+ * 也就是说**它只在清单页存在**——设置页那一栏只有侧栏，筛选没有对象可筛。
+ * （`Workspace` 就是清单页的布局路由，所以「只在清单页」这件事是结构保证的，
+ * 不需要在这里判断当前路由。）
+ *
+ * 面板自己会滚：分类和标签多了以后只滚这一列，侧栏与清单表都不动。
+ */
+export function FilterPanel() {
+  // 数数用的必须是**不带筛选**的那份：跟分类/标签的计数同一个口径
+  // （按完整清单统计，不受搜索影响）
+  const { data: projects } = useProjects({ category: null, tag: null, q: '' })
+  const category = useUiStore((s) => s.filters.category)
+  const tag = useUiStore((s) => s.filters.tag)
+  const own = useUiStore((s) => s.filters.own)
+  const setCategory = useUiStore((s) => s.setCategory)
+  const setTag = useUiStore((s) => s.setTag)
+  const setOwnOnly = useUiStore((s) => s.setOwnOnly)
+
+  const { categories, tags, ownCount } = useMemo(() => {
+    const cats = new Map<string, number>()
+    const tagCounts = new Map<string, number>()
+    let ownN = 0
+    for (const p of projects ?? []) {
+      const c = p.category || UNCATEGORIZED
+      cats.set(c, (cats.get(c) ?? 0) + 1)
+      for (const t of p.tags) tagCounts.set(t.name, (tagCounts.get(t.name) ?? 0) + 1)
+      if (p.isOwn) ownN += 1
+    }
+    return {
+      // 排序按**显示名**而不是存进库的英文：既然界面上给的是中文，按英文排
+      // 出来的顺序对读者就毫无道理（会看到 备份 / 试验 / 知识库 这种交错）。
+      categories: orderBy(
+        [...cats.entries()],
+        [([name]) => (name === UNCATEGORIZED ? 1 : 0), ([name]) => categoryLabel(name)],
+        ['asc', 'asc'],
+      ),
+      tags: orderBy([...tagCounts.entries()], [([name]) => name.toLowerCase()], ['asc']),
+      ownCount: ownN,
+    }
+  }, [projects])
+
+  if (projects === undefined) {
+    return (
+      <div className="filter-panel border-r border-line bg-panel px-2 py-2">
+        <p className="px-1 py-1 font-mono text-[12px] text-ink-3">…</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="filter-panel border-r border-line bg-panel px-2 py-2">
+      {/*
+        「我自己的」在最上面，与下面的分组之间一条线：它和分类/标签不是一层
+        的东西（那边是「按名字分组」，这里是「一个真布尔」）。
+
+        **只有真的勾过至少一个才出现**——清单里一个自己的项目都没有时，
+        这一项是个永远筛出空集的按钮。
+      */}
+      {ownCount > 0 ? (
+        <div className="flex flex-col border-b border-line pb-3">
+          <Item
+            label="我自己的"
+            count={ownCount}
+            active={own === '1'}
+            onClick={() => setOwnOnly(own !== '1')}
+          />
+        </div>
+      ) : null}
+
+      <Group title="分类" className={ownCount > 0 ? 'pt-3' : ''}>
+        {categories.length === 0 ? <Hint>还没有项目</Hint> : null}
+        {categories.map(([name, n]) => (
+          <Item
+            key={name}
+            label={categoryLabel(name)}
+            count={n}
+            active={name !== UNCATEGORIZED && category === name}
+            onClick={name === UNCATEGORIZED ? undefined : () => setCategory(name)}
+          />
+        ))}
+      </Group>
+
+      <Group title="标签" className="pt-4">
+        {tags.length === 0 ? <Hint>还没有标签</Hint> : null}
+        {tags.map(([name, n]) => (
+          <Item
+            key={name}
+            label={name}
+            count={n}
+            active={tag === name}
+            onClick={() => setTag(name)}
+          />
+        ))}
+      </Group>
+    </div>
+  )
+}
+
+function Group({
+  title,
+  className = '',
+  children,
+}: {
+  title: string
+  className?: string
+  children: ReactNode
+}) {
+  return (
+    <div className={className}>
+      <h2 className="mb-1 px-1 text-[11px] font-medium text-ink-3">{title}</h2>
+      <div className="flex flex-col">{children}</div>
+    </div>
+  )
+}
+
+function Item({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string
+  count: number
+  active: boolean
+  onClick?: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={!onClick}
+      aria-pressed={active}
+      className={`flex cursor-pointer items-baseline gap-1.5 rounded-[3px] px-1 py-1.5 text-left text-[13px] ${
+        active ? 'bg-accent-wash text-accent' : 'text-ink-2 hover:bg-paper hover:text-ink'
+      } disabled:cursor-default disabled:text-ink-3 disabled:hover:bg-transparent`}
+    >
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="font-mono text-[11px] text-ink-3">{count}</span>
+    </button>
+  )
+}
+
+function Hint({ children }: { children: ReactNode }) {
+  return <p className="px-1 py-1 text-[12px] text-ink-3">{children}</p>
+}

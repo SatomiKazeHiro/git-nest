@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router'
 import { List } from 'lucide-react'
 import { useUiStore } from '@/store/ui'
+import { FilterPanel } from './FilterPanel'
 import { ProjectsPage } from './ProjectsPage'
 
 /**
@@ -18,6 +19,13 @@ export function Workspace() {
   const detailOpen = useUiStore((s) => s.detailOpen)
   return (
     <div className={`split ${detailOpen ? '' : 'split-no-detail'}`}>
+      {/*
+        过滤面板夹在侧栏与清单之间。**它属于清单页，不属于侧栏**——侧栏是
+        导航（清单 / 设置，点了换一页），这一列是清单页自己的控件（我自己的 /
+        分类 / 标签，点了只筛眼前这张表）。混在一列里时「分类」看起来像个
+        页面，点了却什么都不换，那种落差最难察觉。
+      */}
+      <FilterPanel />
       <ProjectsPage />
       {/*
         详情栏折叠时**整块不渲染**，而不只是把它压成 0 宽。
