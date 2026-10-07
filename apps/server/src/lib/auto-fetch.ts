@@ -63,14 +63,14 @@ export function runAutoFetch(db: DB): Promise<AutoFetchSummary> {
 }
 
 async function doAutoFetch(db: DB): Promise<AutoFetchSummary> {
-  const { includePersonal } = readSettings(db)
+  const { includeOwn } = readSettings(db)
   const rows = db
     .prepare(
-      `SELECT id, name, path, category FROM projects
+      `SELECT id, name, path, is_own AS isOwn FROM projects
        WHERE remote_url IS NOT NULL AND remote_url <> ''
        ORDER BY id`,
     )
-    .all() as { id: number; name: string; path: string; category: string }[]
+    .all() as { id: number; name: string; path: string; isOwn: number }[]
 
   const summary: AutoFetchSummary = {
     at: new Date().toISOString(),
@@ -82,7 +82,7 @@ async function doAutoFetch(db: DB): Promise<AutoFetchSummary> {
 
   const targets = rows.filter((row) => {
     // 与批量检查同一条口径：personal 默认不联网。设置页可以打开。
-    if (!includePersonal && row.category === 'personal') {
+    if (!includeOwn && row.isOwn) {
       summary.skipped += 1
       return false
     }

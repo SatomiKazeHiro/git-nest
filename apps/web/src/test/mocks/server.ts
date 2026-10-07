@@ -6,7 +6,7 @@ export const handlers = [
   http.get('/api/settings', () =>
     HttpResponse.json({
       settings: {
-        includePersonal: false,
+        includeOwn: false,
         gitTimeoutMs: 120_000,
         concurrency: 4,
         confirmThreshold: 20,

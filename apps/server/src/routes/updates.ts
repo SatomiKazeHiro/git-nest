@@ -60,13 +60,13 @@ export const updateRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
   fastify.post('/updates/check', async (req, reply) => {
     const body = idsSchema.parse(req.body ?? {})
     const settings = readSettings(db)
-    const targets = pickTargets(db, body.ids, settings.includePersonal)
+    const targets = pickTargets(db, body.ids, settings.includeOwn)
 
     const skipped = describeSkipped(db, body.ids, targets.map((t) => t.id))
     if (targets.length === 0) {
       throw badRequest(
         skipped.length > 0
-          ? `选中的项目都属于 personal，没法自动检查（${skipped.length} 个）`
+          ? `选中的项目都是你自己写的，没法自动检查（${skipped.length} 个）`
           : '没有可检查的项目',
       )
     }
@@ -124,31 +124,40 @@ interface Target {
   id: number
   name: string
   path: string
-  category: string
+  /** 是不是我自己写的项目（SQLite 没有布尔，存 0/1） */
+  isOwn: number
 }
 
 function loadTargets(db: DB, ids: number[]): Target[] {
   if (ids.length === 0) return []
   const rows = db
     .prepare(
-      `SELECT id, name, path, category FROM projects
+      `SELECT id, name, path, is_own AS isOwn FROM projects
        WHERE id IN (${ids.map(() => '?').join(',')})`,
     )
-    .all(...ids) as { id: number; name: string; path: string; category: string }[]
+    .all(...ids) as { id: number; name: string; path: string; isOwn: number }[]
 
   const byId = new Map(rows.map((r) => [r.id, r]))
   // 按请求顺序返回，前端的勾选顺序才有意义
   return ids.map((id) => byId.get(id)).filter((t): t is Target => Boolean(t))
 }
 
-function pickTargets(db: DB, ids: number[] | undefined, includePersonal: boolean): Target[] {
+/**
+ * 这一轮检查打哪些项目。
+ *
+ * **判据是 `is_own` 这个布尔，不是「分类等于 personal」**——后者是一条挂在
+ * 自由文本上的隐藏规则：写成 `Personal` 或多打一个空格就静默失效，界面上没有
+ * 任何提示。自己的项目自己清楚，所以默认跳过；要在批量里带上，设置里打开
+ * 「自己的项目也参与检查」。
+ */
+function pickTargets(db: DB, ids: number[] | undefined, includeOwn: boolean): Target[] {
   const all = ids ? loadTargets(db, ids) : loadAll(db)
-  return includePersonal ? all : all.filter((t) => t.category !== 'personal')
+  return includeOwn ? all : all.filter((t) => !t.isOwn)
 }
 
 function loadAll(db: DB): Target[] {
   return db
-    .prepare('SELECT id, name, path, category FROM projects ORDER BY id')
+    .prepare('SELECT id, name, path, is_own AS isOwn FROM projects ORDER BY id')
     .all() as Target[]
 }
 
@@ -172,7 +181,7 @@ function describeSkipped(db: DB, requested: number[] | undefined, included: numb
   const includedSet = new Set(included)
   return all
     .filter((t) => !includedSet.has(t.id))
-    .map((t) => `${t.name}（personal）`)
+    .map((t) => `${t.name}（我自己的）`)
 }
 
 async function runCheck(db: DB, task: Task, targets: Target[]) {

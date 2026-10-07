@@ -158,7 +158,7 @@ export function UpdatePanel({
         */
         <p className="text-[13px] text-ink-2">
           {ids.length > 0
-            ? `将检查当前筛选出的 ${ids.length} 个项目（personal 分类默认跳过，可在设置里打开）。`
+            ? `将检查当前筛选出的 ${ids.length} 个项目（你自己写的项目默认跳过，可在设置里打开）。`
             : '清单里还没有项目。先在清单页添加一个（或扫描一个目录），再回来检查。'}
         </p>
       ) : task.status === 'failed' ? (
@@ -167,7 +167,7 @@ export function UpdatePanel({
         <>
           {task.skipped && task.skipped.length > 0 ? (
             <p className="border-b border-line-soft py-2 text-[12.5px] text-ink-3">
-              跳过了 {task.skipped.join('、')}：personal 分类默认不参与检查
+              跳过了 {task.skipped.join('、')}：你自己写的项目默认不参与检查
             </p>
           ) : null}
 

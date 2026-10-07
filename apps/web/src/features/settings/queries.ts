@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
 export interface Settings {
-  includePersonal: boolean
+  includeOwn: boolean
   gitTimeoutMs: number
   concurrency: number
   confirmThreshold: number

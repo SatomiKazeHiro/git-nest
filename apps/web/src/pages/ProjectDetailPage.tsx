@@ -106,6 +106,16 @@ export function ProjectDetailPage() {
           这一行里没有真正的「值」需要和「标签」对齐，chip 自己就是值。
         */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          {/*
+            「我自己的」是这个项目最重要的一条元信息——它决定批量检查会不会
+            跳过它。分类可以为空，这一项不行：勾上了却看不出来，等于没勾。
+          */}
+          {project.isOwn ? (
+            <>
+              <span className="text-[11px] text-ink-3">身份</span>
+              <Chip>我自己的</Chip>
+            </>
+          ) : null}
           <span className="text-[11px] text-ink-3">分类</span>
           <Chip>{project.category ? categoryLabel(project.category) : '未分类'}</Chip>
           {project.tags.length > 0 ? (

@@ -254,6 +254,11 @@ POST   /api/updates/apply                  { ids: [...] } → 勾选仓库 pull 
 
 **接口与流程**
 
+0. 「哪些算自己的项目」不再是「分类等于 `personal`」，而是项目上的一个**真布尔**
+   `projects.is_own`（界面上的勾选框），设置项相应地从 `includePersonal` 改名为
+   `includeOwn`。理由见第 3 节那条差异记录：一条挂在自由文本上的隐藏规则，
+   写成 `Personal` 或多打空格就静默失效，而界面上没有任何提示。分类因此回归
+   纯标签——只管分组与筛选，**不再带任何行为**。
 1. 更新用的是 `POST /api/updates/apply`，不是第 6 节的 `POST /api/projects/update`。
    理由：check 与 apply 归到同一个前缀下更清楚，也避免 `/api/projects/update` 被
    误读成「更新项目记录」。

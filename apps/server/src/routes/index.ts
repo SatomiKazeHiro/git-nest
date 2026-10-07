@@ -130,6 +130,7 @@ async function createFromInput(
   db: DB,
   input: {
     name: string
+    isOwn: boolean
     category: string
     remoteUrl: string | null
     record: string
@@ -144,6 +145,7 @@ async function createFromInput(
     name: input.name,
     path: absPath,
     remoteUrl,
+    isOwn: input.isOwn,
     category: input.category,
     record: input.record,
     ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),

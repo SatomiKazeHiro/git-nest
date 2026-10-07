@@ -48,12 +48,12 @@ function commitIn(dir: string, message: string, file = 'f.txt') {
   git(dir, 'commit', '-m', message)
 }
 
-async function addProject(name: string, dir: string, category = 'tools') {
+async function addProject(name: string, dir: string, category = 'tools', isOwn = false) {
   const res = await app.inject({
     method: 'POST',
     url: '/api/projects',
     headers: json,
-    payload: { name, path: dir, category },
+    payload: { name, path: dir, category, isOwn },
   })
   expect(res.statusCode).toBe(201)
   const id = res.json().project.id as number
@@ -153,22 +153,22 @@ describe('POST /api/updates/check', () => {
     expect(task.items[0].state).toBe('done')
   })
 
-  it('personal 分类默认不参与检查，并说明跳过了谁', async () => {
-    const { origin, clone } = makeOriginWithClone('personal', 0)
-    const id = await addProject('my-own', clone, 'personal')
+  it('自己写的项目默认不参与检查，并说明跳过了谁', async () => {
+    const { origin, clone } = makeOriginWithClone('own', 0)
+    // 分类照样填 personal：现在它**不带任何行为**，判据是那个布尔
+    const id = await addProject('my-own', clone, 'personal', true)
     commitIn(origin, '远程提交')
 
     const res = await startCheck([id])
-    // 全是 personal → 直接拒绝，而不是跑一遍再告诉你没结果
+    // 全是自己的项目 → 直接拒绝，而不是跑一遍再告诉你没结果
     expect(res.statusCode).toBe(400)
-    expect(res.json().message).toContain('personal')
 
     // 打开设置后再试
     await app.inject({
       method: 'PATCH',
       url: '/api/settings',
       headers: json,
-      payload: { includePersonal: true },
+      payload: { includeOwn: true },
     })
     const ok = await startCheck([id])
     const task = await waitForTask(ok.json().id)
@@ -178,14 +178,14 @@ describe('POST /api/updates/check', () => {
       method: 'PATCH',
       url: '/api/settings',
       headers: json,
-      payload: { includePersonal: false },
+      payload: { includeOwn: false },
     })
   })
 
-  it('混合勾选时只查非 personal 的，并列出跳过的', async () => {
+  it('混合勾选时只查别人的，并列出跳过的', async () => {
     const mine = makeOriginWithClone('mixed-mine', 0)
     const theirs = makeOriginWithClone('mixed-theirs', 0)
-    const mineId = await addProject('mine', mine.clone, 'personal')
+    const mineId = await addProject('mine', mine.clone, 'tools', true)
     const theirsId = await addProject('theirs', theirs.clone)
     commitIn(mine.origin, '远程提交')
     commitIn(theirs.origin, '远程提交')
@@ -195,7 +195,7 @@ describe('POST /api/updates/check', () => {
 
     expect(task.items).toHaveLength(1)
     expect(task.items[0].projectId).toBe(theirsId)
-    expect(res.json().skipped).toEqual(['mine（personal）'])
+    expect(res.json().skipped).toEqual(['mine（我自己的）'])
   })
 
   it('不是仓库的目录 → not_a_repo，不影响其他仓库', async () => {
@@ -215,7 +215,7 @@ describe('POST /api/updates/check', () => {
     expect(results).toContain('behind')
   })
 
-  it('不给 ids 就检查全部非 personal 项目', async () => {
+  it('不给 ids 就检查全部非自己写的项目', async () => {
     const task = await waitForTask((await startCheck()).json().id)
     expect(task.status).toBe('done')
     expect(task.items.length).toBeGreaterThan(0)
@@ -425,7 +425,7 @@ describe('任务与设置', () => {
 
   it('设置能读能改', async () => {
     const before = await app.inject({ method: 'GET', url: '/api/settings' })
-    expect(before.json().settings).toMatchObject({ includePersonal: false, concurrency: 4 })
+    expect(before.json().settings).toMatchObject({ includeOwn: false, concurrency: 4 })
 
     const patched = await app.inject({
       method: 'PATCH',

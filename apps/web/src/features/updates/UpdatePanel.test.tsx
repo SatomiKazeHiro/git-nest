@@ -218,7 +218,7 @@ describe('勾选更新流程', () => {
         settingsCalls += 1
         return HttpResponse.json({
           settings: {
-            includePersonal: false,
+            includeOwn: false,
             gitTimeoutMs: 120_000,
             concurrency: 4,
             confirmThreshold: 2, // 故意调小
@@ -256,7 +256,7 @@ describe('勾选更新流程', () => {
     server.use(
       http.post('/api/updates/check', () =>
         HttpResponse.json(
-          { code: 'bad_request', message: '选中的项目都属于 personal，没法自动检查（3 个）' },
+          { code: 'bad_request', message: '选中的项目都是你自己写的，没法自动检查（3 个）' },
           { status: 400 },
         ),
       ),
@@ -266,7 +266,7 @@ describe('勾选更新流程', () => {
     await click(/开始检查/)
 
     await waitFor(() =>
-      expect(screen.getByText(/都属于 personal/)).toBeTruthy(),
+      expect(screen.getByText(/都是你自己写的/)).toBeTruthy(),
     )
   })
 })

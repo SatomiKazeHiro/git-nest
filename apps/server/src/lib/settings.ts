@@ -10,7 +10,7 @@ const trimmed = z.string().trim()
  */
 export interface Settings {
   /** personal 分类默认不参与批量更新检测 */
-  includePersonal: boolean
+  includeOwn: boolean
   /** 单条 git 命令超时（毫秒） */
   gitTimeoutMs: number
   /** 跨仓库并发上限 */
@@ -22,7 +22,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  includePersonal: false,
+  includeOwn: false,
   gitTimeoutMs: 120_000,
   concurrency: 4,
   confirmThreshold: 20,
@@ -31,7 +31,7 @@ export const DEFAULT_SETTINGS: Settings = {
 
 export const settingsSchema = z
   .object({
-    includePersonal: z.boolean().optional(),
+    includeOwn: z.boolean().optional(),
     gitTimeoutMs: z.number().int().min(1_000).max(600_000).optional(),
     concurrency: z.number().int().min(1).max(16).optional(),
     confirmThreshold: z.number().int().min(1).max(200).optional(),

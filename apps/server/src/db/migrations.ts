@@ -23,7 +23,8 @@ export const migrations = [
         name        TEXT NOT NULL,
         path        TEXT NOT NULL UNIQUE,          -- 本地绝对路径，仅存本地 DB，不外泄
         remote_url  TEXT,                          -- origin URL，可为空（纯本地项目）
-        category    TEXT NOT NULL DEFAULT '',      -- 自由字符串
+        category    TEXT NOT NULL DEFAULT '',      -- 自由字符串，只管分组与筛选，不带行为
+        is_own      INTEGER NOT NULL DEFAULT 0,    -- 我自己写的项目：批量检查默认跳过（0/1）
         record      TEXT NOT NULL DEFAULT '',      -- 你自己写的那段（怎么找到的、想法）
         added_at    TEXT NOT NULL,                 -- ISO 时间
         sort_order  INTEGER NOT NULL DEFAULT 0

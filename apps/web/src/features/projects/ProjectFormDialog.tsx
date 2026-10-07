@@ -16,6 +16,7 @@ import { useUiStore } from '@/store/ui'
 interface FormState {
   name: string
   path: string
+  isOwn: boolean
   category: string
   remoteUrl: string
   record: string
@@ -24,6 +25,7 @@ interface FormState {
 const blank: FormState = {
   name: '',
   path: '',
+  isOwn: false,
   category: '',
   remoteUrl: '',
   record: '',
@@ -81,6 +83,7 @@ export function ProjectFormDialog() {
       setForm({
         name: editing.name,
         path: editing.path,
+        isOwn: editing.isOwn,
         category: editing.category,
         remoteUrl: editing.remoteUrl ?? '',
         record: editing.record,
@@ -101,6 +104,7 @@ export function ProjectFormDialog() {
     const parsed = createProjectSchema.safeParse({
       name: form.name,
       path: form.path,
+      isOwn: form.isOwn,
       category: form.category,
       remoteUrl: form.remoteUrl,
       record: form.record,
@@ -113,6 +117,7 @@ export function ProjectFormDialog() {
 
     const payload = {
       name: parsed.data.name,
+      isOwn: parsed.data.isOwn,
       category: parsed.data.category,
       remoteUrl: parsed.data.remoteUrl,
       record: parsed.data.record,
@@ -233,6 +238,29 @@ export function ProjectFormDialog() {
           )}
         </Field>
 
+        {/*
+          这是整个「自己的项目」机制的唯一入口。放在分类**之前**是因为它更重要：
+          分类只是分组标签，错了不影响任何行为；这个勾错了，批量检查会漏掉
+          （或多跑）你真正在意的仓库。
+        */}
+        <Field
+          label="这是我自己写的项目"
+          hint="批量检查默认跳过它们（自己的项目自己清楚）。要在批量里带上，去设置里打开「自己的项目也参与检查」。"
+        >
+          {(id) => (
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                id={id}
+                type="checkbox"
+                checked={form.isOwn}
+                onChange={(e) => setForm((f) => ({ ...f, isOwn: e.target.checked }))}
+                className="list-check"
+              />
+              <span className="text-[13px] text-ink">是我的项目</span>
+            </label>
+          )}
+        </Field>
+
         <Field
           label="分类"
           error={errors['category']}
@@ -253,10 +281,8 @@ export function ProjectFormDialog() {
             <>
               {/*
                 存进数据库的永远是英文，界面上给人看中文——所以**这个输入框里
-                显示的是原文**，不是翻译过的：在这里改成「我自己的项目」，
-                「哪些算自己的项目」那条规则（精确匹配 personal）就再也
-                对不上了，而且不会有任何提示。
-                datalist 里的 value 同理，保持原样。
+                显示的是原文**，不是翻译过的，免得存进去的与显示的对不上、
+                筛选时又找不到。datalist 里的 value 同理，保持原样。
               */}
               <Input id={id} value={form.category} onChange={set('category')} list="categories" />
               <datalist id="categories">

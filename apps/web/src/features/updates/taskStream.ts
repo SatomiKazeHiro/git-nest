@@ -18,7 +18,7 @@ export interface TaskSnapshot {
   done: number
   items: TaskItem[]
   summary?: Record<string, number>
-  /** 因为 personal 默认不参与而没查的项目 */
+  /** 因为「自己写的项目」默认不参与而没查的项目 */
   skipped?: string[]
   error?: string
 }

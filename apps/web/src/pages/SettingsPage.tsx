@@ -88,15 +88,15 @@ function GitSection() {
       ) : null}
 
       <SettingRow
-        name="personal 分类也参与检查"
-        desc="自己的项目自己清楚，默认不参与检查"
-        note="分类必须正好是 personal 才算数——写成 Personal、我的项目，或留空，都会照样联网检查"
+        name="自己的项目也参与检查"
+        desc="默认只检查你追踪的别人的仓库"
+        note="在「编辑资料」里勾了「这是我自己写的项目」的，默认会被跳过"
       >
         <Toggle
           label="参与检查"
-          checked={settings.includePersonal}
+          checked={settings.includeOwn}
           disabled={save.isPending}
-          onChange={(v) => update({ includePersonal: v })}
+          onChange={(v) => update({ includeOwn: v })}
         />
       </SettingRow>
 

@@ -18,6 +18,8 @@ interface ProjectRow {
   name: string
   path: string
   remote_url: string | null
+  /** 我自己写的项目；SQLite 没有布尔，存 0/1 */
+  is_own: number
   category: string
   record: string
   added_at: string
@@ -29,6 +31,8 @@ const toProject = (r: ProjectRow): Project => ({
   name: r.name,
   path: r.path,
   remoteUrl: r.remote_url,
+  // SQLite 没有布尔：0/1 存，出去就是 boolean
+  isOwn: r.is_own === 1,
   category: r.category,
   record: r.record,
   addedAt: r.added_at,
@@ -98,6 +102,7 @@ export interface InsertProjectInput {
   name: string
   path: string
   remoteUrl: string | null
+  isOwn?: boolean
   category: string
   record: string
   sortOrder?: number
@@ -108,14 +113,15 @@ export function insertProject(db: DB, input: InsertProjectInput): number {
   const addedAt = input.addedAt ?? new Date().toISOString()
   const info = db
     .prepare(
-      `INSERT INTO projects (name, path, remote_url, category, record, added_at, sort_order)
-       VALUES (@name, @path, @remoteUrl, @category, @record, @addedAt, @sortOrder)`,
+      `INSERT INTO projects (name, path, remote_url, category, is_own, record, added_at, sort_order)
+       VALUES (@name, @path, @remoteUrl, @category, @isOwn, @record, @addedAt, @sortOrder)`,
     )
     .run({
       name: input.name,
       path: input.path,
       remoteUrl: input.remoteUrl,
       category: input.category,
+      isOwn: input.isOwn ? 1 : 0,
       record: input.record,
       addedAt,
       sortOrder: input.sortOrder ?? nextSortOrder(db, input.category),
@@ -133,6 +139,7 @@ export function nextSortOrder(db: DB, category: string): number {
 const UPDATABLE = {
   name: 'name',
   path: 'path',
+  isOwn: 'is_own',
   category: 'category',
   remoteUrl: 'remote_url',
   record: 'record',
@@ -145,7 +152,10 @@ export function updateProject(db: DB, id: number, patch: Record<string, unknown>
   for (const [key, column] of Object.entries(UPDATABLE)) {
     if (key in patch) {
       sets.push(`${column} = @${key}`)
-      params[key] = patch[key]
+      // better-sqlite3 不接 boolean（只认 null / number / string / bigint / buffer），
+      // 布尔一律在这里换成 0/1。写进去之前不转的话，PATCH isOwn 会直接抛
+      // "TypeError: can not bind" —— 而那是个看不出跟「勾选框」有关的报错。
+      params[key] = typeof patch[key] === 'boolean' ? (patch[key] ? 1 : 0) : patch[key]
     }
   }
   if (sets.length === 0) return false

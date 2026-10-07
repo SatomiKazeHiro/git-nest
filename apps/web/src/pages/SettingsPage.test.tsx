@@ -22,7 +22,7 @@ function makeClient() {
 }
 
 const settings = {
-  includePersonal: false,
+  includeOwn: false,
   gitTimeoutMs: 120_000,
   concurrency: 4,
   confirmThreshold: 20,

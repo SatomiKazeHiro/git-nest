@@ -18,6 +18,8 @@ export const createProjectSchema = z.object({
   name: trimmed.min(1, '名称不能为空').max(120, '名称过长'),
   // 上限与 updateProjectSchema.path / scanSchema.dir 一致：同一个字段三条路一个口径
   path: trimmed.min(1, '本地路径不能为空').max(400, '路径过长'),
+  // 「这是我自己写的项目」：批量检查默认跳过。默认值 false（别人的项目才是主体）
+  isOwn: z.boolean().default(false),
   category: trimmed.max(60).default(''),
   remoteUrl: trimmed.max(500).nullish().transform((v) => v || null),
   // 「记录」是详情页那个文本框，添加项目时还写不到，所以默认空串
@@ -33,6 +35,7 @@ export const updateProjectSchema = z
     // 仓库被移动 / 改名后需要重新指路，所以允许改 path
     path: trimmed.min(1, '本地路径不能为空').max(400).optional(),
     category: trimmed.max(60).optional(),
+    isOwn: z.boolean().optional(),
     // .optional() 必须在 transform **外面**：transform 挂在外层时，zod 会对
     // 「根本没提交的键」也执行它，把 undefined 变成 null 并把键物化进输出，
     // 于是只改 name 的 PATCH 会连带把 remoteUrl 写成 NULL（下面的 refine 也会失效）。
