@@ -89,8 +89,8 @@ function GitSection() {
 
       <SettingRow
         name="personal 分类也参与检查"
-        desc="自己的项目自己清楚，默认不参与"
-        note="打开后跳过了谁会在报告里说明"
+        desc="自己的项目自己清楚，默认不参与检查"
+        note="分类必须正好是 personal 才算数——写成 Personal、我的项目，或留空，都会照样联网检查"
       >
         <Toggle
           label="参与检查"
