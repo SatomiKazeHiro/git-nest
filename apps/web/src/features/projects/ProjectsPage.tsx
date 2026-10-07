@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { groupBy, orderBy } from 'es-toolkit'
 import { useDebounce } from 'ahooks'
-import { Eraser, FolderSearch, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Eraser, FolderSearch, Pencil, Plus, RefreshCw, Trash2, UserRound } from 'lucide-react'
 import { categoryLabel, type ProjectListItem, type RepoStatus } from '@git-nest/core'
 import { Button, Dialog, EmptyState, ErrorNote, Input } from '@/components/ui'
 import { ApiError } from '@/lib/api'
@@ -421,13 +421,40 @@ function ProjectRow({
         />
       </td>
       <td className="col-name">
-        <Link
-          to={`/projects/${p.id}`}
-          aria-current={current ? 'page' : undefined}
-          className="block cursor-pointer truncate text-[13.5px] font-medium text-ink hover:text-accent"
-        >
-          {p.name}
-        </Link>
+        {/*
+          「我自己的」在名称前面加一枚小记号，**不另开一列**——表已经九列了，
+          而这一条信息只值一枚记号。
+
+          用图标而不是圆点：清单里已经有一列用颜色编码 git 事实（落后 / 推荐），
+          再来一个圆点会让人以为是某种状态。用图标是另一套语言（结构性的、
+          不编码状态），不跟那几列打架。灰色也是刻意的——「我自己的」是你自己
+          的标注，不是 git 报出来的事实，不该穿信号色。
+
+          读屏读到的名字是「我自己的 bilibili-digest」；鼠标停上去给完整说明。
+          它**不是按钮**：可写字段只在「编辑资料」里改（见 STATUS.md 不变量 13），
+          行里已经有铅笔了。
+        */}
+        <span className="flex min-w-0 items-center gap-1.5">
+          {p.isOwn ? (
+            <>
+              {/* title 挂在外层 span 上：lucide 图标不接 title 属性 */}
+              <span
+                className="shrink-0 text-ink-3"
+                title="我自己的项目：批量检查默认跳过它"
+              >
+                <UserRound size={12} aria-hidden />
+              </span>
+              <span className="sr-only">我自己的</span>
+            </>
+          ) : null}
+          <Link
+            to={`/projects/${p.id}`}
+            aria-current={current ? 'page' : undefined}
+            className="min-w-0 cursor-pointer truncate text-[13.5px] font-medium text-ink hover:text-accent"
+          >
+            {p.name}
+          </Link>
+        </span>
       </td>
       {/* 路径：留着（这是"哪一份"的唯一凭据），但完整路径放 tooltip——
           列里截断成 D:/…/knowledge-base/canvas-e 这种断头话没什么用 */}

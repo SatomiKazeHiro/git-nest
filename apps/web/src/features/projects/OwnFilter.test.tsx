@@ -115,3 +115,33 @@ describe('「我自己的」筛选', () => {
     expect(useUiStore.getState().filters.own).toBe('1')
   })
 })
+
+/**
+ * 清单行上的「我自己的」记号。
+ *
+ * 记号是**只读**的：可写字段只在「编辑资料」里改（STATUS.md 不变量 13），
+ * 行里已经有铅笔了。这里要钉的是「看得见」——清单里两个仓库并排时，
+ * 分不出哪个是自己的，那枚记号就白加了。
+ */
+describe('清单里的「我自己的」记号', () => {
+  it('自己的项目有一枚记号，别人的没有', async () => {
+    renderApp()
+    await waitFor(() => expect(screen.getByText('mine')).toBeTruthy())
+
+    const marker = (name: string) => {
+      const cell = screen.getByText(name).closest('td')
+      return cell?.querySelector('[title="我自己的项目：批量检查默认跳过它"]') ?? null
+    }
+    expect(marker('mine')).toBeTruthy()
+    expect(marker('theirs')).toBeNull()
+  })
+
+  it('记号是读屏能读到的，不只是给眼睛看的装饰', async () => {
+    renderApp()
+    await waitFor(() => expect(screen.getByText('mine')).toBeTruthy())
+
+    // 图标本身 aria-hidden（它只是图形），信息由紧邻的读屏专用文字给出
+    const cell = screen.getByText('mine').closest('td')!
+    expect(cell.querySelector('.sr-only')?.textContent).toBe('我自己的')
+  })
+})
