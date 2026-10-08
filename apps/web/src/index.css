@@ -141,6 +141,20 @@
   grid-template-columns: var(--w-filter, 10.5rem) minmax(0, 1fr);
 }
 
+/*
+  活动栏：里面那个 `<nav>` 必须撑满整列高，「设置」才能被 `mt-auto` 顶到底部。
+*/
+.nav {
+  display: grid;
+  /* 只有一行，且是 1fr——**grid 的行会撑满，flex 的子元素不会**。
+     少了这一点，里面那个 <nav> 就按内容高度收缩（92px），`mt-auto` 无处可推，
+     「设置」会紧贴在「清单」下面，而整条栏上半截是空的。
+     （踩过两次：先把它从 grid 改成 flex，再把 flex 去掉；两次都不对。
+     这条问题 jsdom 测不出来——它不排版，只能实测。） */
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+}
+
 /* 过滤面板自己会滚——分类和标签多了以后只滚这一列，侧栏与清单表不动 */
 .filter-panel {
   min-height: 0;
