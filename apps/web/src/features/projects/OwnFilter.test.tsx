@@ -197,9 +197,9 @@ describe('侧栏只放页面，过滤项在另一条列', () => {
     const panel = [...document.querySelectorAll('.filter-panel button, .filter-panel h2')].map(
       (e) => e.textContent!.trim(),
     )
-    expect(panel).toContain('我自己的1')
-    expect(panel).toContain('分类')
-    expect(panel).toContain('标签')
+    // 三个组都有标题，且标题**不与自己的取值重复**（「我自己的 1」不重复自己）
+    expect(panel).toEqual(expect.arrayContaining(['作者', '分类', '标签', '我自己的1']))
+    expect(panel).not.toContain('我自己的')
     // 侧栏一个都没沾上
     expect(labelsIn('.nav')).not.toContain('我自己的1')
   })

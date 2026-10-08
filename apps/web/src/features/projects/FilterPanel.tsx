@@ -64,36 +64,45 @@ export function FilterPanel() {
   }
 
   return (
-    <div className="filter-panel border-r border-line bg-panel px-2 py-2">
+    <div className="filter-panel flex flex-col gap-4 border-r border-line bg-panel px-2 py-3">
       {/*
-        「我自己的」在最上面，与下面的分组之间一条线：它和分类/标签不是一层
-        的东西（那边是「按名字分组」，这里是「一个真布尔」）。
+        三个组走**同一个** `Group` + 同一个 `Item`：一样的标题、一致的间距、
+        同样的 chip。之前是三套实现——「我自己的」没有标题还带一道 border-b，
+        而组间距一处 `gap-4 + pt-3`、另一处 `gap-4 + pt-4`，三组看着像三种东西。
 
-        **只有真的勾过至少一个才出现**——清单里一个自己的项目都没有时，
-        这一项是个永远筛出空集的按钮。
+        组间距只由外层这一处 `gap-4` 决定，**不要再往 Group 上加 `pt-*`**：
+        两处一起给会把间距算重，而且以后改一处忘了另一处就会漂。
+      */}
+      {/*
+        标题是**维度名**，下面那一行是这个维度的一个取值——和「分类 / 试验」
+        「标签 / vue」是同一个关系。三个组的标题因此都是名词，都不与自己的
+        取值重复。
+
+        （标题本来写成「我自己的」，于是下面那行也叫「我自己的 1」——
+        统一之后这个重复反而更扎眼了。）
       */}
       {ownCount > 0 ? (
-        <div className="flex flex-col border-b border-line pb-3">
+        <Group title="作者">
           <Item
             label="我自己的"
             count={ownCount}
             active={own === '1'}
             onClick={() => setOwnOnly(own !== '1')}
           />
-        </div>
+        </Group>
       ) : null}
 
       {/*
         **「未分类」不是一个筛选项。** 它是「这个项目没有分类」这个事实——
         点它筛不出任何东西（它本来就是筛完之后剩下的），而之前它还占着一行
-        却点不动（onClick 是 undefined），是个死控件。
+        却点不动（`onClick` 是 undefined），是个死控件。
 
         要看未分类的那些？把筛选清掉即可，它们本来就在列表里。
 
         筛选的取消靠**点同一个分类两下**：`setCategory` 本来就是开关语义
         （同一个值再点一次置 null），所以下面每一项都是可点的。
       */}
-      <Group title="分类" className={ownCount > 0 ? 'pt-3' : ''}>
+      <Group title="分类">
         {categories.length === 0 ? <Hint>还没有项目</Hint> : null}
         {categories
           .filter(([name]) => name !== UNCATEGORIZED)
@@ -108,7 +117,7 @@ export function FilterPanel() {
           ))}
       </Group>
 
-      <Group title="标签" className="pt-4">
+      <Group title="标签">
         {tags.length === 0 ? <Hint>还没有标签</Hint> : null}
         {tags.map(([name, n]) => (
           <Item
@@ -124,20 +133,12 @@ export function FilterPanel() {
   )
 }
 
-function Group({
-  title,
-  className = '',
-  children,
-}: {
-  title: string
-  className?: string
-  children: ReactNode
-}) {
+function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className={className}>
+    <section>
       <h2 className="mb-1 px-1 text-[11px] font-medium text-ink-3">{title}</h2>
       <div className="flex flex-col">{children}</div>
-    </div>
+    </section>
   )
 }
 
