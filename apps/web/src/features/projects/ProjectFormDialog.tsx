@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Plus, X } from 'lucide-react'
-import { createProjectSchema, categoryLabel, categorySuggestions } from '@git-nest/core'
+import {
+  CATEGORY_VALUES,
+  categoryLabel,
+  createProjectSchema,
+} from '@git-nest/core'
 import { ApiError } from '@/lib/api'
 import { Button, Dialog, ErrorNote, Field, Input, Textarea } from '@/components/ui'
 import { TagPicker } from './TagPicker'
@@ -261,38 +265,48 @@ export function ProjectFormDialog() {
           )}
         </Field>
 
-        <Field
-          label="分类"
-          error={errors['category']}
-          hint={
-            <>
-              自由填写。常用值：
-              {categorySuggestions.map((c, i) => (
-                <span key={c}>
-                  {i > 0 ? '、' : ''}
-                  <span className="font-mono text-ink-3">{c}</span>
-                  <span className="text-ink-3">（{categoryLabel(c)}）</span>
-                </span>
-              ))}
-            </>
-          }
-        >
-          {(id) => (
-            <>
-              {/*
-                存进数据库的永远是英文，界面上给人看中文——所以**这个输入框里
-                显示的是原文**，不是翻译过的，免得存进去的与显示的对不上、
-                筛选时又找不到。datalist 里的 value 同理，保持原样。
-              */}
-              <Input id={id} value={form.category} onChange={set('category')} list="categories" />
-              <datalist id="categories">
-                {categorySuggestions.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
-            </>
-          )}
-        </Field>
+        {/*
+          分类是一个**枚举**，所以这里是一排可点的 chip，而不是文本框。
+
+          文本框 + datalist 留着「随时可以打一个不在表里的值」这条路，于是
+          `backup` / `backups`、`试验` / `experiments` 这类近似重复防不住——
+          分组时看着像多了一个组。改成 chip 之后能选的就那么几个，一眼看全。
+
+          用真的 radio（视觉上藏起来）而不是按钮：方向键在单选组里是标准行为，
+          读屏也会念「已选中 / 未选中」。焦点环画在外层 label 上
+          （`has-[:focus-visible]`），因为真正被聚焦的是那个 sr-only 的 input。
+        */}
+        <fieldset>
+          <legend className="text-[12px] font-medium text-ink-2">分类</legend>
+          {errors['category'] ? (
+            <p className="mt-1 text-[12px] text-signal-bad">{errors['category']}</p>
+          ) : null}
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {CATEGORY_VALUES.map((value) => (
+              <label
+                key={value || 'none'}
+                className={`cursor-pointer rounded-[3px] border px-2 py-1 text-[12px] has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent ${
+                  form.category === value
+                    ? 'border-accent bg-accent-wash text-accent'
+                    : 'border-line bg-panel text-ink-2 hover:border-ink-3 hover:text-ink'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="project-category"
+                  value={value}
+                  checked={form.category === value}
+                  onChange={() => setForm((f) => ({ ...f, category: value }))}
+                  className="sr-only"
+                />
+                {categoryLabel(value)}
+              </label>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[12px] text-ink-3">
+            只用来分组与筛选，不影响别的。是不是你自己写的，在上面那个勾选框里选。
+          </p>
+        </fieldset>
 
         {/* 记录就在这个弹窗里改 —— **这是它唯一的编辑器**。
             详情页那个「记录」是只读展示（链接可点），所以不存在

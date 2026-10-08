@@ -155,8 +155,8 @@ describe('POST /api/updates/check', () => {
 
   it('自己写的项目默认不参与检查，并说明跳过了谁', async () => {
     const { origin, clone } = makeOriginWithClone('own', 0)
-    // 分类照样填 personal：现在它**不带任何行为**，判据是那个布尔
-    const id = await addProject('my-own', clone, 'personal', true)
+    // 分类随便填一个合法值：现在它**不带任何行为**，跳过只认那个布尔
+    const id = await addProject('my-own', clone, 'tools', true)
     commitIn(origin, '远程提交')
 
     const res = await startCheck([id])

@@ -94,7 +94,9 @@ CREATE TABLE update_checks (
 
 设计要点：
 
-- **category 是自由字符串**，不做枚举表；初始值 personal / knowledge-base / backups / experiments / tools，用户可改可加
+- **category 原设计是自由字符串**（不做枚举表，初始值 personal / knowledge-base /
+  backups / experiments / tools，用户可改可加）。**实现时改成了枚举**，`personal` 被移除，
+  理由见第 13 节
 - **记录是一个字段，不是一张表**：怎么找到这个项目的、有什么想法，链接写在正文里。
   原设计的「notes 一对多 + 来源链接 + 摘要」已撤（§13 第 19 条）
 - **update_checks 保留历史**，支撑"最后检查时间"展示和未来趋势分析
@@ -259,6 +261,16 @@ POST   /api/updates/apply                  { ids: [...] } → 勾选仓库 pull 
    `includeOwn`。理由见第 3 节那条差异记录：一条挂在自由文本上的隐藏规则，
    写成 `Personal` 或多打空格就静默失效，而界面上没有任何提示。分类因此回归
    纯标签——只管分组与筛选，**不再带任何行为**。
+0b. **第 3 节那条「category 是自由字符串，不做枚举表」被推翻了**：现在是枚举
+   （`'' | knowledge-base | backups | experiments | tools`），`personal` 移除。
+   三个理由：(1) `isOwn` 拆出来之后，分类里留 personal 只是诱导人把同一件事记在
+   一个**没有任何行为**的地方——而以前填了它**真的**会被跳过，现在不会了，凭记忆
+   填的人会看到分类里明明写着 personal 却没拿到期待的行为；(2) 自由文本会出
+   `backup` / `backups`、`试验` / `experiments` 这类近似重复，分组时看着像多了一个组；
+   (3) 枚举之后每一项都有确定的中文名，显示映射从「部分覆盖」变成全覆盖。
+   代价只有一个：**枚举之外的老值会让那个项目存不回来**。加一个分类是改
+   `packages/core/src/types.ts` 的 `CATEGORIES` 一个常量——有意不留「将来可能要
+   自定义」的口子。
 1. 更新用的是 `POST /api/updates/apply`，不是第 6 节的 `POST /api/projects/update`。
    理由：check 与 apply 归到同一个前缀下更清楚，也避免 `/api/projects/update` 被
    误读成「更新项目记录」。

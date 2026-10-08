@@ -1,36 +1,35 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CATEGORIES,
   CATEGORY_LABELS,
-  INITIAL_CATEGORIES,
+  CATEGORY_VALUES,
   categoryLabel,
 } from '../src/types.ts'
 
 /**
- * 分类的中英映射。
+ * 分类的枚举与显示名。
  *
  * 界面给人看中文，**存进数据库的永远是英文**。这条边界一旦被破坏，后果是
- * 静默的：分类被写成「我自己的项目」之后，「哪些算自己的项目」那条规则
- * （`includePersonal` 默认关掉时跳过 personal 分类）就再也匹配不上，
- * 而界面上不会有任何提示——只是那几个仓库照样被拿去联网检查。
+ * 静默的：值被写成「知识库」之后，按分类筛选就再也找不到它，而界面上
+ * 不会有任何提示。
  *
- * 所以这里钉的是「翻译只发生在显示层」：
- * - 映射表覆盖全部五个建议值（漏一个就有一项在界面上露出英文）
- * - **表是双向好查的**：拿显示名当键是**找不到**任何条目的。想反查
- *   （界面上看到「我自己的项目」→ 想让人填 `personal`）会直接落空，
- *   除非显式去读 `CATEGORY_LABELS` 的键
- * - 没登记过的值原样返回，不替换成「未知分类」之类的说法——用户可以自由
- *   填写，硬换只会让他以为自己填错了
+ * 钉的是这几条：
+ * - **全覆盖**：每一个能存的取值都有中文名，没有「落回英文」的情况
+ * - **单向**：拿显示名当键查不到任何条目——想反查必须显式去读键
+ * - **没有 personal**：「是不是我自己的」是 `projects.is_own` 那个布尔
+ * - **空串在取值里**：未分类是最常见的取值（扫描导入的一律留空）
+ * - 表外值原样显示：枚举之后正常路径进不来这样的值，这条只是防脏数据
  */
 describe('分类显示名', () => {
-  it('五个建议值都有中文显示名', () => {
-    for (const c of INITIAL_CATEGORIES) {
+  it('每一个能存的取值都有中文显示名', () => {
+    for (const c of CATEGORY_VALUES) {
       expect(CATEGORY_LABELS[c], `${c} 没有显示名`).toBeTruthy()
       expect(CATEGORY_LABELS[c]).not.toBe(c)
     }
   })
 
   it('按存储值取得到中文', () => {
-    expect(categoryLabel('personal')).toBe('我自己的项目')
+    expect(categoryLabel('')).toBe('未分类')
     expect(categoryLabel('knowledge-base')).toBe('知识库')
     expect(categoryLabel('backups')).toBe('备份')
     expect(categoryLabel('experiments')).toBe('试验')
@@ -38,26 +37,25 @@ describe('分类显示名', () => {
   })
 
   it('不能拿显示名反查存储值——映射是单向的（翻译只发生在显示层）', () => {
-    // 想从「我自己的项目」倒推该填什么，必须显式去读键；按显示名查是查不到的。
-    expect(CATEGORY_LABELS['我自己的项目']).toBeUndefined()
-    expect(categoryLabel('我自己的项目')).toBe('我自己的项目')
+    expect(CATEGORY_LABELS['知识库']).toBeUndefined()
+    expect(categoryLabel('知识库')).toBe('知识库')
   })
 
-  it('区分大小写：Personal 不是 personal', () => {
-    // 这一点是故意的，而且是必须钉住的——服务端判断的是精确匹配，
-    // 填成 Personal 就会绕过「跳过自己的项目」那条规则。
-    expect(categoryLabel('Personal')).toBe('Personal')
+  it('**没有 personal**：「是不是我自己的」是 isOwn 那个布尔，不是分类', () => {
+    // 以前分类等于 personal 会让批量检查跳过它；那个行为拆成布尔之后，
+    // 分类里再留一个 personal 只会诱导用户把同一件事记在一个不起作用的地方。
+    expect(CATEGORIES).not.toContain('personal' as never)
+    expect(CATEGORY_VALUES).not.toContain('personal' as never)
   })
 
-  it('用户自己填的分类原样显示，不替换成「未知分类」', () => {
-    for (const v of ['我的项目', '工作', '', 'PERSONAL', 'personal ']) {
+  it('空串（未分类）在取值里——扫描导入的一律留空，那是最常见的取值', () => {
+    expect(CATEGORY_VALUES).toContain('')
+  })
+
+  it('库里没有的值原样显示，不替换成「未知分类」', () => {
+    // 枚举之后正常路径进不来这样的值；这条是防脏数据的退路。
+    for (const v of ['工作', 'Personal', 'backups ']) {
       expect(categoryLabel(v)).toBe(v)
     }
-  })
-
-  it('存储值本身始终可用：显示名可以随时换掉，规则不受影响', () => {
-    // 判决「这条算不算自己的项目」用的永远是 INITIAL_CATEGORIES 里那个英文
-    // 字面值，而不是 categoryLabel 的结果——那是一条跨前后端的硬约定。
-    expect(INITIAL_CATEGORIES).toContain('personal')
   })
 })

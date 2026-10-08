@@ -23,34 +23,44 @@ export type {
 } from './git/types.ts'
 
 /**
- * 项目分类是自由字符串，不做枚举；这五个只是建议值。
+ * 项目分类：**枚举**。
  *
- * **分类现在不带任何行为。** 曾经「分类正好等于 personal」决定批量检查跳不跳过
- * 自己的项目——一条挂在自由文本上的隐藏规则，写成 `Personal`、多打空格或写成
- * 中文就静默失效，界面上没有任何提示。那件事已经拆成一个真的布尔字段
- * （`projects.isOwn`），分类回归纯标签：只管分组与筛选。
- * 所以 `personal` 在这里**不再比别的名字特殊**，改成什么都不影响。
+ * 原来是自由文本 + 五个建议值（`personal` / `knowledge-base` / `backups` /
+ * `experiments` / `tools`）。改成枚举的理由：
+ *
+ * 1. **`personal` 已经不该是分类。** 「是不是我自己的」现在是 `projects.is_own`
+ *    那个勾选框。分类里再留一个 personal，是把同一件事记在一个**没有任何行为**
+ *    的地方——而且以前填了它**真的**会被批量检查跳过，现在不会了。凭记忆填的人
+ *    会看到分类里明明写着 personal，却没拿到期待的行为：那正是我们花了几轮
+ *    拆掉的静默失效。
+ * 2. 自由文本会出 `backup` / `backups`、`试验` / `experiments` 这类近似重复，
+ *    分组时看着像多了一个组。
+ * 3. 枚举里的每一项都有确定的中文名，`categoryLabel()` 从「部分覆盖」变成全覆盖。
+ *
+ * **加一个分类就是改这一个常量**（前后端共用），这是有意的：现在不留「将来
+ * 可能要自定义」的口子，等真的需要时再拆。
  */
-export const INITIAL_CATEGORIES = [
-  'personal',
-  'knowledge-base',
-  'backups',
-  'experiments',
-  'tools',
-] as const
+export const CATEGORIES = ['knowledge-base', 'backups', 'experiments', 'tools'] as const
+
+/**
+ * 能存进数据库的全部取值。**空串就是「未分类」**——它必须在里面：
+ * 大部分项目一开始都没有分类（扫描导入的一律留空）。
+ */
+export const CATEGORY_VALUES = ['', ...CATEGORIES] as const
+
+export type Category = (typeof CATEGORIES)[number]
 
 /**
  * 分类的**显示名**。键是存进数据库的字面值，值是界面上给人看的中文。
  *
- * **只翻显示，不翻数据。** 存进库的永远是 `personal` / `backups` 这些英文，
- * 筛选、分组、排序全都读原始值，一处也不该经过这里。
+ * **只翻显示，不翻数据。** 存进库的永远是 `backups` / `experiments` 这些英文，
+ * 筛选、分组、排序全读原始值。
  *
- * 这张表**不承载任何业务规则**（「是不是自己的项目」看的是 `projects.isOwn`
- * 那个布尔，跟它无关），所以它纯粹是给人看的：将来换语言只改这一处，
- * 而规则不会因为改了措辞而变。
+ * 枚举之后这张表是**全覆盖**的：不在 `CATEGORY_VALUES` 里的值进不了库，
+ * 所以「查不到就原样显示」这条退路只是防脏数据，不是常规路径。
  */
 export const CATEGORY_LABELS: Record<string, string> = {
-  personal: '我自己的项目',
+  '': '未分类',
   'knowledge-base': '知识库',
   backups: '备份',
   experiments: '试验',
@@ -58,16 +68,12 @@ export const CATEGORY_LABELS: Record<string, string> = {
 }
 
 /**
- * 界面上显示的分类名。
- *
- * 没登记过的**原样返回**：用户可以自由填写分类，硬把不认识的值换成「未知分类」
- * 之类的说法只会让他以为自己填错了。
+ * 界面上显示的分类名。库里没有的值原样返回——那说明有脏数据，
+ * 换成「未知分类」之类的说法只会让人以为自己填错了。
  */
 export function categoryLabel(value: string): string {
   return CATEGORY_LABELS[value] ?? value
 }
-
-export type InitialCategory = (typeof INITIAL_CATEGORIES)[number]
 
 export interface Tag {
   id: number
