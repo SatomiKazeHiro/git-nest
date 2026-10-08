@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Plus, X } from 'lucide-react'
-import {
-  CATEGORY_VALUES,
-  categoryLabel,
-  createProjectSchema,
-} from '@git-nest/core'
+import { CATEGORIES, categoryLabel, createProjectSchema } from '@git-nest/core'
 import { ApiError } from '@/lib/api'
 import { Button, Dialog, ErrorNote, Field, Input, Textarea } from '@/components/ui'
 import { TagPicker } from './TagPicker'
@@ -270,11 +266,17 @@ export function ProjectFormDialog() {
 
           文本框 + datalist 留着「随时可以打一个不在表里的值」这条路，于是
           `backup` / `backups`、`试验` / `experiments` 这类近似重复防不住——
-          分组时看着像多了一个组。改成 chip 之后能选的就那么几个，一眼看全。
+          分组时看着像多了一个组。
 
-          用真的 radio（视觉上藏起来）而不是按钮：方向键在单选组里是标准行为，
-          读屏也会念「已选中 / 未选中」。焦点环画在外层 label 上
-          （`has-[:focus-visible]`），因为真正被聚焦的是那个 sr-only 的 input。
+          **「未分类」不在这一排里。** 它不是「一个分类」，是「这个项目没有分类」。
+          之前把它当成一个选项、于是新项目默认就「选中」它，看起来像「你选了
+          未分类」，其实只是什么都没选——白占一个高亮位，还会让人以为那也是一个
+          可以选的分类。
+
+          所以改成**开关**：点亮起是选中，再点一下取消（回到没有分类）。
+          零个点亮就是「未分类」，不需要额外的选项来表示。
+          用 `aria-pressed` 而不是 radio：单选组里没法「取消选中」（方向键总会
+          选上某一个），而这里必须能取消。
         */}
         <fieldset>
           <legend className="text-[12px] font-medium text-ink-2">分类</legend>
@@ -282,29 +284,27 @@ export function ProjectFormDialog() {
             <p className="mt-1 text-[12px] text-signal-bad">{errors['category']}</p>
           ) : null}
           <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {CATEGORY_VALUES.map((value) => (
-              <label
-                key={value || 'none'}
-                className={`cursor-pointer rounded-[3px] border px-2 py-1 text-[12px] has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent ${
+            {CATEGORIES.map((value) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={form.category === value}
+                onClick={() =>
+                  setForm((f) => ({ ...f, category: f.category === value ? '' : value }))
+                }
+                className={`cursor-pointer rounded-[3px] border px-2 py-1 text-[12px] ${
                   form.category === value
                     ? 'border-accent bg-accent-wash text-accent'
                     : 'border-line bg-panel text-ink-2 hover:border-ink-3 hover:text-ink'
                 }`}
               >
-                <input
-                  type="radio"
-                  name="project-category"
-                  value={value}
-                  checked={form.category === value}
-                  onChange={() => setForm((f) => ({ ...f, category: value }))}
-                  className="sr-only"
-                />
                 {categoryLabel(value)}
-              </label>
+              </button>
             ))}
           </div>
           <p className="mt-1.5 text-[12px] text-ink-3">
-            只用来分组与筛选，不影响别的。是不是你自己写的，在上面那个勾选框里选。
+            只用来分组与筛选。再点一下取消选择；一个都不选就是「未分类」。
+            是不是你自己写的，在上面那个勾选框里选。
           </p>
         </fieldset>
 

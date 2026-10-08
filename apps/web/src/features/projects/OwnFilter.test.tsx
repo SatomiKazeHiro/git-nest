@@ -212,3 +212,67 @@ describe('侧栏只放页面，过滤项在另一条列', () => {
     expect(labelsIn('.nav')).toEqual(['清单', '设置'])
   })
 })
+
+/**
+ * 「未分类」不是分类，是「没有分类」。
+ *
+ * 它是**两个地方都踩过的同一个坑**：
+ * - 过滤面板里它占着一行却点不动（`onClick` 是 undefined）——点它筛不出任何东西，
+ *   它本来就是筛完之后剩下的。一个死控件比没有更糟：用户点了没反应，
+ *   只会觉得这个应用卡了。
+ * - 编辑弹窗里它是一个可选项，于是新项目**默认就选中了它**——看起来像
+ *   「你选了未分类」，其实只是什么都没选，白占一个高亮位。
+ *
+ * 现在两处都只列真正的分类，零个点亮即「未分类」。
+ */
+describe('「未分类」不是一个选项', () => {
+  it('过滤面板里不列它', async () => {
+    renderApp()
+    await waitFor(() => expect(screen.getByText('theirs')).toBeTruthy())
+
+    const panel = document.querySelector('.filter-panel')!
+    // 两个项目都没分类，所以「未分类」那一桶本来是有内容的——它被滤掉了
+    expect(panel.textContent).not.toContain('未分类')
+    // 真正的分类还在
+    expect(panel.textContent).toContain('分类')
+  })
+
+  it('编辑弹窗里也不列它，新项目开窗时一个都不亮', async () => {
+    renderApp()
+    await waitFor(() => expect(screen.getByText('theirs')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: '添加项目' }))
+    const dialog = await screen.findByRole('dialog')
+
+    // 分类那一组只有真正的分类，显示的是**中文名**（存库的英文只在数据层）
+    const group = [...dialog.querySelectorAll('button[aria-pressed]')].map((b) =>
+      b.textContent!.trim(),
+    )
+    expect(group).toEqual(['知识库', '备份', '试验', '工具'])
+    expect(group).not.toContain('未分类')
+    // 零个点亮 = 未分类（form.category 是空串）
+    expect(
+      [...dialog.querySelectorAll('button[aria-pressed="true"]')].map((b) => b.textContent!.trim()),
+    ).toEqual([])
+  })
+
+  it('点一下选中，再点一下取消（开关语义，不是单选组）', async () => {
+    renderApp()
+    await waitFor(() => expect(screen.getByText('theirs')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: '添加项目' }))
+    const dialog = await screen.findByRole('dialog')
+    const chip = () =>
+      [...dialog.querySelectorAll('button[aria-pressed]')].find(
+        (b) => b.textContent!.trim() === '工具',
+      )!
+
+    expect(chip().getAttribute('aria-pressed')).toBe('false')
+    fireEvent.click(chip())
+    await waitFor(() => expect(chip().getAttribute('aria-pressed')).toBe('true'))
+    // 再点一下取消——这是 radio 做不到的（单选组里方向键总会选上某一个），
+    // 也正是「未分类」不需要单独一个选项的原因
+    fireEvent.click(chip())
+    await waitFor(() => expect(chip().getAttribute('aria-pressed')).toBe('false'))
+  })
+})

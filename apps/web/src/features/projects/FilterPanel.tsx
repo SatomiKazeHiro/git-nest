@@ -83,17 +83,29 @@ export function FilterPanel() {
         </div>
       ) : null}
 
+      {/*
+        **「未分类」不是一个筛选项。** 它是「这个项目没有分类」这个事实——
+        点它筛不出任何东西（它本来就是筛完之后剩下的），而之前它还占着一行
+        却点不动（onClick 是 undefined），是个死控件。
+
+        要看未分类的那些？把筛选清掉即可，它们本来就在列表里。
+
+        筛选的取消靠**点同一个分类两下**：`setCategory` 本来就是开关语义
+        （同一个值再点一次置 null），所以下面每一项都是可点的。
+      */}
       <Group title="分类" className={ownCount > 0 ? 'pt-3' : ''}>
         {categories.length === 0 ? <Hint>还没有项目</Hint> : null}
-        {categories.map(([name, n]) => (
-          <Item
-            key={name}
-            label={categoryLabel(name)}
-            count={n}
-            active={name !== UNCATEGORIZED && category === name}
-            onClick={name === UNCATEGORIZED ? undefined : () => setCategory(name)}
-          />
-        ))}
+        {categories
+          .filter(([name]) => name !== UNCATEGORIZED)
+          .map(([name, n]) => (
+            <Item
+              key={name}
+              label={categoryLabel(name)}
+              count={n}
+              active={category === name}
+              onClick={() => setCategory(name)}
+            />
+          ))}
       </Group>
 
       <Group title="标签" className="pt-4">
