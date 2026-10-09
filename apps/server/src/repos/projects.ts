@@ -4,6 +4,7 @@ import {
   VERDICT_LABEL,
   isRemoteCheckStatus,
   recommendationFrom,
+  type Attention,
   type Project,
   type ProjectDetail,
   type ProjectListItem,
@@ -25,6 +26,47 @@ interface ProjectRow {
   added_at: string
   sort_order: number
 }
+
+/** 带上了 `attention` 的行（下面 ATTENTION_SQL 的别名） */
+type ProjectRowWithAttention = ProjectRow & { attention: Attention }
+
+/**
+ * 「哪次检查算数」在 SQL 里的写法，和 `latestChecksByProject` 同一个口径：
+ * 只有 `REMOTE_CHECK_STATUSES` 里的状态才算（fetch 失败的、不是仓库/没远程的
+ * 都不算——否则断网后点一次检查，界面会显示刚确认过的绿色「已是最新」）。
+ *
+ * 字面量内联而不是绑成 `?`：REMOTE_CHECK_STATUSES 是本文件 import 的编译期
+ * 常量（不是用户输入），而这段片段要在 JOIN 子查询里复用，按位置绑参容易错位。
+ */
+const QUALIFIED_STATUS_IN = `(${REMOTE_CHECK_STATUSES.map((s) => `'${s}'`).join(', ')})`
+
+/** 逐项目带出「最近一次**合格**检查」，别名 c */
+const LATEST_CHECK_JOIN = `
+  LEFT JOIN update_checks c ON c.id = (
+    SELECT MAX(id) FROM update_checks
+    WHERE project_id = p.id AND status IN ${QUALIFIED_STATUS_IN}
+  )
+`
+
+/**
+ * `attention` 的判定。读的是 `recommendationFromDetail` 读的那个 `detail`。
+ *
+ * 用 `canPull` 而不是 `behind > 0` 判「可更新」：detail 里专门存了 canPull，
+ * 注释写着「光凭 verdict 推不出来——『已是最新』也是 safe，但没东西可拉」。
+ *
+ * **这里的服务端实现是唯一一份**：列表显示、状态筛选、侧栏计数三处都用它，
+ * 前端出现任何「按 verdict 判断该显示什么分类」的代码都是 bug。
+ */
+const ATTENTION_SQL = `
+  CASE
+    WHEN c.id IS NULL THEN 'unchecked'
+    WHEN json_extract(c.detail, '$.verdict') IN ('rewritten', 'unrelated') THEN 'blocked'
+    WHEN json_extract(c.detail, '$.verdict') = 'diverged' THEN 'decide'
+    WHEN json_extract(c.detail, '$.canPull') = 1 THEN 'ready'
+    WHEN json_extract(c.detail, '$.verdict') = 'safe' THEN 'synced'
+    ELSE 'unchecked'
+  END
+`
 
 const toProject = (r: ProjectRow): Project => ({
   id: r.id,
@@ -74,12 +116,13 @@ export function listProjects(db: DB, opts: ListProjectsOptions = {}): ProjectLis
 
   const rows = db
     .prepare(
-      `SELECT p.* FROM projects p
+      `SELECT p.*, ${ATTENTION_SQL} AS attention FROM projects p
+       ${LATEST_CHECK_JOIN}
        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
        ORDER BY CASE WHEN p.category = '' THEN 1 ELSE 0 END,  -- 无分类的排最后
                 p.category COLLATE NOCASE, p.sort_order, p.name COLLATE NOCASE`,
     )
-    .all(params) as ProjectRow[]
+    .all(params) as ProjectRowWithAttention[]
 
   if (rows.length === 0) return []
 
@@ -91,16 +134,25 @@ export function listProjects(db: DB, opts: ListProjectsOptions = {}): ProjectLis
     ...toProject(r),
     tags: tags.get(r.id) ?? [],
     latestCheck: checks.get(r.id) ?? null,
+    attention: r.attention,
   }))
 }
 
 export function getProject(db: DB, id: number): ProjectDetail | null {
-  const row = db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as ProjectRow | undefined
+  // 详情栏那个药丸读的是同一份 attention，所以这里也得带同一段 SQL
+  const row = db
+    .prepare(
+      `SELECT p.*, ${ATTENTION_SQL} AS attention FROM projects p
+       ${LATEST_CHECK_JOIN}
+       WHERE p.id = @id`,
+    )
+    .get({ id }) as ProjectRowWithAttention | undefined
   if (!row) return null
   return {
     ...toProject(row),
     tags: tagsByProject(db, [id]).get(id) ?? [],
     latestCheck: latestChecksByProject(db, [id]).get(id) ?? null,
+    attention: row.attention,
   }
 }
 

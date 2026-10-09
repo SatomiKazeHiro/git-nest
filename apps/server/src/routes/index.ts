@@ -37,7 +37,10 @@ export const projectRoutes = (db: DB): FastifyPluginAsync => {
   const app: FastifyPluginAsync = async (fastify) => {
     fastify.get('/projects', async (req) => {
       const q = parse(listProjectsQuerySchema, req.query ?? {})
-      return { projects: listProjects(db, q) }
+      const projects = listProjects(db, q)
+      // 这一轮还没有分页，total 就等于全部命中数；下一轮加 page/perPage 时
+      // 只要把它换成真实的 COUNT，前后端都不用再动别的地方。
+      return { projects, total: projects.length }
     })
 
     fastify.get('/projects/:id', async (req) => {

@@ -61,6 +61,12 @@ export const listProjectsQuerySchema = z.object({
    * 完全合理的查询，所以这里不提供「取消其它筛选」的三态。
    */
   own: z.enum(['1', '0']).optional(),
+  /** 逗号分隔的行动分类筛选（多个之间是「或」） */
+  attention: trimmed
+    .optional()
+    .transform((v) => (v ? v.split(',').filter(Boolean) : undefined)),
+  /** 列表排序。默认 name。 */
+  sort: z.enum(['name', 'checked', 'behind']).optional(),
 })
 
 export const createTagSchema = z.object({

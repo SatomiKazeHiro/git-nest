@@ -281,10 +281,26 @@ export function deriveStatus(input: DeriveInput): UpdateStatus {
   return 'up_to_date'
 }
 
+/**
+ * 「这个仓库现在该不该动」——从**最近一次真正问到远程结论**的那次检查推出来的。
+ *
+ * **分类时间无关**（可筛选），而「上次看是最新」那类措辞降级是**时间相关**
+ * 的（不可筛选）。两层分开，筛选才不会因为你看久了而漂。
+ *
+ * 判定在服务端算一次（`repos/projects.ts` 的 `ATTENTION_SQL`），随列表与详情
+ * 返回。前端不再重算——显示、筛选、计数三处共用同一份，才不可能漂。
+ */
+export type Attention = 'unchecked' | 'blocked' | 'decide' | 'ready' | 'synced'
+
+/** 列表排序。默认 `name`。 */
+export type ProjectSort = 'name' | 'checked' | 'behind'
+
 /** 列表页的一行：项目 + tag + 最近一次检查摘要。 */
 export interface ProjectListItem extends Project {
   tags: Tag[]
   latestCheck: UpdateCheckSummary | null
+  /** 服务端算好的行动分类。前端只渲染，不重算。 */
+  attention: Attention
 }
 
 /**
