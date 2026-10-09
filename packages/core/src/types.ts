@@ -281,6 +281,8 @@ export function deriveStatus(input: DeriveInput): UpdateStatus {
   return 'up_to_date'
 }
 
+export const ATTENTION_VALUES = ['unchecked', 'blocked', 'decide', 'ready', 'synced'] as const
+
 /**
  * 「这个仓库现在该不该动」——从**最近一次真正问到远程结论**的那次检查推出来的。
  *
@@ -290,7 +292,7 @@ export function deriveStatus(input: DeriveInput): UpdateStatus {
  * 判定在服务端算一次（`repos/projects.ts` 的 `ATTENTION_SQL`），随列表与详情
  * 返回。前端不再重算——显示、筛选、计数三处共用同一份，才不可能漂。
  */
-export type Attention = 'unchecked' | 'blocked' | 'decide' | 'ready' | 'synced'
+export type Attention = (typeof ATTENTION_VALUES)[number]
 
 /** 列表排序。默认 `name`。 */
 export type ProjectSort = 'name' | 'checked' | 'behind'

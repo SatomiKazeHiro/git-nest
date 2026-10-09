@@ -5,6 +5,7 @@ import {
   isRemoteCheckStatus,
   recommendationFrom,
   type Attention,
+  type ProjectSort,
   type Project,
   type ProjectDetail,
   type ProjectListItem,
@@ -87,6 +88,10 @@ export interface ListProjectsOptions {
   q?: string
   /** '1' = 只看我自己的项目；'0' = 只看不是自己的；不传 = 都要 */
   own?: '1' | '0'
+  /** 行动分类筛选；多个之间是「或」。与其它维度叠加。 */
+  attention?: Attention[]
+  /** 列表排序。默认按 分类 → sort_order → 名称 */
+  sort?: ProjectSort
 }
 
 export function listProjects(db: DB, opts: ListProjectsOptions = {}): ProjectListItem[] {
@@ -114,13 +119,43 @@ export function listProjects(db: DB, opts: ListProjectsOptions = {}): ProjectLis
     params['tag'] = opts.tag
   }
 
+  if (opts.attention && opts.attention.length > 0) {
+    /*
+      **表达式内联、值绑参**，两者不能互换：SQL 参数装的是「值」，把整个 CASE
+      当参数绑进去的话，比的是那段 SQL 文本，永远不相等（写错过一次，被测试抓出来）。
+
+      内联的是我们自己写的 `ATTENTION_SQL`，不是用户输入；用户来的分类名一律
+      走 `@att0` 这种具名参数。
+    */
+    const marks = opts.attention.map((_, i) => `@att${i}`)
+    for (const [i, a] of opts.attention.entries()) params[`att${i}`] = a
+    where.push(`(${ATTENTION_SQL}) IN (${marks.join(', ')})`)
+  }
+
+  const orderBy = (() => {
+    switch (opts.sort) {
+      case 'checked':
+        // 没查过的排最后：它们没有「上次检查」这个值可排
+        return 'CASE WHEN c.id IS NULL THEN 1 ELSE 0 END, c.checked_at DESC'
+      case 'behind':
+        return 'CASE WHEN c.id IS NULL THEN 1 ELSE 0 END, c.behind_count DESC'
+      case 'name':
+        // 纯名称序。**不能并进 default** —— default 是「先按分类分组，同类再按
+        // sort_order」；用户既然在排序下拉里点了「按名称」，要的就是名称序，
+        // 不是分类分组序（第一次写错了，是这条测试抓出来的）。
+        return 'p.name COLLATE NOCASE'
+      default:
+        return `CASE WHEN p.category = '' THEN 1 ELSE 0 END,  -- 无分类的排最后
+                p.category COLLATE NOCASE, p.sort_order, p.name COLLATE NOCASE`
+    }
+  })()
+
   const rows = db
     .prepare(
       `SELECT p.*, ${ATTENTION_SQL} AS attention FROM projects p
        ${LATEST_CHECK_JOIN}
        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-       ORDER BY CASE WHEN p.category = '' THEN 1 ELSE 0 END,  -- 无分类的排最后
-                p.category COLLATE NOCASE, p.sort_order, p.name COLLATE NOCASE`,
+       ORDER BY ${orderBy}`,
     )
     .all(params) as ProjectRowWithAttention[]
 

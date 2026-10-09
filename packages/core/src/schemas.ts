@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { CATEGORY_VALUES } from './types.ts'
+import { ATTENTION_VALUES, CATEGORY_VALUES, type Attention } from './types.ts'
 
 const trimmed = z.string().trim()
 
@@ -61,10 +61,19 @@ export const listProjectsQuerySchema = z.object({
    * 完全合理的查询，所以这里不提供「取消其它筛选」的三态。
    */
   own: z.enum(['1', '0']).optional(),
-  /** 逗号分隔的行动分类筛选（多个之间是「或」） */
+  /**
+   * 逗号分隔的行动分类筛选（多个之间是「或」）。
+   *
+   * 顺手把不认识的分类名丢掉而不是整个报错：前端的可选项来自同一个枚举，
+   * 而老链接 / 手敲的 URL 上可能有过时的值——那不该让整个列表打不开。
+   */
   attention: trimmed
     .optional()
-    .transform((v) => (v ? v.split(',').filter(Boolean) : undefined)),
+    .transform((v) => {
+      if (!v) return undefined
+      const picked = v.split(',').filter((x) => (ATTENTION_VALUES as readonly string[]).includes(x))
+      return picked.length > 0 ? (picked as Attention[]) : undefined
+    }),
   /** 列表排序。默认 name。 */
   sort: z.enum(['name', 'checked', 'behind']).optional(),
 })
