@@ -7,7 +7,7 @@ import { formatRelative } from '@/lib/format'
 import { registerCommand } from '@/lib/commands'
 import { useUiStore } from '@/store/ui'
 import { useProjectStatus } from '@/features/status/queries'
-import { Delta, VERDICT_TONE, statusTitle, textFor, toneFor, freshnessOf } from '@/features/status/StatusCell'
+import { AttentionBadge, Delta, VERDICT_TONE, statusTitle, textFor, toneFor, freshnessOf } from '@/features/status/StatusCell'
 import { UpdatePanel } from '@/features/updates/UpdatePanel'
 import { useProject } from '@/features/projects/queries'
 
@@ -63,9 +63,23 @@ export function ProjectDetailPage() {
         不用 `break-all` ——那会把正常汉字也逐个拆开。
       */}
       <header className="flex flex-wrap items-start gap-x-3 gap-y-2 border-b border-line px-4 py-3">
-        <h1 className="min-w-0 flex-1 text-[17px] font-semibold leading-tight text-ink [overflow-wrap:anywhere]">
-          {project.name}
-        </h1>
+        {/*
+          行动分类的药丸放在**抬头跟着名字**，不是下面「推不推荐更新」那一节的标题行。
+          那节的 `Recommendation` 面板隔二十来像素就写着「可更新 / 别拉 / 要你决定」
+          （`VERDICT_LABEL`，讲判决），药丸讲的是分类（`ATTENTION_TEXT`）——挨着放，
+          同一个状态出现两个词（「可更新」重复、「不推荐」对「别拉」），读者得自己
+          判断它们是不是一回事。抬头这份是「现在这个仓库什么状态」，和清单里
+          那一行的状态列**逐字相同**（同一份 `attention`，同一套降级）。
+        */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
+          <h1 className="min-w-0 text-[17px] font-semibold leading-tight text-ink [overflow-wrap:anywhere]">
+            {project.name}
+          </h1>
+          <AttentionBadge
+            attention={project.attention}
+            checkedAt={project.latestCheck?.checkedAt ?? null}
+          />
+        </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <Button onClick={() => openEdit(project.id)}>
             <Pencil size={14} aria-hidden />

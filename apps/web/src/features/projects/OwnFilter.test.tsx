@@ -111,9 +111,11 @@ describe('「我自己的」筛选', () => {
     renderApp()
 
     await waitFor(() => expect(screen.getByText('mine')).toBeTruthy())
-    const last = seen[seen.length - 1]!
-    expect(last.get('own')).toBe('1')
-    expect(last.get('category')).toBe('tools')
+    // 按内容找那条带筛选的请求，而不是「最后一次」：`/api/projects` 现在有第三个
+    // 消费者（状态栏要一条全量清单来算「上次检查」），谁最后落地不由我们决定
+    const filtered = seen.filter((q) => q.get('category') === 'tools').pop()!
+    expect(filtered.get('own')).toBe('1')
+    expect(filtered.get('category')).toBe('tools')
     // 选了分类之后清掉「我自己的」不该顺带发生——所以这一项仍然是开着的
     expect(useUiStore.getState().filters.category).toBe('tools')
     expect(useUiStore.getState().filters.own).toBe('1')
@@ -231,8 +233,12 @@ describe('侧栏只放页面，过滤项在另一条列', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^可更新/ }))
     await waitFor(() => expect(seen.some((q) => q.getAll('attention').includes('ready'))).toBe(true))
+    // 取消之后只看**这一次点击之后**发出的请求：清掉筛选后的清单请求不带任何
+    // 参数，和状态栏 / 过滤面板那条全量请求长得一样，「最后一次」分不出是谁
+    const mark = seen.length
     fireEvent.click(screen.getByRole('button', { name: /^可更新/ }))
-    await waitFor(() => expect(seen[seen.length - 1]!.getAll('attention').length).toBe(0))
+    await waitFor(() => expect(seen.length).toBeGreaterThan(mark))
+    expect(seen[mark]!.getAll('attention').length).toBe(0)
   })
 
   it('「全部仓库」只清状态那一个维度，不动分类与标签', async () => {
