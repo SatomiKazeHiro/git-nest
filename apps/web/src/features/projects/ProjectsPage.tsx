@@ -2,15 +2,24 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { groupBy, orderBy } from 'es-toolkit'
 import { useDebounce } from 'ahooks'
-import { Eraser, FolderSearch, Pencil, Plus, RefreshCw, Trash2, UserRound } from 'lucide-react'
+import {
+  Eraser,
+  FolderGit2,
+  FolderSearch,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Trash2,
+  UserRound,
+} from 'lucide-react'
 import { categoryLabel, type ProjectListItem, type RepoStatus } from '@git-nest/core'
 import { Button, Dialog, EmptyState, ErrorNote, Input } from '@/components/ui'
 import { ApiError } from '@/lib/api'
 import { registerCommand } from '@/lib/commands'
-import { formatRelative, shortenPath } from '@/lib/format'
+import { formatRelative } from '@/lib/format'
 import { UNCATEGORIZED, useSelectedCount, useSelectedIds, useUiStore } from '@/store/ui'
 import { useProjects, useRemoveProject } from './queries'
-import { RecommendationCell, StatusCell } from '@/features/status/StatusCell'
+import { AttentionBadge, Diff, SyncBadge } from '@/features/status/StatusCell'
 import { useStatuses } from '@/features/status/queries'
 import { UpdatePanel } from '@/features/updates/UpdatePanel'
 
@@ -284,13 +293,11 @@ function ColumnHeader() {
     <thead className="tr-tint column-header sticky top-0 z-[5]">
       <tr className="border-b border-line text-[11px] text-ink-3">
         <th className="col-check" />
-        <th className="col-name">名称</th>
-        <th className="col-path font-mono">本地路径</th>
-        <th className="col-tags">标签</th>
-        {/* 这一列只回答「跟远程差多少」——不显示分支名，也不显示脏标记 */}
-        <th className="col-behind text-right">落后</th>
-        <th className="col-author text-right">远程更新</th>
-        <th className="col-recommend text-right">推荐</th>
+        <th className="col-repo">仓库</th>
+        <th className="col-branch">当前分支</th>
+        <th className="col-attention">状态</th>
+        <th className="col-sync">同步状态</th>
+        <th className="col-delta text-right">差异</th>
         <th className="col-checked text-right">上次检查</th>
         <th className="col-actions" />
       </tr>
@@ -420,75 +427,83 @@ function ProjectRow({
           className="list-check"
         />
       </td>
-      <td className="col-name">
-        {/*
-          「我自己的」在名称前面加一枚小记号，**不另开一列**——表已经九列了，
-          而这一条信息只值一枚记号。
-
-          用图标而不是圆点：清单里已经有一列用颜色编码 git 事实（落后 / 推荐），
-          再来一个圆点会让人以为是某种状态。用图标是另一套语言（结构性的、
-          不编码状态），不跟那几列打架。灰色也是刻意的——「我自己的」是你自己
-          的标注，不是 git 报出来的事实，不该穿信号色。
-
-          读屏读到的名字是「我自己的 bilibili-digest」；鼠标停上去给完整说明。
-          它**不是按钮**：可写字段只在「编辑资料」里改（见 STATUS.md 不变量 13），
-          行里已经有铅笔了。
-        */}
-        <span className="flex min-w-0 items-center gap-1.5">
-          {p.isOwn ? (
-            <>
-              {/* title 挂在外层 span 上：lucide 图标不接 title 属性 */}
-              <span
-                className="shrink-0 text-ink-3"
-                title="我自己的项目：批量检查默认跳过它"
+      {/*
+        「仓库」一列把名称与路径并在一起（两行），不是两个列：列宽省下来的
+        地方正好给「当前分支」腾位置，而路径本来就是「哪一份」的唯一凭据，
+        跟在名字下面比单开一列更好认。
+      */}
+      <td className="col-repo">
+        <span className="flex min-w-0 items-start gap-1.5">
+          <FolderGit2 size={15} aria-hidden className="mt-[3px] shrink-0 text-ink-3" />
+          <span className="min-w-0 flex-1">
+            <span className="flex min-w-0 items-center gap-1.5">
+              {/*
+                「我自己的」用图标而不是圆点：清单里已经有两列用颜色编码 git
+                事实（状态 / 差异），再来一个圆点会让人以为是某种状态。
+                灰色也是刻意的——它是你自己的标注，不是 git 报出来的事实。
+                读屏读到的是「我自己的 bilibili-digest」。
+                它**不是按钮**：可写字段只在「编辑资料」里改（不变量 13）。
+              */}
+              {p.isOwn ? (
+                <>
+                  {/* title 挂在外层 span 上：lucide 图标不接 title 属性 */}
+                  <span className="shrink-0 text-ink-3" title="我自己的项目：批量检查默认跳过它">
+                    <UserRound size={12} aria-hidden />
+                  </span>
+                  <span className="sr-only">我自己的</span>
+                </>
+              ) : null}
+              <Link
+                to={`/projects/${p.id}`}
+                aria-current={current ? 'page' : undefined}
+                className="min-w-0 cursor-pointer truncate text-[14px] font-semibold text-ink hover:text-accent-ink"
               >
-                <UserRound size={12} aria-hidden />
-              </span>
-              <span className="sr-only">我自己的</span>
-            </>
-          ) : null}
-          <Link
-            to={`/projects/${p.id}`}
-            aria-current={current ? 'page' : undefined}
-            className="min-w-0 cursor-pointer truncate text-[13.5px] font-medium text-ink hover:text-accent"
-          >
-            {p.name}
-          </Link>
-        </span>
-      </td>
-      {/* 路径：留着（这是"哪一份"的唯一凭据），但完整路径放 tooltip——
-          列里截断成 D:/…/knowledge-base/canvas-e 这种断头话没什么用 */}
-      <td className="col-path font-mono text-[12px] text-ink-3" title={p.path}>
-        {shortenPath(p.path, 2)}
-      </td>
-      <td className="col-tags">
-        <span className="flex flex-wrap gap-1 overflow-hidden">
-          {p.tags.map((t) => (
-            <span
-              key={t.id}
-              className="rounded-[2px] border border-line px-1 font-mono text-[11px] text-ink-2"
-            >
-              {t.name}
+                {p.name}
+              </Link>
             </span>
-          ))}
+            <span
+              className="mt-px block truncate font-mono text-[11.5px] text-ink-3"
+              title={p.path}
+            >
+              {p.path}
+            </span>
+          </span>
         </span>
       </td>
-      <td className="col-behind text-right">
-        <StatusCell status={status} checkedAt={p.latestCheck?.checkedAt ?? null} />
+
+      <td className="col-branch">
+        <span className="block truncate font-mono text-[12px] text-ink-2">
+          {status && status.isRepo ? (status.detached ? '游离 HEAD' : (status.branch ?? '—')) : '—'}
+        </span>
       </td>
-      {/* 远程更新：那个仓库的作者最后一次提交是什么时候（不是"你什么时候检查的"） */}
-      <td
-        className="col-author truncate text-right font-mono text-[12px] text-ink-3"
-        title={status?.lastCommit ? status.lastCommit.subject : undefined}
-      >
-        {status?.lastCommit ? formatRelative(status.lastCommit.date) : ''}
+
+      {/* 状态：读服务端算好的 attention，前端不按 verdict 重算 */}
+      <td className="col-attention">
+        <AttentionBadge
+          attention={p.attention}
+          checkedAt={p.latestCheck?.checkedAt ?? null}
+        />
       </td>
-      {/* 推荐更新：用户点名要的那一列。结论来自上次检查（见 RecommendationCell 的注释） */}
-      <td className="col-recommend text-right">
-        <RecommendationCell recommendation={p.latestCheck?.recommendation ?? null} />
+
+      {/* 同步状态：全中性灰，刻意比左边那列低调——它是上下文，不是行动项 */}
+      <td className="col-sync">
+        <SyncBadge
+          ahead={status?.ahead ?? null}
+          behind={status?.behind ?? null}
+          upstreamGone={status?.upstreamGone ?? false}
+          hasCheck={p.attention !== 'unchecked'}
+        />
       </td>
-      {/* 上次检查：**你（或自动 fetch）上一次问远程是什么时候**。
-          不再套 Meta 的「检查」前缀——列头已经写着「上次检查」，重复一遍只是噪音。 */}
+
+      {/* 差异：两个方向都给。↓ 绿是「远程有新东西」，与状态列的「可更新」对得上 */}
+      <td className="col-delta text-right">
+        <Diff
+          ahead={status?.ahead ?? null}
+          behind={status?.behind ?? null}
+          hasCheck={p.attention !== 'unchecked'}
+        />
+      </td>
+
       <td
         className="col-checked truncate text-right font-mono text-[12px] text-ink-3"
         title={p.latestCheck ? `上次检查结果：${p.latestCheck.status}` : '还没检查过'}

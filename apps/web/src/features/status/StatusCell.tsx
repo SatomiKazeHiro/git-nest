@@ -1,4 +1,11 @@
-import { VERDICT_LABEL, type RepoStatus, type UpdateRecommendation, type UpdateStatus, type UpdateVerdict } from '@git-nest/core'
+import {
+  VERDICT_LABEL,
+  type Attention,
+  type RepoStatus,
+  type UpdateRecommendation,
+  type UpdateStatus,
+  type UpdateVerdict,
+} from '@git-nest/core'
 
 /**
  * 清单页那一格：**只回答「跟远程差多少」**。
@@ -276,6 +283,122 @@ export function RecommendationCell({
   return (
     <span className={`truncate text-[12px] ${VERDICT_TONE[recommendation.verdict]}`} title={recommendation.reason}>
       {VERDICT_LABEL[recommendation.verdict]}
+    </span>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   清单那三列：状态 / 同步状态 / 差异
+
+   **蓝色不出现在这三列里**——蓝 = 你能点的 / 当前选中的，四色 = git 事实。
+   状态列是唯一「该动吗」（彩色），同步状态列是「跟远程差多少」（**全中性灰**，
+   刻意比状态列低调），差异列是两个方向的数字。
+   ══════════════════════════════════════════════════════════════════════ */
+
+const ATTENTION_TEXT: Record<Attention, string> = {
+  ready: '可更新',
+  synced: '已同步',
+  blocked: '不推荐',
+  decide: '需要确认',
+  unchecked: '待检查',
+}
+
+const ATTENTION_CLASS: Record<Attention, string> = {
+  ready: 'bg-ok-bg text-ok',
+  synced: 'bg-flat-bg text-flat',
+  blocked: 'bg-bad-bg text-bad',
+  decide: 'bg-amber-bg text-amber',
+  unchecked: 'bg-amber-bg text-amber',
+}
+
+/* 措辞降级的时长用本文件已有的 STALE_AFTER_MS——「多久算旧」是同一件事，
+   清单的「已同步」和详情栏的「已是最新」不该一个 12 小时一个别的数。 */
+
+/**
+ * 「该动吗」。读服务端给的 `attention`，**前端不重算**。
+ *
+ * `checkedAt` 只影响**措辞**不影响**颜色分档**：分类是时间无关的（可筛选），
+ * 措辞是时间相关的（不可筛选）。这两层分开，筛选才不会因为你看久了而漂。
+ */
+export function AttentionBadge({
+  attention,
+  checkedAt,
+}: {
+  attention: Attention
+  checkedAt: string | null
+}) {
+  const stale =
+    checkedAt !== null && Date.now() - new Date(checkedAt).getTime() > STALE_AFTER_MS
+  const base = ATTENTION_TEXT[attention]
+  return (
+    <span
+      className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-[3px] text-[11.5px] font-medium ${ATTENTION_CLASS[attention]}`}
+    >
+      {stale ? `上次看是${base}` : base}
+    </span>
+  )
+}
+
+/**
+ * 「跟远程差多少」。**全用中性灰**：它是上下文，不是行动项——
+ * 该动不动看左边那列的彩色药丸。
+ */
+export function SyncBadge({
+  ahead,
+  behind,
+  upstreamGone,
+  hasCheck,
+}: {
+  ahead: number | null
+  behind: number | null
+  upstreamGone: boolean
+  /** 有没有「合格检查」——没有的话所有数字都不可信，只能说「未知」 */
+  hasCheck: boolean
+}) {
+  const a = ahead ?? 0
+  const b = behind ?? 0
+  const text = !hasCheck
+    ? '未知'
+    : upstreamGone
+      ? '上游已关闭'
+      : a > 0 && b > 0
+        ? '已分叉'
+        : b > 0
+          ? '远程领先'
+          : a > 0
+            ? '本地领先'
+            : '一致'
+  return (
+    <span className="inline-flex items-center whitespace-nowrap rounded-full bg-flat-bg px-2 py-[3px] text-[11.5px] text-flat">
+      {text}
+    </span>
+  )
+}
+
+/**
+ * 「差异」列：↓ 远程领先 / ↑ 本地领先，两个方向都给。
+ *
+ * 叫 `Diff` 而不是复用上面那个 `Delta({n, dir})`——那个是「只显示一个方向、
+ * 带 title 的一格」，更新面板的结果行还在用它；这里是两个方向并排的另一个形状。
+ * 绿与琥珀对应上面两个药丸。
+ */
+export function Diff({
+  ahead,
+  behind,
+  hasCheck,
+}: {
+  ahead: number | null
+  behind: number | null
+  /** 没有合格检查时**不给数字**——`↓0 ↑0` 是编出来的，不是查到的 */
+  hasCheck: boolean
+}) {
+  if (!hasCheck) return <span className="text-[12px] text-ink-3">—</span>
+  const a = ahead ?? 0
+  const b = behind ?? 0
+  return (
+    <span className="whitespace-nowrap font-mono text-[12px]">
+      <span className={b > 0 ? 'text-ok' : 'text-ink-3'}>↓{b}</span>{' '}
+      <span className={a > 0 ? 'text-amber' : 'text-ink-3'}>↑{a}</span>
     </span>
   )
 }
