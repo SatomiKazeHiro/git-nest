@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { groupBy, orderBy } from 'es-toolkit'
 import { useDebounce } from 'ahooks'
@@ -12,16 +12,34 @@ import {
   Trash2,
   UserRound,
 } from 'lucide-react'
-import { categoryLabel, type ProjectListItem, type RepoStatus } from '@git-nest/core'
+import {
+  CATEGORIES,
+  categoryLabel,
+  type Attention,
+  type ProjectListItem,
+  type ProjectSort,
+  type RepoStatus,
+} from '@git-nest/core'
 import { Button, Dialog, EmptyState, ErrorNote, Input } from '@/components/ui'
 import { ApiError } from '@/lib/api'
 import { registerCommand } from '@/lib/commands'
 import { formatRelative } from '@/lib/format'
-import { UNCATEGORIZED, useSelectedCount, useSelectedIds, useUiStore } from '@/store/ui'
+import { UNCATEGORIZED, useSelectedCount, useSelectedIds, useUiStore, type Filters } from '@/store/ui'
 import { useProjects, useRemoveProject } from './queries'
 import { AttentionBadge, Diff, SyncBadge } from '@/features/status/StatusCell'
 import { useStatuses } from '@/features/status/queries'
 import { UpdatePanel } from '@/features/updates/UpdatePanel'
+
+/**
+ * 「现在有筛选吗」。
+ *
+ * **不能用真值判断**：`category === ''` 是一个合法的筛选值（「只看没分类的」）。
+ * 真值判断会把它当成没筛选，于是两处同时失灵——工具条上的「清掉筛选」按钮
+ * 不出现，空状态也不说「换个条件看看」，用户就被卡在这里了。
+ *
+ * 写成函数而不是在两处各抄一遍：这两处必须一致，抄开迟早只改一处。
+ */
+const hasFilter = (f: Filters) => Boolean(f.q || f.tag || f.own || f.attention) || f.category !== null
 
 export function ProjectsPage() {
   const navigate = useNavigate()
@@ -180,6 +198,8 @@ export function ProjectsPage() {
         onScan={() => navigate('/settings#scan')}
       />
 
+      <ListHeader rows={ordered} />
+
       <div className="list-scroll px-4 pb-6">
         {/*
           状态那一列读不出来时必须说出来。原来这个错误被丢掉了（只解构了 data），
@@ -202,7 +222,7 @@ export function ProjectsPage() {
         {isPending ? (
           <p className="py-10 font-mono text-[13px] text-ink-3">正在读清单…</p>
         ) : !projects || projects.length === 0 ? (
-          <EmptyList filtering={Boolean(filters.category || filters.tag || filters.q)} />
+          <EmptyList filtering={hasFilter(filters)} />
         ) : (
           /*
             一张平表：**一个表头 + 平铺的行**。
@@ -307,6 +327,121 @@ function ColumnHeader() {
   )
 }
 
+/**
+ * 分组下拉里「全部」的取值。**不能用空串**——空串是「未分类」这个合法筛选值，
+ * 两个选项撞值的话，选了「未分类」下拉会显示成「全部」而筛的是空串：
+ * 控件说的和它做的不一致。
+ */
+const ALL_GROUPS = '__all__'
+
+/**
+ * 工具条下面那一行：看全局的三件事（状态 / 分组 / 排序）加「全选」。
+ *
+ * 它与左栏的过滤面板**读写同一份 `filters`**。两边都留着是为了对比
+ * （决定 8），所以两边必须是一份状态：各存一份的话，改了这边另一边不亮，
+ * 用户会以为它们各筛各的。
+ *
+ * 「全选」选的是**当前筛出来的这些行**，不是库里全部——所以批量动作不会
+ * 带走那些已经被筛掉的、用户根本没看见的项目。
+ */
+function ListHeader({ rows }: { rows: ProjectListItem[] }) {
+  const filters = useUiStore((s) => s.filters)
+  const setAttention = useUiStore((s) => s.setAttention)
+  const setCategory = useUiStore((s) => s.setCategory)
+  const setSort = useUiStore((s) => s.setSort)
+  const selectedIds = useSelectedIds()
+  const setSelection = useUiStore((s) => s.setSelection)
+  const clearSelection = useUiStore((s) => s.clearSelection)
+  const allSelected = rows.length > 0 && selectedIds.length === rows.length
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 border-b border-line-soft px-4 py-1.5">
+      <Sel
+        label="状态"
+        value={filters.attention ?? ''}
+        onChange={(v) => setAttention(v === '' ? null : (v as Attention))}
+      >
+        <option value="">全部</option>
+        <option value="ready">可更新</option>
+        <option value="synced">已同步</option>
+        <option value="blocked">不推荐</option>
+        <option value="decide">需要确认</option>
+        <option value="unchecked">待检查</option>
+      </Sel>
+
+      <Sel
+        label="分组"
+        value={filters.category ?? ALL_GROUPS}
+        onChange={(v) => setCategory(v === ALL_GROUPS ? null : v)}
+      >
+        <option value={ALL_GROUPS}>全部</option>
+        <option value="">未分类</option>
+        {CATEGORIES.map((c) => (
+          <option key={c} value={c}>
+            {categoryLabel(c)}
+          </option>
+        ))}
+      </Sel>
+
+      {/*
+        「默认」是一项，不是一个 sort 值：服务端的默认序是「先按分类分组、同类
+        再按名称」，而下面的「按名称」是**纯名称序**（Task 2 的裁决）。让空值
+        冒充「按名称」的话，下拉说的和实际排出来的不一样。
+      */}
+      <Sel
+        label="排序"
+        value={filters.sort ?? ''}
+        onChange={(v) => setSort(v === '' ? null : (v as ProjectSort))}
+      >
+        <option value="">默认（按分类）</option>
+        <option value="name">按名称</option>
+        <option value="checked">按上次检查</option>
+        <option value="behind">按落后数</option>
+      </Sel>
+
+      <label className="ml-auto flex shrink-0 cursor-pointer items-center gap-1.5 text-[12.5px] text-ink-2">
+        <input
+          type="checkbox"
+          className="list-check"
+          checked={allSelected}
+          // 一行都没有时禁用：勾了等于没勾，是死控件
+          disabled={rows.length === 0}
+          onChange={(e) =>
+            e.target.checked ? setSelection(rows.map((p) => p.id)) : clearSelection()
+          }
+        />
+        全选
+      </label>
+    </div>
+  )
+}
+
+/** 工具条上的下拉。用 `<label>` 包住，读屏拿到的是标签文字而不是没有名字的控件。 */
+function Sel({
+  label,
+  value,
+  onChange,
+  children,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  children: ReactNode
+}) {
+  return (
+    <label className="flex shrink-0 items-center gap-1.5 text-[12.5px] text-ink-3">
+      <span>{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-7 rounded-[3px] border border-line bg-panel px-2 text-[12.5px] text-ink focus:border-accent focus:outline-none"
+      >
+        {children}
+      </select>
+    </label>
+  )
+}
+
 function Toolbar({
   total,
   onCheckUpdates,
@@ -323,7 +458,7 @@ function Toolbar({
   const clearFilters = useUiStore((s) => s.clearFilters)
   const openCreate = useUiStore((s) => s.openCreate)
   const selectedCount = useSelectedCount()
-  const filtering = Boolean(filters.category || filters.tag || filters.q || filters.own)
+  const filtering = hasFilter(filters)
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-line bg-paper px-4 py-2">

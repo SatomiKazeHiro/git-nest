@@ -114,7 +114,8 @@ describe('列表六列', () => {
     mockAll(project({ attention: 'blocked' }), status())
     renderPage()
     await waitFor(() => expect(screen.getByText('demo')).toBeTruthy())
-    expect(screen.getByText('不推荐')).toBeTruthy()
+    // `selector: 'span'` 把药丸从状态下拉里那个同名 `<option>` 上摘出来
+    expect(screen.getByText('不推荐', { selector: 'span' })).toBeTruthy()
   })
 
   it('差异两个方向都给', async () => {
@@ -144,7 +145,8 @@ describe('列表六列', () => {
     mockAll(project({ attention: 'unchecked' }), status({ ahead: null, behind: null }))
     renderPage()
     await waitFor(() => expect(screen.getByText('demo')).toBeTruthy())
-    expect(screen.getByText('待检查')).toBeTruthy()
+    // 同上：下拉里有个同名选项
+    expect(screen.getByText('待检查', { selector: 'span' })).toBeTruthy()
     expect(screen.getByText('未知')).toBeTruthy()
     expect(screen.queryByText('↓0')).toBeNull()
   })
