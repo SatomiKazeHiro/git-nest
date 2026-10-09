@@ -65,7 +65,7 @@ export function AppShell({ sidebar, children }: { sidebar?: ReactNode; children:
       <MenuBar />
       <div className={`body ${navOpen ? '' : 'body-nav-hidden'}`}>
         {sidebar && navOpen ? (
-          <aside className="nav border-r border-line bg-panel">{sidebar}</aside>
+          <aside className="nav border-r border-line bg-rail">{sidebar}</aside>
         ) : null}
         <main className="content">{children}</main>
       </div>

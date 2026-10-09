@@ -57,7 +57,7 @@ export function FilterPanel() {
 
   if (projects === undefined) {
     return (
-      <div className="filter-panel border-r border-line bg-panel px-2 py-2">
+      <div className="filter-panel border-r border-line bg-rail px-2 py-3">
         <p className="px-1 py-1 font-mono text-[12px] text-ink-3">…</p>
       </div>
     )

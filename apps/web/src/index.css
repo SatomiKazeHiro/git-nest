@@ -1,38 +1,73 @@
 @import 'tailwindcss';
 
 /*
-  视觉方向：一张摊开的仓库清单 —— 冷调纸面、细线分隔、等宽字体承载 git 数据。
-  颜色只用来编码状态（分类轨道、标签、错误），不用于装饰。
+  视觉方向：**白底 + 蓝主色，层次靠明度差与发丝线**。
+
+  取向和原来那套相反——原来靠「冷调纸面 + 孔雀蓝强调」造气氛，这里不用气氛造
+  层次：侧栏比内容深半档、选中项从底色里「浮」出来、主按钮是近黑。
+
+  一条不变量：**蓝色 = 你能点的 / 当前选中的；四色 = git 事实。**
+  蓝色不出现在「状态」和「同步状态」两列里，所以「哪个仓库现在要我动手」
+  是屏幕上唯一会被颜色喊出来的东西。
+
+  ⚠️ 旧 token 名（paper / panel / signal-*）**保留**。全仓有约 330 处 class
+  引用它们（`text-ink-3` 89 处、`bg-panel` 27 处…），改名会产生一个三千行的
+  diff，评审时看不出任何东西，而视觉结果完全一样。这里只换**值**，
+  新代码用下面语义更准的 `rail` / `sunken` / `accent-ink` / `ok` / `amber` / `bad`。
 */
 @theme {
-  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  --font-sans: 'Inter', 'IBM Plex Sans', ui-sans-serif, system-ui, 'Segoe UI', 'Microsoft YaHei',
+    sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', 'Consolas', monospace;
 
-  /* 纸面与墨色 */
-  --color-paper: #edf0f2;
-  --color-panel: #fbfcfd;
-  --color-ink: #13181d;
-  --color-ink-2: #46535f;
-  --color-ink-3: #7b8792;
-  --color-line: #ccd4da;
-  --color-line-soft: #e2e7eb;
+  /* 表面 —— 层次全靠明度差，不靠颜色造气氛 */
+  --color-bg: #ffffff; /* 内容区、卡片 */
+  --color-rail: #f7f7f8; /* 侧栏、过滤面板：比内容深半档 */
+  --color-sunken: #f2f2f4; /* 输入框：凹下去 */
+  --color-paper: #ffffff; /* 旧名 = 现在的 bg */
+  --color-panel: #ffffff; /* 旧名 = 现在的 bg */
 
-  /* 强调：深孔雀蓝，只用于可点的东西和当前选中态 */
-  --color-accent: #14506e;
-  --color-accent-hover: #0f4159;
-  --color-accent-wash: #e0eaef;
+  /* 线 */
+  --color-line: #e5e5e8;
+  --color-line-soft: #f0f0f2;
 
-  /* git 状态信号色，M2 起真正点亮 */
-  --color-signal-ok: #3d6b4f;
-  --color-signal-behind: #14506e;
-  --color-signal-ahead: #8a5a17;
-  --color-signal-bad: #a32d2d;
+  /* 墨
+     ink-3 是 #6b6b76 而不是更淡的灰：11.5px 的元信息按正文算，达不到 4.5:1
+     的一律不算数（先写成 #93939d，只有 3.0:1，改掉了）。
 
-  /* 卡片底色。信号色本身是**文字与线条**用的，字号 13–15px 起步；
-     直接拿它当大面积底色会既刺眼又压过文字。所以另配两个极浅的底：
-     一个给「可以更新」，一个给「别拉」。它们只出现在卡片上。 */
-  --color-wash-ok: #eaf0ec;
-  --color-wash-bad: #f7ecec;
+     实测（浏览器里逐对量，不是估算）：
+       墨/白 19.4 · 墨2/白 6.6 · 墨3/白 5.3 · 绿/白 6.6 · 蓝/白 19.4
+       绿/浅绿 5.7 · 红/浅红 4.9 · 琥珀/浅琥珀 5.0 · 白/蓝 5.2 · 蓝/浅蓝 6.1
+       墨3/灰底 4.9 · 平灰/浅灰 5.9
+     最紧的是「红/浅红 4.9」和「墨3/灰底 4.9」——余量不大，
+     以后动这几档要重量一次。 */
+  --color-ink: #0d0d0f;
+  --color-ink-2: #5c5c66;
+  --color-ink-3: #6b6b76;
+
+  /* 交互：蓝 —— 只表示「你能点的 / 当前选中的」 */
+  --color-accent: #2563eb;
+  --color-accent-ink: #1d4ed8; /* 蓝字：选中项、链接（比 accent 深，压在浅底上才够对比） */
+  --color-accent-hover: #1d4ed8;
+  --color-accent-wash: #eff4ff;
+
+  /* 状态：只有「可更新」是绿的 */
+  --color-ok: #116b32;
+  --color-ok-bg: #dcf5e4;
+  --color-amber: #8a6100;
+  --color-amber-bg: #fdf3d3;
+  --color-bad: #c62a2f;
+  --color-bad-bg: #fdeceb;
+  --color-flat: #5c5c66;
+  --color-flat-bg: #f2f2f4; /* 已同步 / 同步状态：刻意比状态列低调 */
+
+  /* 旧 signal-* 名保留为别名，值指向上面那组 */
+  --color-signal-ok: #116b32;
+  --color-signal-behind: #116b32; /* ↓ 远程领先：绿。蓝色留给「你能点的」 */
+  --color-signal-ahead: #8a6100; /* ↑ 本地领先：琥珀 */
+  --color-signal-bad: #c62a2f;
+  --color-wash-ok: #dcf5e4;
+  --color-wash-bad: #fdeceb;
 }
 
 @layer base {
@@ -286,7 +321,7 @@
   margin: 0;
   border: 1px solid var(--color-line);
   border-radius: 2px;
-  background-color: var(--color-panel);
+  background-color: var(--color-bg);
   cursor: pointer;
   vertical-align: middle;
 }
@@ -351,7 +386,7 @@
 }
 /* 表头铺满底色，滚动时数据不会从它背后透出来 */
 .tr-tint {
-  background-color: var(--color-paper);
+  background-color: var(--color-bg);
 }
 .list-table thead tr {
   border-bottom: 1px solid var(--color-line);
