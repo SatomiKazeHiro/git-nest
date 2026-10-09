@@ -13,3 +13,5 @@ data/
 
 # claude agent
 .claude
+# superpowers 执行计划的临时工作区（ledger / briefs / review package）
+.superpowers/
