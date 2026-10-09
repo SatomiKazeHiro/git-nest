@@ -87,7 +87,7 @@ beforeEach(() => {
   granularCommits = 0
   useUiStore.setState({
     selected: new Set<number>(),
-    filters: { q: '', category: null, tag: null, own: null },
+    filters: { q: '', category: null, tag: null, own: null, attention: null, sort: null },
   })
   server.use(
     http.get('/api/projects', () =>

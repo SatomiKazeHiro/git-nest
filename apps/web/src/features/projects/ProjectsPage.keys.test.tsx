@@ -84,7 +84,7 @@ function renderApp() {
 beforeEach(() => {
   useUiStore.setState({
     selected: new Set<number>(),
-    filters: { q: '', category: null, tag: null, own: null },
+    filters: { q: '', category: null, tag: null, own: null, attention: null, sort: null },
     formOpen: false,
     editingId: null,
     navOpen: true,

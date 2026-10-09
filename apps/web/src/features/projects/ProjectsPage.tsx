@@ -47,6 +47,8 @@ export function ProjectsPage() {
     q: debouncedQuery,
     // 「我自己的」与分类 / 标签**叠加**，所以原样传下去
     own: filters.own,
+    attention: filters.attention,
+    sort: filters.sort,
   })
 
   const {

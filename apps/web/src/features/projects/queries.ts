@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { ProjectDetail, ProjectListItem, Tag } from '@git-nest/core'
+import type { Attention, ProjectDetail, ProjectListItem, ProjectSort, Tag } from '@git-nest/core'
 import { api } from '@/lib/api'
 
 export interface TagWithUsage extends Tag {
@@ -28,16 +28,27 @@ export interface ListParams {
   q?: string
   /** 三态：'1' 只看自己的 / '0' 只看不是自己的 / 不传都要。store 里是 null。 */
   own?: '1' | '0' | null
+  /** 行动分类筛选；与其它维度叠加。store 里是 null。 */
+  attention?: Attention | null
+  /** 排序；null = 服务端默认（分类分组 → 名称） */
+  sort?: ProjectSort | null
 }
 
 function toQuery(params: ListParams) {
   const search = new URLSearchParams()
-  if (params.category) search.set('category', params.category)
+  // 空串是**合法取值**（「只看没分类的」），所以不能用真值判断——
+  // 那样 category='' 会被当成「没这个筛选」，侧栏里「未分类」点了等于没点。
+  // （这个坑在服务端与前端各犯过一次，加上测试 mock 里那次，一共三次。）
+  if (params.category !== null && params.category !== undefined) {
+    search.set('category', params.category)
+  }
   if (params.tag) search.set('tag', params.tag)
   if (params.q) search.set('q', params.q)
   // 布尔要显式发 '0'：只发 '1' 的话「关掉筛选」与服务端返回的「不过滤」同义，
   // 切回「都要」就没有请求能发出去了
   if (params.own) search.set('own', params.own)
+  if (params.attention) search.set('attention', params.attention)
+  if (params.sort) search.set('sort', params.sort)
   const qs = search.toString()
   return qs ? `?${qs}` : ''
 }

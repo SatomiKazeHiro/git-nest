@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from 'react'
 import { orderBy } from 'es-toolkit'
-import { categoryLabel } from '@git-nest/core'
+import { categoryLabel, type Attention } from '@git-nest/core'
 import { UNCATEGORIZED, useUiStore } from '@/store/ui'
 import { useProjects } from './queries'
 
@@ -19,32 +19,51 @@ import { useProjects } from './queries'
  * （`Workspace` 就是清单页的布局路由，所以「只在清单页」这件事是结构保证的，
  * 不需要在这里判断当前路由。）
  *
+ * 四段：**仓库状态 / 我自己的 / 分类 / 标签**。前两个是「布尔」维度，
+ * 后两个是「按名字分组」——混在一段里的话读者分不清它们是同一类东西。
+ *
  * 面板自己会滚：分类和标签多了以后只滚这一列，侧栏与清单表都不动。
  */
 export function FilterPanel() {
-  // 数数用的必须是**不带筛选**的那份：跟分类/标签的计数同一个口径
-  // （按完整清单统计，不受搜索影响）
+  /*
+    数数用的必须是**不带任何筛选**的那一份：侧栏的计数是全量口径。
+    跟着当前筛选变的话，「可更新 12」会在你筛完别的东西之后悄悄换成另一个数，
+    而那个数看着仍然像是在报告全量的情况。
+  */
   const { data: projects } = useProjects({ category: null, tag: null, q: '' })
   const category = useUiStore((s) => s.filters.category)
   const tag = useUiStore((s) => s.filters.tag)
   const own = useUiStore((s) => s.filters.own)
+  const attention = useUiStore((s) => s.filters.attention)
   const setCategory = useUiStore((s) => s.setCategory)
   const setTag = useUiStore((s) => s.setTag)
   const setOwnOnly = useUiStore((s) => s.setOwnOnly)
+  const setAttention = useUiStore((s) => s.setAttention)
+  const clearAttention = useUiStore((s) => s.clearAttention)
 
-  const { categories, tags, ownCount } = useMemo(() => {
+  const { categories, tags, ownCount, attentionCounts } = useMemo(() => {
     const cats = new Map<string, number>()
     const tagCounts = new Map<string, number>()
+    // 分类直接读服务端给的 `attention`——前端不再自己数一遍，
+    // 免得两侧的分档逻辑哪天飘开，界面上就出现「点了可更新却没筛干净」
+    const ac: Record<Attention, number> = {
+      ready: 0,
+      synced: 0,
+      blocked: 0,
+      decide: 0,
+      unchecked: 0,
+    }
     let ownN = 0
     for (const p of projects ?? []) {
       const c = p.category || UNCATEGORIZED
       cats.set(c, (cats.get(c) ?? 0) + 1)
       for (const t of p.tags) tagCounts.set(t.name, (tagCounts.get(t.name) ?? 0) + 1)
       if (p.isOwn) ownN += 1
+      if (ac[p.attention] !== undefined) ac[p.attention] += 1
     }
     return {
-      // 排序按**显示名**而不是存进库的英文：既然界面上给的是中文，按英文排
-      // 出来的顺序对读者就毫无道理（会看到 备份 / 试验 / 知识库 这种交错）。
+      // 排序按**显示名**而不是存进库的英文：既然界面上给的是中文，按英文排出来的
+      // 顺序对读者毫无道理（会看到 备份 / 试验 / 知识库 这种交错）。
       categories: orderBy(
         [...cats.entries()],
         [([name]) => (name === UNCATEGORIZED ? 1 : 0), ([name]) => categoryLabel(name)],
@@ -52,6 +71,7 @@ export function FilterPanel() {
       ),
       tags: orderBy([...tagCounts.entries()], [([name]) => name.toLowerCase()], ['asc']),
       ownCount: ownN,
+      attentionCounts: ac,
     }
   }, [projects])
 
@@ -64,25 +84,54 @@ export function FilterPanel() {
   }
 
   return (
-    <div className="filter-panel flex flex-col gap-4 border-r border-line bg-panel px-2 py-3">
+    <div className="filter-panel flex flex-col gap-4 border-r border-line bg-rail px-2 py-3">
       {/*
-        三个组走**同一个** `Group` + 同一个 `Item`：一样的标题、一致的间距、
-        同样的 chip。之前是三套实现——「我自己的」没有标题还带一道 border-b，
-        而组间距一处 `gap-4 + pt-3`、另一处 `gap-4 + pt-4`，三组看着像三种东西。
-
-        组间距只由外层这一处 `gap-4` 决定，**不要再往 Group 上加 `pt-*`**：
+        三段共用同一个 `Group` 与同一个 `Item`：一样的标题、一致的间距、同样的
+        chip。组间距只由外层这一处 `gap-4` 决定，**不要再往 Group 上加 `pt-*`**——
         两处一起给会把间距算重，而且以后改一处忘了另一处就会漂。
-      */}
-      {/*
-        标题是**维度名**，下面那一行是这个维度的一个取值——和「分类 / 试验」
-        「标签 / vue」是同一个关系。三个组的标题因此都是名词，都不与自己的
-        取值重复。
 
-        （标题本来写成「我自己的」，于是下面那行也叫「我自己的 1」——
-        统一之后这个重复反而更扎眼了。）
+        **「全部仓库」只在这一段有**：它是唯一不是子集的桶，带总数（别处没有），
+        并给「当前没筛选」一个可见状态。点它**只清状态那一个维度**，
+        分类 / 标签 / 我自己的都不动。
+
+        「需要确认」（verdict=diverged）不单列一项：它是少数情况，
+        混进「不推荐」那一档会让后者失去「作者改写了历史」那层警告的分量。
+      */}
+      <Group title="仓库状态">
+        <Item label="全部仓库" count={projects.length} active={attention === null} onClick={clearAttention} />
+        <Item
+          label="可更新"
+          count={attentionCounts.ready}
+          active={attention === 'ready'}
+          onClick={() => setAttention(attention === 'ready' ? null : 'ready')}
+        />
+        <Item
+          label="已同步"
+          count={attentionCounts.synced}
+          active={attention === 'synced'}
+          onClick={() => setAttention(attention === 'synced' ? null : 'synced')}
+        />
+        <Item
+          label="不推荐"
+          count={attentionCounts.blocked}
+          active={attention === 'blocked'}
+          onClick={() => setAttention(attention === 'blocked' ? null : 'blocked')}
+        />
+        <Item
+          label="待检查"
+          count={attentionCounts.unchecked}
+          active={attention === 'unchecked'}
+          onClick={() => setAttention(attention === 'unchecked' ? null : 'unchecked')}
+        />
+      </Group>
+
+      {/*
+        「我自己的」独立成一段：它和分类 / 标签不是一层的东西（那边是「按名字
+        分组」，这里是「一个真布尔」），而且它**与其它维度叠加**——「我的 tools」
+        是一个合理的查询。
       */}
       {ownCount > 0 ? (
-        <Group title="作者">
+        <Group title="我自己的">
           <Item
             label="我自己的"
             count={ownCount}
@@ -92,41 +141,30 @@ export function FilterPanel() {
         </Group>
       ) : null}
 
-      {/*
-        **「未分类」不是一个筛选项。** 它是「这个项目没有分类」这个事实——
-        点它筛不出任何东西（它本来就是筛完之后剩下的），而之前它还占着一行
-        却点不动（`onClick` 是 undefined），是个死控件。
-
-        要看未分类的那些？把筛选清掉即可，它们本来就在列表里。
-
-        筛选的取消靠**点同一个分类两下**：`setCategory` 本来就是开关语义
-        （同一个值再点一次置 null），所以下面每一项都是可点的。
-      */}
       <Group title="分类">
         {categories.length === 0 ? <Hint>还没有项目</Hint> : null}
-        {categories
-          .filter(([name]) => name !== UNCATEGORIZED)
-          .map(([name, n]) => (
-            <Item
-              key={name}
-              label={categoryLabel(name)}
-              count={n}
-              active={category === name}
-              onClick={() => setCategory(name)}
-            />
-          ))}
+        {categories.map(([name, n]) => (
+          <Item
+            key={name}
+            label={categoryLabel(name)}
+            count={n}
+            active={category === name}
+            /* 「未分类」**点得动**：它不是分类，是「没有分类」这个事实，
+               但「只看没分类的」是个真实的查询。以前这里是 onClick=undefined
+               的死控件（点它没反应，用户只会觉得应用卡了）。
+
+               注意筛的值是**空串而不是 '未分类'**——`name` 是分组用的显示哨兵，
+               库里存的却是 ''。拿哨兵去筛会永远匹配不到，「未分类」就变成另一种
+               死控件：看着能点，点了等于没筛。 */
+            onClick={() => setCategory(name === UNCATEGORIZED ? '' : name)}
+          />
+        ))}
       </Group>
 
       <Group title="标签">
         {tags.length === 0 ? <Hint>还没有标签</Hint> : null}
         {tags.map(([name, n]) => (
-          <Item
-            key={name}
-            label={name}
-            count={n}
-            active={tag === name}
-            onClick={() => setTag(name)}
-          />
+          <Item key={name} label={name} count={n} active={tag === name} onClick={() => setTag(name)} />
         ))}
       </Group>
     </div>
@@ -159,7 +197,7 @@ function Item({
       disabled={!onClick}
       aria-pressed={active}
       className={`flex cursor-pointer items-baseline gap-1.5 rounded-[3px] px-1 py-1.5 text-left text-[13px] ${
-        active ? 'bg-accent-wash text-accent' : 'text-ink-2 hover:bg-paper hover:text-ink'
+        active ? 'bg-accent-wash text-accent-ink' : 'text-ink-2 hover:bg-sunken hover:text-ink'
       } disabled:cursor-default disabled:text-ink-3 disabled:hover:bg-transparent`}
     >
       <span className="min-w-0 flex-1 truncate">{label}</span>

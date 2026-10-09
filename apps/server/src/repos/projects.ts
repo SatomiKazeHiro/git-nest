@@ -98,7 +98,10 @@ export function listProjects(db: DB, opts: ListProjectsOptions = {}): ProjectLis
   const where: string[] = []
   const params: Record<string, string> = {}
 
-  if (opts.category) {
+  // `!== undefined` 而不是真值判断：**空串是一个合法的筛选值**（「只看没有分类的
+  // 那些」）。用真值判断的话 category='' 会被当成「没这个筛选」而整段跳过，
+  // 于是侧栏里「未分类」那一项看起来能点、点了却等于没筛——另一种死控件。
+  if (opts.category !== undefined) {
     where.push('p.category = @category')
     params['category'] = opts.category
   }

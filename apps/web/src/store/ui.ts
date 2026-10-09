@@ -1,3 +1,4 @@
+import type { Attention, ProjectSort } from '@git-nest/core'
 import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -16,6 +17,14 @@ export interface Filters {
    * 因为它们本来就是同一层的两种分组方式）。
    */
   own: '1' | '0' | null
+  /**
+   * 行动分类筛选；null = 不筛。
+   *
+   * 与分类 / 标签**叠加**，各自独立开关。
+   */
+  attention: Attention | null
+  /** 列表排序；null = 用服务端默认（分类分组 → 名称） */
+  sort: ProjectSort | null
 }
 
 interface UiState {
@@ -31,6 +40,10 @@ interface UiState {
   setCategory: (c: string | null) => void
   setTag: (t: string | null) => void
   setOwnOnly: (v: boolean) => void
+  setAttention: (a: Attention | null) => void
+  /** 「全部仓库」只清这一个维度——分类 / 标签 / 我自己的都不动 */
+  clearAttention: () => void
+  setSort: (s: ProjectSort | null) => void
   clearFilters: () => void
   toggleSelected: (id: number) => void
   setSelection: (ids: number[]) => void
@@ -42,7 +55,7 @@ interface UiState {
   toggleDetail: () => void
 }
 
-const emptyFilters: Filters = { q: '', category: null, tag: null, own: null }
+const emptyFilters: Filters = { q: '', category: null, tag: null, own: null, attention: null, sort: null }
 
 export const useUiStore = create<UiState>((set) => ({
   filters: emptyFilters,
@@ -61,6 +74,9 @@ export const useUiStore = create<UiState>((set) => ({
     set((s) => ({ filters: { ...s.filters, tag: s.filters.tag === tag ? null : tag } })),
   // 点第二下就是取消：只有 true / false 两个取值，不做三态
   setOwnOnly: (v) => set((s) => ({ filters: { ...s.filters, own: v ? '1' : null } })),
+  setAttention: (attention) => set((s) => ({ filters: { ...s.filters, attention } })),
+  clearAttention: () => set((s) => ({ filters: { ...s.filters, attention: null } })),
+  setSort: (sort) => set((s) => ({ filters: { ...s.filters, sort } })),
   clearFilters: () => set({ filters: emptyFilters }),
 
   toggleSelected: (id) =>

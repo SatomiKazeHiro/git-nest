@@ -70,8 +70,7 @@ const check = (over: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   useUiStore.setState({
     selected: new Set<number>(),
-    // 只放 Task 4 之前就存在的字段；attention / sort 是 Task 5 才加进 Filters 的
-    filters: { q: '', category: null, tag: null, own: null },
+    filters: { q: '', category: null, tag: null, own: null, attention: null, sort: null },
     formOpen: false,
     editingId: null,
     navOpen: true,
