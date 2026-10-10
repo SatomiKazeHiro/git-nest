@@ -118,39 +118,32 @@ export function UpdatePanel({
         reset()
         onClose()
       }}
-      actions={
-        <>
+      /*
+        底部那条带子**一直在**，主按钮在右下角——不是躲在头部右上角。
+        那是市面上弹窗的样子，也是用户找「我要开始 / 提交」的地方。
+        左半边放状态（跑着时是进度与连接，读完后是这一轮的摘要），右半边放动作。
+
+        报告读完时主按钮换成「更新选中的 N 个」，**重新检查退成次要按钮**——
+        这一刻用户要做的是更新，不是再查一次。
+      */
+      footer={
+        <div className="flex flex-wrap items-center gap-3">
           {busy ? (
             <>
               <Meta label="进度" value={task ? `${task.done}/${task.total}` : '启动中'} />
               {connected ? null : <Meta label="连接" value="重连中" placeholder />}
             </>
+          ) : finished ? (
+            <span className="text-[13px] text-ink-2">
+              {finished.kind === 'check'
+                ? checkSummary(results, finished.summary ?? {})
+                : applySummary(finished)}
+            </span>
           ) : null}
-          <Button onClick={startCheckNow} disabled={busy || ids.length === 0 || overLimit}>
-            {busy ? '检查中…' : task ? '重新检查' : '开始检查'}
-          </Button>
-        </>
-      }
-      /*
-        报告读完才出现的那条动作带子：**搬到弹窗的固定底部**去。
-        它原来是一个塞在内容里的 `<footer>`——报告一长，动作就跟着滚出视野，
-        而用户看完报告要做的正是那一个动作。
-      */
-      footer={
-        finished ? (
-          <div className="flex flex-wrap items-center gap-3">
-            {finished.kind === 'check' ? (
+
+          <div className="ml-auto flex flex-wrap items-center gap-3">
+            {finished?.kind === 'check' ? (
               <>
-                <span className="text-[13px] text-ink-2">
-                  {checkSummary(results, finished.summary ?? {})}
-                </span>
-                <Button
-                  variant="primary"
-                  disabled={picked.size === 0 || busy}
-                  onClick={() => void startApply([...picked])}
-                >
-                  更新选中的 {picked.size} 个
-                </Button>
                 {updatable.length > 0 && picked.size < updatable.length ? (
                   <button
                     onClick={() => setPicked(new Set(updatable.map((i) => i.projectId)))}
@@ -167,12 +160,28 @@ export function UpdatePanel({
                     清空勾选
                   </button>
                 ) : null}
+                <Button
+                  variant="primary"
+                  disabled={picked.size === 0 || busy}
+                  onClick={() => void startApply([...picked])}
+                >
+                  更新选中的 {picked.size} 个
+                </Button>
+                <Button onClick={startCheckNow} disabled={busy || ids.length === 0 || overLimit}>
+                  重新检查
+                </Button>
               </>
             ) : (
-              <span className="text-[13px] text-ink-2">{applySummary(finished)}</span>
+              <Button
+                variant="primary"
+                onClick={startCheckNow}
+                disabled={busy || ids.length === 0 || overLimit}
+              >
+                {busy ? '检查中…' : task ? '重新检查' : '开始检查'}
+              </Button>
             )}
           </div>
-        ) : undefined
+        </div>
       }
     >
       {/* 超过服务端一次能处理的量：说清数字与两条出路，而不是让他去撞那个 422 */}
