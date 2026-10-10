@@ -333,7 +333,7 @@ GET    /api/projects/:id/log?max=  当前检出分支的提交记录（一阶段
 GET    /api/projects/:id/readme?full=1
                                    仓库根目录的 README 原文（不落库，每次现读）；
                                    没有 README 是 200 + file:null，不是错误，目录没了 / 不是仓库才 400。
-                                   默认给前 64KB、?full=1 给前 1MB，超出时响应里 truncated=true 且 bytes 是真实大小
+                                   默认给前 64KB、?full=1 给前 256KB，超出时响应里 truncated=true 且 bytes 是真实大小
 GET    /api/status?ids=1,2,3       批量状态，列表页一次拿全（一次最多 200 个；前端**自动分块**，
                                    所以项目再多也不会撞上限）
 

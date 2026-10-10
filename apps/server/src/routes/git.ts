@@ -93,7 +93,8 @@ export const gitRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
   /**
    * README 全文。
    *
-   * `?full=1` 是界面上「加载完整文档」那一下：上限从 64KB 抬到 1MB。
+   * `?full=1` 是界面上「加载完整文档」那一下：上限从 64KB 抬到 256KB
+   * （实测：1MB 要 17 秒渲染，那不是「加载」，那是界面卡死）。
    *
    * **「没有 README」是 200 + `file: null`**，不是错误——很多仓库本来就没有说明，
    * 那是正常状态。而「目录没了 / 不是仓库」是 400：那是界面必须说出来的异常。
@@ -101,7 +102,7 @@ export const gitRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
    * 判据与 `/log` 完全一致（都走 `repoFacts`，一条 git 进程都不起）。
    *
    * 上限来自 core 的 `limits.ts`，**web 端读的是同一个常量**——否则 web 端
-   * 不知道 1MB 这个天花板，就会给出一个点了也没用的按钮。
+   * 不知道这个天花板，就会给出一个点了也没用的按钮。
    */
   fastify.get('/projects/:id/readme', async (req) => {
     const { id } = req.params as { id: string }

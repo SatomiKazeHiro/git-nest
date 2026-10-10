@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { server } from '@/test/mocks/server'
-import { README_FULL_MAX_BYTES } from '@git-nest/core'
+import { README_FULL_MAX_BYTES, README_MAX_BYTES } from '@git-nest/core'
 import { ReadmeView } from './ReadmeView'
 
 /**
@@ -157,12 +157,13 @@ describe('安全 · 网络访问', () => {
 
 describe('分级加载', () => {
   /*
-    `bytes` 一律取 **64KB 与 1MB 之间**的值。
-    取 1.2MB 的话它已经越过完整上限（README_FULL_MAX_BYTES = 1048576），
-    于是走的是「太大了不给按钮」那条分支，压根到不了要测的这条（踩过一次，
-    与服务端那条 fixture 是同一个坑）。
+    `bytes` 取**两个上限的中点**，而不是写死一个数。
+    写死过一次 500_000：那时完整上限是 1MB，它落在中间，测试是对的；
+    后来上限实测降到 256KB，它就越到了上限之上，于是走的是「太大了不给按钮」
+    那条分支，要测的这条压根没跑到（同一个坑踩了第三次，与服务端那条 fixture 同源）。
+    从常量推导就再也不会漂——上限改了，这里自动跟着走。
   */
-  const MID = 500_000 // → formatBytes = "488.3 KB"
+  const MID = Math.round((README_MAX_BYTES + README_FULL_MAX_BYTES) / 2) // 65536+262144 → 163840 → "160.0 KB"
 
   it('没被截断 → 不出现渐变，也不出现按钮', async () => {
     renderView()
@@ -176,8 +177,8 @@ describe('分级加载', () => {
     bytes = MID
     renderView()
     const btn = await screen.findByRole('button', { name: /加载完整文档/ })
-    // 真实大小如实显示，不四舍五入成「488 KB」
-    expect(btn.textContent).toContain('488.3 KB')
+    // 真实大小如实显示，不四舍五入成「160 KB」
+    expect(btn.textContent).toContain('160.0 KB')
     expect(document.querySelector('.readme-more')).toBeTruthy()
   })
 
