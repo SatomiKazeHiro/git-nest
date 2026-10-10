@@ -44,12 +44,23 @@ function isDontPull(r: UpdateRecommendation | null): r is UpdateRecommendation {
  * 代价是关掉窗口＝放弃这次查看（`reset()` 清掉本地快照）；服务端任务会照跑完并
  * 写进 `update_checks`，这一句写在弹窗说明里，不含糊。
  */
+/** 一个「将要被检查」的项目：弹窗在开跑之前就要把它们列出来。 */
+export interface CheckTarget {
+  id: number
+  name: string
+  /** 我自己写的项目：设置里没打开「自己的项目也参与检查」时，整批不参与 */
+  isOwn: boolean
+}
+
 export function UpdatePanel({
-  ids,
+  targets,
   onClose,
 }: {
-  /** 要检查的项目 id；为空表示当前筛选出的全部 */
-  ids: number[]
+  /**
+   * 要检查的项目，**按调用方给的顺序**——服务端也按这个顺序返回，
+   * 所以开跑前画的那张列表在开跑后不会重排。
+   */
+  targets: CheckTarget[]
   onClose: () => void
 }) {
   const invalidate = useInvalidate()
@@ -59,7 +70,24 @@ export function UpdatePanel({
   })
   const [picked, setPicked] = useState<Set<number>>(new Set())
   const [confirming, setConfirming] = useState(false)
-  const { data: settings } = useSettings()
+  const { data: settings, isPending: settingsPending } = useSettings()
+
+  /*
+    这一轮会检查谁。规则与服务端**同一条**（判据是 `is_own` 这个布尔，不是分类）：
+    设置里没打开时，你自己写的项目整批不参与。
+
+    **设置读回来之前不下判断**：否则会先画一遍「全都要查」的列表、再把几行抽掉。
+    这个请求读的是本机数据库，通常几毫秒就回来，等它比看那次闪烁划算。
+  */
+  const includeOwn = settings?.includeOwn ?? false
+  const willCheck = settingsPending ? [] : targets.filter((t) => includeOwn || !t.isOwn)
+  const skipped = settingsPending ? [] : targets.filter((t) => !includeOwn && t.isOwn)
+  /*
+    请求里发**全部**目标 id：服务端会按同一条规则再滤一遍，并把它跳过了谁回给我们
+    ——那是它的事，不该由前端替它决定（前端也滤一遍只是为了让**开跑之前**那张列表
+    和那句话有东西可依；服务端此刻还没机会说话）。
+  */
+  const ids = targets.map((t) => t.id)
 
   /*
     报告跑完了才有那条动作带子。先把它取成一个局部量：`footer` 是在 props 位置
@@ -205,27 +233,49 @@ export function UpdatePanel({
 
       {error ? <ErrorNote message={error} /> : null}
 
+      {/*
+        跳过谁、为什么——这件事在**开跑之前**就成立，所以它不在任何分支里。
+        原来那句话是「跳过了 X（我自己的）：你自己写的项目默认不参与检查」：
+        名字里已经带着「我自己的」，后面又解释一遍，同一句话说两遍。
+      */}
+      {skipped.length > 0 ? (
+        <p className="mb-3 text-[12.5px] text-ink-3">{skipNote(skipped.map((t) => t.name))}</p>
+      ) : null}
+
       {!task ? (
-        /*
-          `ids.length === 0` 只可能是**清单是空的**（列表页没勾选时是「全部筛选结果」，
-          非空清单永远不会是 0）。这里不能再说「先去清单里勾选」——弹窗盖着清单，
-          那句话在弹窗里做不到；「开始检查」同时是禁用的。
-        */
-        <p className="text-[13px] text-ink-2">
-          {ids.length > 0
-            ? `将检查当前筛选出的 ${ids.length} 个项目（你自己写的项目默认跳过，可在设置里打开）。`
-            : '清单里还没有项目。先在清单页添加一个（或扫描一个目录），再回来检查。'}
-        </p>
+        settingsPending ? (
+          // 还不知道「自己的项目要不要一起查」，此刻画出来的列表一定是错的
+          <p className="py-10 text-center font-mono text-[12px] text-ink-3">…</p>
+        ) : targets.length === 0 ? (
+          /*
+            `targets` 为空只可能是**清单是空的**（列表页没勾选时是「全部筛选结果」，
+            非空清单永远不会是 0）。这里不能再说「先去清单里勾选」——弹窗盖着清单，
+            那句话在弹窗里做不到；「开始检查」同时是禁用的。
+          */
+          <p className="text-[13px] text-ink-2">
+            清单里还没有项目。先在清单页添加一个（或扫描一个目录），再回来检查。
+          </p>
+        ) : willCheck.length === 0 ? (
+          <p className="text-[13px] text-ink-2">
+            这批项目都是你自己写的，一个都不在检查范围内——想查它们，去设置里打开「自己的项目也参与检查」。
+          </p>
+        ) : (
+          /*
+            **开跑之前就把它列出来**：将要检查谁，一行一个。
+            点「开始检查」之后，任务流回来的每一行按项目 id 原地替换——服务端也按
+            我们给的顺序返回，所以这一屏不会重排，只是每行的内容从「待检查」变成结果。
+            跳过的那些不在这里，它们由上面那句话交代。
+          */
+          <ul>
+            {willCheck.map((t) => (
+              <PendingRow key={t.id} name={t.name} />
+            ))}
+          </ul>
+        )
       ) : task.status === 'failed' ? (
         <ErrorNote message={task.error ?? '任务失败'} />
       ) : (
         <>
-          {task.skipped && task.skipped.length > 0 ? (
-            <p className="border-b border-line-soft py-2 text-[12.5px] text-ink-3">
-              跳过了 {task.skipped.join('、')}：你自己写的项目默认不参与检查
-            </p>
-          ) : null}
-
           {/*
             「推不推荐更新」不能只藏在每一行的短标签里：20 个仓库里混进两个「别拉」，
             红字会被埋掉。这里单独报一句，名字点出来。
@@ -251,6 +301,42 @@ export function UpdatePanel({
         </>
       )}
     </Dialog>
+  )
+}
+
+/**
+ * 「跳过了谁、为什么」——**一整句字符串**，不要拆成 JSX 里的几段文字。
+ *
+ * 拆开写的话，`{names}` 与后面的中文之间那个空格会被 JSX 的空白规则吃掉，
+ * 屏幕上就成了「visperse是你自己写的项目」。这种坏法没有报错，只是读起来别扭。
+ */
+function skipNote(names: string[]): string {
+  const who =
+    names.length > 3
+      ? `${names.slice(0, 3).join('、')} 等 ${names.length} 个`
+      : names.length > 1
+        ? `${names.join('、')} 这 ${names.length} 个`
+        : (names[0] ?? '')
+  return `${who} 是你自己写的项目，跳过不查。批量检查默认不带它们；设置里打开「自己的项目也参与检查」就会带上。`
+}
+
+/**
+ * 还没开跑时的那一行：只报「谁会被检查」。
+ *
+ * 它刻意与 `TaskRow` 共用一套骨架（勾选框的占位 + 固定宽的名字 + 右边一句状态），
+ * 这样点下「开始检查」之后是**行里换内容**，而不是换一个形状。
+ */
+function PendingRow({ name }: { name: string }) {
+  return (
+    <li className="border-b border-line-soft py-2 last:border-b-0">
+      <div className="flex items-center gap-2.5">
+        <span className="w-3.5 shrink-0" />
+        <span className="w-40 min-w-0 shrink-0 truncate text-[13px] font-medium text-ink">
+          {name}
+        </span>
+        <span className="font-mono text-[12px] text-ink-3">待检查</span>
+      </div>
+    </li>
   )
 }
 

@@ -135,7 +135,7 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
           屏幕上就同时出现两张「表」）。 */}
       {panelOpen ? (
         <UpdatePanel
-          ids={(projects ?? []).map((p) => p.id)}
+          targets={(projects ?? []).map((p) => ({ id: p.id, name: p.name, isOwn: p.isOwn }))}
           onClose={() => setPanelOpen(false)}
         />
       ) : null}

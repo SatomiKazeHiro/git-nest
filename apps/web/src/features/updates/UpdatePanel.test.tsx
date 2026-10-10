@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
-import { UpdatePanel } from './UpdatePanel'
+import { UpdatePanel, type CheckTarget } from './UpdatePanel'
 import { server } from '@/test/mocks/server'
 import { FakeEventSource } from '@/test/setup'
 
@@ -15,7 +15,31 @@ import { FakeEventSource } from '@/test/setup'
  * 比真 SSE 好测：事件顺序由测试决定，不会有时序抖动。
  */
 
-function renderPanel(ids: number[]) {
+/** 弹窗在开跑前就要把「将要检查谁」列出来，所以它拿到的是项目本身，不只是 id */
+const TARGETS: CheckTarget[] = [
+  { id: 1, name: 'behind-one', isOwn: false },
+  { id: 2, name: 'up-to-date', isOwn: false },
+  { id: 3, name: 'diverged', isOwn: false },
+]
+
+/** 默认给一份设置：阈值用默认值，免得干扰别的断言（需要别的值时用例自己覆盖） */
+beforeEach(() => {
+  server.use(
+    http.get('/api/settings', () =>
+      HttpResponse.json({
+        settings: {
+          includeOwn: false,
+          gitTimeoutMs: 120_000,
+          concurrency: 4,
+          confirmThreshold: 20,
+          scanDirs: [],
+        },
+      }),
+    ),
+  )
+})
+
+function renderPanel(targets: CheckTarget[] = TARGETS) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   })
@@ -23,7 +47,7 @@ function renderPanel(ids: number[]) {
     <QueryClientProvider client={client}>
       {/* 面板里有指向项目详情的 Link，需要路由上下文 */}
       <MemoryRouter>
-        <UpdatePanel ids={ids} onClose={() => {}} />
+        <UpdatePanel targets={targets} onClose={() => {}} />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -99,7 +123,7 @@ async function waitForStream() {
 
 describe('勾选更新流程', () => {
   it('报告是一个弹窗，不再是插进页面流里的一块区域', () => {
-    renderPanel([1, 2, 3])
+    renderPanel()
 
     // 插进页面流那种做法是 `<section class="border">`，屏幕上会和清单表凑成两张「表」；
     // 现在是 role=dialog 的宽版弹窗（标题即 aria-label）
@@ -117,7 +141,7 @@ describe('勾选更新流程', () => {
       }),
     )
 
-    renderPanel([1, 2, 3])
+    renderPanel()
 
     // 1. 点「开始检查」→ 拿到 task → 订阅进度
     await click(/开始检查/)
@@ -210,6 +234,21 @@ describe('勾选更新流程', () => {
     )
   })
 
+  it('开跑前就列出将要检查的项目；你自己写的那些不在列表里，只在上面交代一句', async () => {
+    renderPanel([
+      { id: 1, name: 'behind-one', isOwn: false },
+      { id: 9, name: 'visperse', isOwn: true },
+    ])
+
+    // 会检查的那个在列表里，状态是「待检查」
+    await waitFor(() => expect(screen.getByText('behind-one')).toBeTruthy())
+    expect(screen.getByText('待检查')).toBeTruthy()
+
+    // 你自己写的那个**不在列表里**（列表里的名字各占一个元素；上面那句话是一整段）
+    expect(screen.queryByText('visperse')).toBeNull()
+    expect(screen.getByText(/visperse 是你自己写的项目，跳过不查/)).toBeTruthy()
+  })
+
   it('超过确认阈值时先问一遍，不直接开跑', async () => {
     let checks = 0
     let settingsCalls = 0
@@ -232,10 +271,12 @@ describe('勾选更新流程', () => {
       }),
     )
 
-    renderPanel([1, 2, 3])
+    renderPanel()
     // 等设置真的到了再点：阈值是从设置里读的
     await waitFor(() => expect(settingsCalls).toBe(1))
-    await waitFor(() => expect(screen.getByText(/将检查当前筛选出的 3 个项目/)).toBeTruthy())
+    // 开跑之前就把「将要检查谁」列出来（这一句原来是一段「将检查当前筛选出的 3 个项目」的说明）
+    await waitFor(() => expect(screen.getByText('behind-one')).toBeTruthy())
+    expect(screen.getAllByText('待检查')).toHaveLength(3)
 
     // 第一次点：只弹确认，还没发请求
     await click(/开始检查/)
@@ -262,7 +303,7 @@ describe('勾选更新流程', () => {
       ),
     )
 
-    renderPanel([1, 2, 3])
+    renderPanel()
     await click(/开始检查/)
 
     await waitFor(() =>
@@ -303,7 +344,7 @@ describe('判决必须在弹窗里看得见，而且决定能不能勾', () => {
     server.use(
       http.post('/api/updates/check', () => HttpResponse.json(lastCheckTask, { status: 202 })),
     )
-    renderPanel([1, 2])
+    renderPanel(TARGETS.slice(0, 2))
 
     await click(/开始检查/)
     const stream = await waitForStream()

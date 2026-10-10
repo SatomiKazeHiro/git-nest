@@ -155,7 +155,12 @@ export function ProjectDetailPage() {
 
       {/* 「编辑资料」弹窗挂在窗口外壳上（整个应用只此一份），这里不再挂。
           报告是弹窗：插在流里会把上面的判断切开。 */}
-      {updating ? <UpdatePanel ids={[project.id]} onClose={() => setUpdating(false)} /> : null}
+      {updating ? (
+        <UpdatePanel
+          targets={[{ id: project.id, name: project.name, isOwn: project.isOwn }]}
+          onClose={() => setUpdating(false)}
+        />
+      ) : null}
     </div>
   )
 }
