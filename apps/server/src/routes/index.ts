@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import type { ZodType } from 'zod'
+import { detectProjectType } from '@git-nest/core/git'
 import {
   createProjectSchema,
   createTagSchema,
@@ -45,8 +46,13 @@ export const projectRoutes = (db: DB): FastifyPluginAsync => {
         「这一行到底要不要显示图」，而那个布尔只有这里能给。
       */
       const logos = await scanLogos(db, projects)
+      const types = await Promise.all(projects.map((p) => detectProjectType(p.path)))
       return {
-        projects: projects.map((p) => ({ ...p, hasLogo: logos.has(p.id) })),
+        projects: projects.map((p, index) => ({
+          ...p,
+          hasLogo: logos.has(p.id),
+          projectType: types[index] ?? null,
+        })),
         // 这一轮还没有分页，total 就等于全部命中数；下一轮加 page/perPage 时
         // 只要把它换成真实的 COUNT，前后端都不用再动别的地方。
         total: projects.length,
@@ -57,7 +63,13 @@ export const projectRoutes = (db: DB): FastifyPluginAsync => {
       const { id } = req.params as { id: string }
       const project = getProject(db, idParamSchema.parse(id))
       if (!project) throw notFound('项目')
-      return { project: { ...project, hasLogo: (await scanProjectLogo(db, project)) !== null } }
+      return {
+        project: {
+          ...project,
+          hasLogo: (await scanProjectLogo(db, project)) !== null,
+          projectType: await detectProjectType(project.path),
+        },
+      }
     })
 
     fastify.post('/projects', async (req, reply) => {

@@ -173,8 +173,9 @@ export function listProjects(db: DB, opts: ListProjectsOptions = {}): ProjectLis
     tags: tags.get(r.id) ?? [],
     latestCheck: checks.get(r.id) ?? null,
     attention: r.attention,
-    // 这一层不碰磁盘：logo 是路由那一层扫出来的结论。不知道就说没有。
+    // 这一层不碰磁盘：logo 与类型都是路由那一层扫出来的结论。不知道就说不知道。
     hasLogo: false,
+    projectType: null,
   }))
 }
 
@@ -194,6 +195,7 @@ export function getProject(db: DB, id: number): ProjectDetail | null {
     latestCheck: latestChecksByProject(db, [id]).get(id) ?? null,
     attention: row.attention,
     hasLogo: false,
+    projectType: null,
   }
 }
 

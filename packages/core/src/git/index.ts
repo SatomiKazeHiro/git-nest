@@ -70,4 +70,5 @@ export {
   type LogoPick,
   type LogoCandidate,
 } from './logo.ts'
+export { detectProjectType, TYPE_RULES, type TypeRule } from './project-type.ts'
 export { pullRepo, type PullOptions } from './pull.ts'

@@ -1,8 +1,16 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
 import { ProjectRow } from './ProjectRow'
+
+/*
+  类型角标的图标来自使用者自己填的 `docs/types/`（现在大概还是空的），
+  所以「查图标」那一层换成可控的：这里要测的是**角标出不出现在该出现的地方**。
+*/
+vi.mock('./typeIcons', () => ({
+  typeIconUrl: (type: string | null) => (type === 'vue' ? 'data:image/svg+xml,<svg/>' : null),
+}))
 
 /**
  * 「同步状态」那一列不许说出没有依据的话——**这个 bug 的实际现场**。
@@ -29,6 +37,7 @@ const project: ProjectListItem = {
   sortOrder: 1,
   tags: [],
   hasLogo: false,
+  projectType: null,
   // 库里有上次检查的结论 → hasCheck 为真 → 修之前这两条路都会显示「一致」
   latestCheck: {
     checkedAt: '2026-10-05T00:00:00Z',
@@ -158,5 +167,24 @@ describe('ProjectRow · 仓库那一格的图标', () => {
     */
     expect(src.startsWith('/api/')).toBe(false)
     expect(src.includes('folder.svg') || src.startsWith('data:image/svg+xml')).toBe(true)
+  })
+
+  it('默认文件夹图上压着类型角标（16×16 白圆那一个）', () => {
+    const { container } = renderRow(status(), { projectType: 'vue' })
+
+    // 两张图：默认文件夹 + 白圆里的类型图标
+    expect(container.querySelectorAll('img')).toHaveLength(2)
+    /*
+      按**角标自己的特征**找，不按 `rounded-full`：行里那枚状态药丸也是圆角的，
+      拿它当判据会两边都命中（第一版就是这么写的，另一条用例当场露了馅）。
+    */
+    expect(container.querySelector('span[style*="width: 16px"]')).not.toBeNull()
+  })
+
+  it('有 logo 的行**不压**角标——角标只叠在默认文件夹图上', () => {
+    const { container } = renderRow(status(), { hasLogo: true, projectType: 'vue' })
+
+    expect(container.querySelectorAll('img')).toHaveLength(1)
+    expect(container.querySelector('span[style*="width: 16px"]')).toBeNull()
   })
 })

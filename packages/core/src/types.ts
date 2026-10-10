@@ -300,6 +300,13 @@ export interface ProjectListItem extends Project {
    * 而**大多数项目没有 logo**，十几个 404 会在控制台里红成一片。
    */
   hasLogo: boolean
+  /**
+   * 认出来的项目类型（`'vue'`、`'nestjs'`、`'cpp'`…），认不出是 `null`。
+   *
+   * 它就是 `docs/types/<type>.svg` 里的那个名字——前端拿它去查图标。
+   * **`null` 是常见结果**（一半以上的仓库认不出来），界面上不显示角标。
+   */
+  projectType: string | null
 }
 
 /**

@@ -5,6 +5,7 @@ import { formatRelative } from '@/lib/format'
 import { useUiStore } from '@/store/ui'
 import { AttentionBadge, Diff, SyncBadge, type Comparability } from '@/features/status/badges'
 import { ProjectLogo } from './ProjectLogo'
+import { ProjectTypeBadge } from './ProjectTypeBadge'
 import { folderUrl } from './folderIcon'
 
 /**
@@ -76,14 +77,18 @@ export function ProjectRow({
           {p.hasLogo ? (
             <ProjectLogo projectId={p.id} />
           ) : (
-            <img
-              src={folderUrl}
-              alt=""
-              aria-hidden
-              width={32}
-              height={32}
-              className="shrink-0 rounded-[3px]"
-            />
+            /* 角标要压在图的右下角，所以这一格得是定位容器 */
+            <span className="relative shrink-0">
+              <img
+                src={folderUrl}
+                alt=""
+                aria-hidden
+                width={32}
+                height={32}
+                className="shrink-0 rounded-[3px]"
+              />
+              <ProjectTypeBadge type={p.projectType} />
+            </span>
           )}
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-1.5">
