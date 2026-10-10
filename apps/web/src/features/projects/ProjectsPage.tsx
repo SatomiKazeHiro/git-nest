@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Link, useNavigate, useOutlet, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 import { groupBy, orderBy } from 'es-toolkit'
 import { useDebounce } from 'ahooks'
 import {
@@ -42,7 +42,17 @@ import { UpdatePanel } from '@/features/updates/UpdatePanel'
  */
 const hasFilter = (f: Filters) => Boolean(f.q || f.tag || f.own || f.attention) || f.category !== null
 
-export function ProjectsPage() {
+/**
+ * 清单页：工具条 + 清单表 + **详情那一轨的摆放**。
+ *
+ * `detail` 是**路由给的内容**（`Workspace` 把当前子路由元素取出来传进来）。
+ * 为什么摆放由这里决定、而不是由布局决定：详情是**清单区内部的第二轨**，
+ * 这件事写在 CSS 里（`.list-scroll` 的两列），只有渲染 `.list-scroll` 的组件
+ * 知道它该落在哪。以前这里用 `useOutlet()` 自己去上下文里捞——同样是决定摆放，
+ * 但那是一个藏在 hook 里的隐式契约（读的人得先知道布局没渲染 `<Outlet/>`）。
+ * 现在它写在 props 上：谁给内容、谁定位置，一眼看得到。
+ */
+export function ProjectsPage({ detail }: { detail?: ReactNode }) {
   const navigate = useNavigate()
   /*
     「右栏正在看谁」住在 URL 里（`/projects/:id`），不是 store。
@@ -53,8 +63,6 @@ export function ProjectsPage() {
   */
   const { id } = useParams()
   const currentId = Number(id) || null
-  // 子路由的元素（概览那两页 / README），由我们决定放在哪——见下面 list-scroll 里那段
-  const outlet = useOutlet()
   const detailOpen = useUiStore((s) => s.detailOpen)
   // 没选中项目就没有详情；`Ctrl+J` 还能把它收起来
   const showDetail = currentId !== null && detailOpen
@@ -136,8 +144,9 @@ export function ProjectsPage() {
       {/*
         清单区：**清单表 + 详情并排**，选中项目时右边那一轨才长出来。
 
-        用 `useOutlet()` 而不是把 `<Outlet/>` 留在 Workspace：那才是 react-router
-        提供的「在父级布局里拿到子路由元素」的方式，所以这里能自己决定它落在哪。
+        详情的内容是**路由给的**（`Workspace` 用 `<Outlet/>` 取出来当 `detail`
+        传进来），落在哪是**这里决定的**——因为「详情是清单区内部的第二轨」
+        这件事写在 CSS 里（`.list-scroll` 的两列）。
         **不渲染时是真的不渲染**，不是留一块空壳。
       */}
       <div className={`list-scroll ${showDetail ? 'list-scroll-has-detail' : ''}`}>
@@ -202,7 +211,7 @@ export function ProjectsPage() {
           )}
         </div>
 
-        {showDetail ? <aside className="detail border-l border-line bg-panel h-full overflow-hidden">{outlet}</aside> : null}
+        {showDetail ? <aside className="detail border-l border-line bg-panel h-full overflow-hidden">{detail}</aside> : null}
       </div>
 
       {pendingRemoval ? (

@@ -1,5 +1,5 @@
 import { Route, Routes } from 'react-router'
-import { AppShell } from '@/components/AppShell'
+import { AppShell } from '@/layouts/AppShell'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Workspace } from '@/features/projects/Workspace'
 import { ProjectDetailPage } from '@/pages/ProjectDetailPage'
@@ -11,7 +11,7 @@ export function App() {
   /*
     组合根：外壳 + 那个「整个应用只有一份」的弹窗。
 
-    「编辑资料」弹窗原来挂在外壳（`components/AppShell.tsx`）里，而它以前还被
+    「编辑资料」弹窗原来挂在外壳（`layouts/AppShell.tsx`）里，而它以前还被
     清单页与详情页各渲染过一次——宽窗口下两处同时可见，于是出现两个实例。
     挂一份是对的，**挂在哪一层才是问题**：`components/` 是通用层，一挂上去
     这一层就认识了 `features/projects`，而「通用层不认识业务」正是它之所以

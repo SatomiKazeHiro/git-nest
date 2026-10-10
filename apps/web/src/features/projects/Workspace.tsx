@@ -1,11 +1,13 @@
+import { Outlet } from 'react-router'
 import { FilterPanel } from './FilterPanel'
 import { ProjectsPage } from './ProjectsPage'
 
 /**
- * 清单工作区：**过滤面板 + 清单**。
+ * 清单工作区：**过滤面板 + 清单**。这是个布局路由。
  *
- * 详情**不是这里的一列**——它在清单表下面，点开才渲染（见 `ProjectsPage`）。
- * 所以这个组件现在只负责把过滤面板与清单表拼起来，布局上是两列。
+ * 详情**不是这里的一列**——它是清单区内部的第二轨（见 `ProjectsPage` 的
+ * `.list-scroll`），所以这里只负责三件事：拼出过滤面板与清单、把**当前子路由的
+ * 元素**交给清单（那就是详情的内容：概览 / README），以及路由本身。
  *
  * 路由上仍然只有一个 workspace：`/` 与 `/projects/:id` 渲染同一个界面，
  * 区别只在清单下面有没有详情。深链（书签、外部跳转、浏览器前进后退）照旧有效。
@@ -18,7 +20,12 @@ export function Workspace() {
         控件（仓库状态 / 我自己的 / 分类 / 标签，点了只筛眼前这张表）。
       */}
       <FilterPanel />
-      <ProjectsPage />
+      {/*
+        `detail` 是**内容**，摆放位置由清单决定：详情那一轨长在 `.list-scroll`
+        里面（CSS 的两列），而那层网格是清单渲染的。**内容归路由，位置归布局
+        里那一层真正渲染容器的人**——这样两边都不用猜对方做了什么。
+      */}
+      <ProjectsPage detail={<Outlet />} />
     </div>
   )
 }
