@@ -3,9 +3,9 @@ import { AppShell } from '@/layouts/AppShell'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Workspace } from '@/features/projects/Workspace'
 import { ProjectDetailPage } from '@/pages/ProjectDetailPage'
-import { SettingsPage } from '@/pages/SettingsPage'
 import { EmptyState } from '@/components/ui'
 import { ProjectFormDialog } from '@/features/projects/ProjectFormDialog'
+import { SettingsDialog } from '@/features/settings/SettingsDialog'
 
 export function App() {
   /*
@@ -38,7 +38,6 @@ export function App() {
               <Route path="/" element={null} />
               <Route path="/projects/:id" element={<ProjectDetailPage />} />
             </Route>
-            <Route path="/settings" element={<SettingsPage />} />
             <Route
               path="*"
               element={
@@ -50,7 +49,9 @@ export function App() {
           </Routes>
         </ErrorBoundary>
       </AppShell>
+      {/* 两个「整个应用只有一份」的弹窗。 */}
       <ProjectFormDialog />
+      <SettingsDialog />
     </>
   )
 }

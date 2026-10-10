@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
-import { useLocation } from 'react-router'
+import { useState } from 'react'
 import { FolderSearch, Loader, Trash2, X } from 'lucide-react'
 import { ApiError } from '@/lib/api'
 import { Button, Dialog, ErrorNote, Input } from '@/components/ui'
@@ -35,17 +34,6 @@ export function ScanSection() {
   const [scanSeq, setScanSeq] = useState(0)
   const removeProject = useRemoveProject()
 
-  // 从清单页点「扫描目录」跳过来时（/settings#scan），直接把焦点放到输入框
-  const { hash } = useLocation()
-  const dirRef = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    if (hash !== '#scan') return
-    // 锚点 id 挂在「目录」那一行自己身上（SettingRow 的 id）。原来挂在一个
-    // 包裹用的 <section> 上，而那层包装现在去掉了——它存在的唯一理由就是挂 id。
-    document.getElementById('scan')?.scrollIntoView({ block: 'start' })
-    dirRef.current?.focus()
-  }, [hash])
-
   const forgetDir = (target: string) => {
     const next = (settings?.scanDirs ?? []).filter((d) => d !== target)
     saveSettings.mutate(
@@ -78,14 +66,12 @@ export function ScanSection() {
   return (
     <>
       <SettingRow
-        id="scan"
         name="目录"
         desc="填一个已存在的本机目录"
         note="扫描只读，不写清单也不动磁盘"
       >
         <div className="flex items-center gap-2">
           <Input
-            ref={dirRef}
             value={dir}
             onChange={(e) => setDir(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && runScan(dir, true)}

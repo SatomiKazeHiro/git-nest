@@ -1,63 +1,11 @@
 import { useEffect, useId, useState } from 'react'
 import { ErrorNote, Input } from '@/components/ui'
 import { ApiError } from '@/lib/api'
-import { useSaveSettings, useSettings } from '@/features/settings/queries'
-import { ScanSection } from '@/features/settings/ScanSection'
-import { CommandsSection } from '@/features/settings/CommandsSection'
-import { TagSection } from '@/features/settings/TagSection'
-import { SettingGroup, SettingRow } from '@/features/settings/SettingRow'
+import { SettingRow } from './SettingRow'
+import { useSaveSettings, useSettings } from './queries'
 
-/**
- * 设置页。
- *
- * 分区**不按代码模块分，按「这个设置能对你机器做什么」分**。原来的四段
- * （扫描 / 批量更新 / 自动 fetch / 标签）是照着组件文件切的，扫一眼看不出
- * 它们之间是什么关系——而真正要紧的关系只有两条：
- *
- * 1. 往清单里加东西：只写本地那个 SQLite 文件，不联网、不碰仓库
- * 2. 联网检查与更新：会 fetch 远程引用；动工作区只在你勾选之后，且只 ff-only
- *
- * 这个分类不是排版需要，它就是那两条约定（绝不自动更新、
- * 自动做的事必须留痕）在界面上的落点。所以第二组给它一道左侧竖线——
- * 颜色在这里表示「这组配错了会动你的文件」。
- */
-export function SettingsPage() {
-  return (
-    // 不要再套一层滚动容器：`.content` 已经是外层滚动区了，嵌套的滚动区
-    // 会抢同一个滚轮，而且内层那条滚动条永远用不上（内容总是恰好一样高）。
-    <div className="settings-body px-6 py-6">
-      <header className="mb-7">
-        <h1 className="text-[20px] font-semibold leading-tight text-ink">设置</h1>
-        <p className="mt-1.5 max-w-prose text-[12.5px] leading-[1.6] text-ink-2">
-          存在本机数据库里，不进任何会被提交的文件。改动立刻生效，不用重启服务。
-        </p>
-      </header>
-
-      <SettingGroup
-        title="往清单里加东西"
-        note="只写本机的清单，不联网、不读仓库内容。扫出来的东西还要你挑一遍才会进清单。"
-      >
-        <ScanSection />
-        <TagSection />
-      </SettingGroup>
-
-      {/*
-        这一组是**唯一会让全部仓库联网、且在你勾选之后会动工作区**的。
-        那条边界写在这一组的说明里，因为它横跨下面每一行——单拎到某一行
-        下面反而会被读成「只对这一项成立」。
-      */}
-      <SettingGroup
-        title="联网检查与更新"
-        note="这一组会让全部仓库联网。只 fetch 远程引用，绝不碰工作区——更新永远由你勾选后触发，并且只做 fast-forward。"
-      >
-        <GitSection />
-        <CommandsSection />
-      </SettingGroup>
-    </div>
-  )
-}
-
-function GitSection() {
+/** 一组「会联网」的设置。它们原来住在设置页里，页面删掉后搬到这里。 */
+export function GitSection() {
   const { data: settings, isPending, error } = useSettings()
   const save = useSaveSettings()
   const [banner, setBanner] = useState<string | null>(null)
@@ -147,8 +95,7 @@ function GitSection() {
  * 2. 打一个字发一次请求，还把「正在输入」的语义交给了服务端。
  * 现在输入期间只动本地 state，按回车或失焦时才发一次；越界在前端就拦下来并说明。
  *
- * 数字框给固定宽度：它在右侧那块 15rem 的区域里居中，跟着内容伸缩就会变成
- * 一条难按的细长条。
+ * 数字框给固定宽度：它在右侧那块区域里居中，跟着内容伸缩就会变成一条难按的细长条。
  *
  * 它**不印范围**——范围是左侧那句浅灰括号的事（`note`）。两处各印一次，
  * 同一句话会在屏幕上出现两遍。

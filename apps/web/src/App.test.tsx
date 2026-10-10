@@ -70,8 +70,12 @@ describe('App 的异常兜底', () => {
   })
 
   it('没崩的路由照常渲染', () => {
-    renderApp('/settings')
+    renderApp('/')
     expect(screen.queryByText(/这一页崩了/)).toBeNull()
-    expect(screen.getByRole('heading', { name: '设置' })).toBeTruthy()
+  })
+
+  it('/settings 这条旧路由已经删了，走的是兜底页', () => {
+    renderApp('/settings')
+    expect(screen.getByText('没有这个页面')).toBeTruthy()
   })
 })

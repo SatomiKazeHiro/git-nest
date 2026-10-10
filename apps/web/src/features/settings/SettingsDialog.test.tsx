@@ -4,14 +4,17 @@ import { http, HttpResponse } from 'msw'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { server } from '@/test/mocks/server'
-import { SettingsPage } from '@/pages/SettingsPage'
+import { useUiStore } from '@/store/ui'
+import { SettingsDialog } from './SettingsDialog'
 
 /**
- * 设置页那三个数字输入框。
+ * 设置原来是一整页（`/settings`），现在是一个弹窗——这些用例跟着搬过来，
+ * 断言一字未改：它们钉的是**数字字段的提交时机**与**「上一轮的结果」摘要**，
+ * 与容器是页还是弹窗无关。
  *
- * 原来的写法是「每次按键就 PATCH + 显示值来自服务端回值」：想从 120000 改成 60000，
- * 清空后敲下的第一个字符是 `6`，越界 → 服务端 422 → mutation 状态一变就重渲染
- * → 受控值被写回 120000 ——**用户敲的字符被吞掉**，那个字段根本没法正常改。
+ * 数字字段那条的由来：原来是「每次按键就 PATCH + 显示值来自服务端回值」——
+ * 想从 120000 改成 60000，清空后敲下的第一个字符是 `6`，越界 → 服务端 422
+ * → mutation 状态一变就重渲染 → 受控值被写回 120000 ——**用户敲的字符被吞掉**。
  * 现在输入期间只动本地草稿，回车 / 失焦才提交。
  */
 
@@ -33,6 +36,8 @@ let patches: Record<string, unknown>[]
 
 beforeEach(() => {
   patches = []
+  // 弹窗默认是关着的（`SettingsDialog` 关着时返回 null），这里把它打开
+  useUiStore.setState({ settingsOpen: true })
   server.use(
     http.get('/api/settings', () => HttpResponse.json({ settings })),
     http.patch('/api/settings', async ({ request }) => {
@@ -49,11 +54,11 @@ beforeEach(() => {
   )
 })
 
-function renderPage() {
+function renderDialog() {
   return render(
     <QueryClientProvider client={makeClient()}>
       <MemoryRouter>
-        <SettingsPage />
+        <SettingsDialog />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -61,7 +66,7 @@ function renderPage() {
 
 describe('设置里的数字字段', () => {
   it('输入期间不发请求，敲进去的字符不会被服务端回值弹回去', async () => {
-    renderPage()
+    renderDialog()
     const input = (await screen.findByLabelText('git 超时')) as HTMLInputElement
     expect(input.value).toBe('120000')
 
@@ -76,7 +81,7 @@ describe('设置里的数字字段', () => {
   })
 
   it('失焦时提交一次，并回读服务端的值', async () => {
-    renderPage()
+    renderDialog()
     const input = (await screen.findByLabelText('git 超时')) as HTMLInputElement
 
     fireEvent.change(input, { target: { value: '60000' } })
@@ -87,7 +92,7 @@ describe('设置里的数字字段', () => {
   })
 
   it('越界在前端就拦下并说明，不发请求', async () => {
-    renderPage()
+    renderDialog()
     const input = (await screen.findByLabelText('git 超时')) as HTMLInputElement
 
     fireEvent.change(input, { target: { value: '10' } })
@@ -99,7 +104,7 @@ describe('设置里的数字字段', () => {
   })
 
   it('清空后不改动，只把显示退回原值', async () => {
-    renderPage()
+    renderDialog()
     const input = (await screen.findByLabelText('git 超时')) as HTMLInputElement
 
     fireEvent.change(input, { target: { value: '' } })
@@ -118,7 +123,7 @@ describe('设置里的数字字段', () => {
  * 结果是：摘要也被关在了外面，它在结构上永远显示「还没跑过」，除非用户先
  * 点开命令日志去看。
  *
- * 这条钉住的是「进页面就取一次」。真正该省的是每 5 秒一次的轮询，那条仍然
+ * 这条钉住的是「打开设置就取一次」。真正该省的是每 5 秒一次的轮询，那条仍然
  * 只在展开日志时才开——见 CommandsSection 里的 `refetchInterval`。
  */
 describe('上一轮的结果', () => {
@@ -141,7 +146,7 @@ describe('上一轮的结果', () => {
       }),
     )
 
-    renderPage()
+    renderDialog()
 
     await waitFor(() => expect(asked).toBeGreaterThan(0))
     // 三个计数各自带标签，不再是用斜杠串起来的一句话
@@ -170,7 +175,7 @@ describe('上一轮的结果', () => {
       ),
     )
 
-    renderPage()
+    renderDialog()
 
     await waitFor(() => expect(screen.getByText('失败')).toBeTruthy())
     const bad = screen.getByText('2')

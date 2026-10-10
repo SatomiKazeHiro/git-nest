@@ -34,9 +34,6 @@ export function SettingGroup({
         所以卡片下面必须直接是行：中间不许再包 `<section>`——
         `:last-child` 判的是 DOM 父节点，包一层之后每个小组自己都以为自己是最后，
         组与组之间就会少一条线（这个坑踩过）。
-
-        需要锚点的行（比如 `id="scan"` 那种深链目标）把 id 挂在行自己身上，
-        不要为了挂 id 再包一层元素。
       */}
       <div className="mt-2.5 overflow-hidden rounded-[4px] border border-line">{children}</div>
     </section>
@@ -50,14 +47,11 @@ export function SettingGroup({
  * 不必为它们单开一行。
  */
 export function SettingRow({
-  id,
   name,
   desc,
   note,
   children,
 }: {
-  /** 深链锚点。挂在行自己身上，别为此再包一层元素。 */
-  id?: string
   name: string
   desc?: string
   /** 范围之类的补充说明，显示成描述后面的浅灰括号 */
@@ -102,7 +96,6 @@ export function SettingRow({
 
   return (
     <div
-      id={id}
       className="flex items-center gap-6 border-b border-line-soft px-4 py-2.5 last:border-b-0"
     >
       <div className="min-w-0 flex-1">

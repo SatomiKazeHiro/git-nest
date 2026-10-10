@@ -45,6 +45,8 @@ interface UiState {
   /** 打开表单时为 null（新建），否则为正在编辑的项目 id */
   editingId: number | null
   formOpen: boolean
+  /** 设置弹窗开着吗（设置只有这一个界面，旧路由已删） */
+  settingsOpen: boolean
   setQuery: (q: string) => void
   setCategory: (c: string | null) => void
   setTag: (t: string | null) => void
@@ -57,6 +59,8 @@ interface UiState {
   openCreate: () => void
   openEdit: (id: number) => void
   closeForm: () => void
+  openSettings: () => void
+  closeSettings: () => void
 }
 
 const emptyFilters: Filters = { q: '', category: null, tag: null, own: null, attention: null, sort: null }
@@ -65,6 +69,7 @@ export const useUiStore = create<UiState>((set) => ({
   filters: emptyFilters,
   editingId: null,
   formOpen: false,
+  settingsOpen: false,
 
   setQuery: (q) => set((s) => ({ filters: { ...s.filters, q } })),
   setCategory: (category) =>
@@ -83,4 +88,6 @@ export const useUiStore = create<UiState>((set) => ({
   openCreate: () => set({ formOpen: true, editingId: null }),
   openEdit: (editingId) => set({ formOpen: true, editingId }),
   closeForm: () => set({ formOpen: false, editingId: null }),
+  openSettings: () => set({ settingsOpen: true }),
+  closeSettings: () => set({ settingsOpen: false }),
 }))

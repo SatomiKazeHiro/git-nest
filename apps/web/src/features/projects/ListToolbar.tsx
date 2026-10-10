@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Eraser, FolderSearch, Plus, RefreshCw } from 'lucide-react'
+import { Eraser, FolderSearch, Plus, RefreshCw, Settings } from 'lucide-react'
 import { CATEGORIES, categoryLabel, type Attention, type ProjectSort } from '@git-nest/core'
 import { Button, Input } from '@/components/ui'
 import { hasFilter, useUiStore } from '@/store/ui'
@@ -35,6 +35,7 @@ export function Toolbar({
   const setQuery = useUiStore((s) => s.setQuery)
   const clearFilters = useUiStore((s) => s.clearFilters)
   const openCreate = useUiStore((s) => s.openCreate)
+  const openSettings = useUiStore((s) => s.openSettings)
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-line bg-paper px-4 py-2">
@@ -79,6 +80,10 @@ export function Toolbar({
         <Button variant="primary" onClick={openCreate}>
           <Plus size={14} aria-hidden />
           添加项目
+        </Button>
+        <Button onClick={openSettings} title="设置：扫描目录、标签、联网检查与更新的参数">
+          <Settings size={14} aria-hidden />
+          设置
         </Button>
       </div>
     </div>
