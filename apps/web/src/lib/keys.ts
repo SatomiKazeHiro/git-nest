@@ -18,7 +18,7 @@
  */
 
 /** id 的类型见文件末尾的 `CommandId`——**不要**在这里手写联合类型。 */
-export interface GlobalCommand {
+ interface GlobalCommand {
   id: string
   label: string
   combo: string

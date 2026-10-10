@@ -1,6 +1,6 @@
 const DAY = 86_400_000
 
-export function formatDate(iso: string): string {
+ function formatDate(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`

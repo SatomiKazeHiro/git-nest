@@ -5,11 +5,11 @@ import { clearStatusCache } from './git.ts'
 const trimmed = z.string().trim()
 
 /**
- * 设置项。设计文档第 7.3 节列的那几个参数。
+ * 设置项：超时 / 并发 / 扫描目录那几个参数。
  * 一张 key-value 表就够，不做正经的配置系统。
  */
 export interface Settings {
-  /** personal 分类默认不参与批量更新检测 */
+  /** 我自己的项目（`projects.is_own`）默认不参与批量更新检测 */
   includeOwn: boolean
   /** 单条 git 命令超时（毫秒） */
   gitTimeoutMs: number

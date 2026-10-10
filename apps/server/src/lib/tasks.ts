@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto'
  * （前端拿到 id 再开连接），缓冲能保证不丢事件，实现也简单得多。
  */
 
-export type TaskKind = 'check' | 'apply'
+ type TaskKind = 'check' | 'apply'
 
 export interface TaskItem {
   projectId: number

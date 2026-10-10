@@ -35,13 +35,13 @@
  * 当前这一版把描边圆改成了实心圆底，内容改成白色，是在这个素材之上的改动。
  */
 
-export type IconProps = {
+ type IconProps = {
   className?: string
   /** 边长（px）。24 网格的图标缩到 14–20 都还清楚。 */
   size?: number
 }
 
-export function Svg({ className, size = 14, children }: IconProps & { children: React.ReactNode }) {
+ function Svg({ className, size = 14, children }: IconProps & { children: React.ReactNode }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -70,7 +70,7 @@ const disc = (cx: number, cy: number, r: number) => <circle cx={cx} cy={cy} r={r
 
 /* ── 仓库状态（过滤面板那一段） ─────────────────────────────── */
 
-export function AllRepositoriesIcon(p: IconProps) {
+ function AllRepositoriesIcon(p: IconProps) {
   return (
     <Svg {...p}>
       {disc(12, 12, 10)}
@@ -83,7 +83,7 @@ export function AllRepositoriesIcon(p: IconProps) {
   )
 }
 
-export function UpdatableIcon(p: IconProps) {
+ function UpdatableIcon(p: IconProps) {
   return (
     <Svg {...p}>
       {disc(12, 12, 10)}
@@ -95,7 +95,7 @@ export function UpdatableIcon(p: IconProps) {
   )
 }
 
-export function SyncedIcon(p: IconProps) {
+ function SyncedIcon(p: IconProps) {
   return (
     <Svg {...p}>
       {disc(12, 12, 10)}
@@ -106,7 +106,7 @@ export function SyncedIcon(p: IconProps) {
   )
 }
 
-export function NotRecommendedIcon(p: IconProps) {
+ function NotRecommendedIcon(p: IconProps) {
   return (
     <Svg {...p}>
       {disc(12, 12, 10)}
@@ -118,7 +118,7 @@ export function NotRecommendedIcon(p: IconProps) {
   )
 }
 
-export function PendingCheckIcon(p: IconProps) {
+ function PendingCheckIcon(p: IconProps) {
   return (
     <Svg {...p}>
       {disc(12, 12, 10)}
@@ -136,7 +136,7 @@ export function PendingCheckIcon(p: IconProps) {
    类型从这张表推出来：拼错名字会在编译期就报出来，而不是界面上少一个图标。
    ------------------------------------------------------------ */
 
-export const ICONS = {
+ const ICONS = {
   'all-repositories': AllRepositoriesIcon,
   updatable: UpdatableIcon,
   synced: SyncedIcon,

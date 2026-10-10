@@ -54,7 +54,7 @@ export function useProject(id: number | null) {
   })
 }
 
-export interface ProjectPayload {
+ interface ProjectPayload {
   name: string
   path: string
   category: string

@@ -18,7 +18,7 @@ interface Raw {
  * 放在这里（而不是只留在 inspect 层的探针里）：归因也要用它
  * ——`cannot change to` 这一个报错同时对应「路径太长」与「目录没了」两种情况。
  */
-export const PATH_LENGTH_LIMIT = 240
+ const PATH_LENGTH_LIMIT = 240
 
 /** 这个路径长到 git 进不去吗？（只有 Windows 有这个问题） */
 export function isPathTooLong(path: string): boolean {
@@ -34,7 +34,7 @@ export function isPathTooLong(path: string): boolean {
  * 只脱敏「有冒号（＝有密码）」的形式：`ssh://git@host/x`、`git@host:x` 这种
  * 只有用户名的正常写法要原样留着，否则排查时看不出访问的是谁。
  */
-export function redactCredentials(text: string): string {
+ function redactCredentials(text: string): string {
   return text.replace(/([a-z][a-z0-9+.-]*:\/\/)[^/\s@]+:[^/\s@]*@/gi, '$1***@')
 }
 
@@ -57,7 +57,7 @@ function detectKind(raw: Raw, text: string): GitErrorKind {
     HTTP 状态码要在 network 之前判：git 对「401/403」和「连不上」都用同一个前缀
     `fatal: unable to access '<url>': ...`，而 network 那条正则含 `unable to access`
     ——顺序反了的话，私有仓库返回 401 会被报成「连不上远程，检查网络、代理或 DNS」，
-    正好把人引向错的方向（这条是设计文档第 8 节最在意的那个毛病）。
+    正好把人引向错的方向——把原因说反，比不说更坏。
   */
   if (
     /could not read (?:username|password)|unable to get (?:username|password)|authentication failed|terminal prompts disabled|invalid username or password|access denied|the requested url returned error: ?(?:401|403)|403 forbidden|401 unauthorized/.test(

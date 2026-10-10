@@ -8,7 +8,7 @@ import { server } from '@/test/mocks/server'
 import { FakeEventSource } from '@/test/setup'
 
 /**
- * 设计文档第 9 节要求的 happy path：
+ * 这条链路的 happy path：
  * 检查更新 → 看到每个仓库的报告 → 勾选能更新的 → 更新 → 看到结果汇总。
  *
  * 进度靠 SSE 推，这里用可控的假 EventSource 驱动（见 test/setup.ts），
@@ -277,7 +277,7 @@ describe('勾选更新流程', () => {
  * 他问对了：`UpdateReport` 一直带着 `recommendation`，而报告行既不渲染它、
  * 勾选判据也只看 `status === 'behind'`。**而「作者 force push 改写了历史」
  * 恰恰表现为 `behind`**（本地 refs 只看到「落后 N 个」），判决却是 `rewritten`
- * ——那就正是设计文档第 1 节要防的「更新到作者重置/删掉的东西」。
+ * ——那就正是这个软件要防的「更新到作者重置/删掉的东西」。
  */
 describe('判决必须在弹窗里看得见，而且决定能不能勾', () => {
   function emitRewriteCase(stream: FakeEventSource) {

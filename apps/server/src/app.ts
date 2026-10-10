@@ -13,7 +13,7 @@ import { settingsRoutes } from './routes/settings.ts'
 import { scanRoutes } from './routes/scan.ts'
 import { diagnosticsRoutes } from './routes/diagnostics.ts'
 
-export interface AppOptions {
+ interface AppOptions {
   db?: DB
   logger?: boolean
   /** 换掉 `lib/git.ts` 里那个全局 scheduler（测试注入用） */

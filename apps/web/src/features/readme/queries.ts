@@ -8,7 +8,7 @@ import { queryKeys } from '@/lib/queryKeys'
  * 故意不从 `@git-nest/core/git` 引 `ReadmeResult`：那个入口带 node:child_process，
  * 浏览器侧一碰就炸（core/index.ts 顶部那段注释就是在说这件事）。
  */
-export interface ReadmeData {
+ interface ReadmeData {
   /** 命中的文件名；没有可读的就 null。**不是路径**——路径不出本机。 */
   file: string | null
   content: string | null

@@ -40,7 +40,7 @@ export function parseDirtyCount(raw: string): number {
  * `R `…）都算已跟踪的改动。**不需要解析路径**（路径可能带引号、可能含空格），
  * 只看前两个字符就够。
  */
-export function countByKind(raw: string): { trackedChanges: number; untrackedFiles: number } {
+ function countByKind(raw: string): { trackedChanges: number; untrackedFiles: number } {
   let trackedChanges = 0
   let untrackedFiles = 0
   for (const line of raw.split('\n')) {

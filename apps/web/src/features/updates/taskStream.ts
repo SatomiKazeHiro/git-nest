@@ -58,7 +58,7 @@ const RETRY_DELAY_MS = 500
 /** 服务端每 25s 一个心跳；超过这么久没有任何事件就认为流死了 */
 const SILENCE_TIMEOUT_MS = 75_000
 
-export interface UpdateTaskOptions {
+ interface UpdateTaskOptions {
   /** 断流后重开连接的等待（测试用；生产走默认值） */
   retryDelayMs?: number
   /** 多久没有任何事件就认为流死了（测试用；生产走默认值） */

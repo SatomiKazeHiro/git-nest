@@ -11,7 +11,7 @@ import { MAX_STATUS_IDS, type RepoStatus } from '@git-nest/core'
 import { api } from '@/lib/api'
 import { normalizedIds, queryKeys } from '@/lib/queryKeys'
 
-export interface ProjectStatus {
+ interface ProjectStatus {
   projectId: number
   status: RepoStatus
 }

@@ -243,7 +243,7 @@ function isWebUrl(url: string): boolean {
  * 链接不可点等于要手抄。
  *
  * 这里原来挂的是备注列表（N 条、各自时间戳、能逐条改删），那是个「流」，
- * 而人要的是「文档」；摘要与来源链接也一起撤了——见设计文档第 13 节第 19 条。
+ * 而人要的是「文档」；摘要与来源链接也一起撤了。
  */
 function RecordView({ record }: { record: string }) {
   if (!record) {

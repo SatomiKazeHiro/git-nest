@@ -82,7 +82,7 @@ const toProject = (r: ProjectRow): Project => ({
   sortOrder: r.sort_order,
 })
 
-export interface ListProjectsOptions {
+ interface ListProjectsOptions {
   category?: string
   tag?: string
   q?: string
@@ -194,7 +194,7 @@ export function getProject(db: DB, id: number): ProjectDetail | null {
   }
 }
 
-export interface InsertProjectInput {
+ interface InsertProjectInput {
   name: string
   path: string
   remoteUrl: string | null
@@ -280,7 +280,7 @@ export function pathExists(db: DB, p: string, exceptId?: number): boolean {
   return row !== undefined
 }
 
-export function tagsByProject(db: DB, ids: number[]): Map<number, Tag[]> {
+ function tagsByProject(db: DB, ids: number[]): Map<number, Tag[]> {
   const map = new Map<number, Tag[]>()
   if (ids.length === 0) return map
   const rows = db

@@ -10,7 +10,7 @@
  * 「链接拦了、图片忘了」这种洞，而图片那条洞恰好最不容易发现——
  * 因为它不报错，只是安静地往外发请求。
  */
-export type ReadmeUrlKind = 'image' | 'link'
+ type ReadmeUrlKind = 'image' | 'link'
 
 /**
  * 图片只放行内联的 `data:image/*`。

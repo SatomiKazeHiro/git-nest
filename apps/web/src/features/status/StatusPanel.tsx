@@ -127,7 +127,7 @@ function dirtyHint(s: RepoStatus): string {
  * 点不开的（SSH）两处都不放，这里只负责说清有没有 origin、上游叫什么）。
  *
  * 收敛成一行：结论 + 上游分支 + 上游最后一次提交时间。
- * 分支名不再显示——设计文档第 1 节写明不做 git 客户端，用户也从没问过自己在哪个分支。
+ * 分支名不再显示——这个软件不做 git 客户端，用户也从没问过自己在哪个分支。
  */
 export function StatusPanel({
   status,

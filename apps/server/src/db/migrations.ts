@@ -67,7 +67,7 @@ export const migrations = [
   {
     id: '002_settings',
     sql: `
-      -- 键值设置：设计文档第 7.3 节那几个参数。本机单用户工具，不做正经的配置系统。
+      -- 键值设置：超时 / 并发 / 扫描目录那几个参数。本机单用户工具，不做正经的配置系统。
       CREATE TABLE settings (
         key   TEXT PRIMARY KEY,
         value TEXT NOT NULL

@@ -22,7 +22,7 @@ import { useInvalidate } from '@/lib/invalidate'
  *
  * **不能只看 `status === 'behind'`**：作者 force push 改写历史时，本地 refs 看到的
  * 只是「落后 N 个」，判决却是 `rewritten`；作者删库重建时是 `unrelated`。
- * 这两种正是设计文档第 1 节要防的「更新到作者重置/删掉的东西」，
+ * 这两种正是这个软件要防的「更新到作者重置/删掉的东西」，
  * 而 `behind` 恰恰是它们的表象。判据用判决自己的 `canPull`。
  */
 function canPullNow(report: UpdateReport | null): boolean {
@@ -37,7 +37,7 @@ function isDontPull(r: UpdateRecommendation | null): r is UpdateRecommendation {
 /**
  * 更新报告：检查 → 看报告 → 勾选 → 更新 → 结果汇总。
  *
- * 原则照抄设计文档：**绝不自动更新**。检查完只是给建议，
+ * 原则是**绝不自动更新**。检查完只是给建议，
  * 真正动工作区的只有用户点了「更新选中的」之后的那一次。
  *
  * **容器是一个宽版弹窗**（原来是一块插进页面流的区域）。理由：它是一次性的任务，

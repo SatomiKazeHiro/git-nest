@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 /** 仓库根目录（apps/server → ../../..） */
-export const repoRoot = path.resolve(here, '..', '..', '..')
+ const repoRoot = path.resolve(here, '..', '..', '..')
 
 export const config = {
   port: Number(process.env['GIT_NEST_PORT'] ?? 5174),

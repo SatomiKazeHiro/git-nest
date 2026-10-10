@@ -11,7 +11,7 @@ import { queryKeys } from '@/lib/queryKeys'
 import { useRemoveProject } from '@/features/projects/queries'
 import { useSaveSettings, useSettings } from './queries'
 
-export interface ScannedRepoWithProject extends ScannedRepo {
+ interface ScannedRepoWithProject extends ScannedRepo {
   projectId: number | null
   projectName: string | null
   projectCategory: string | null
@@ -26,7 +26,7 @@ interface ScanResponse {
   found: ScannedRepoWithProject[]
 }
 
-export function useScan() {
+ function useScan() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: { dir: string; depth: number; remember: boolean }) =>
@@ -38,7 +38,7 @@ export function useScan() {
   })
 }
 
-export function useImport() {
+ function useImport() {
   const invalidate = useInvalidate()
   return useMutation({
     mutationFn: (input: { paths: string[]; category: string }) =>
@@ -369,7 +369,7 @@ export function ScanSection() {
   )
 }
 
-/** 设计文档 7.3：扫描区里也能「移除管理」——只删记录，不动磁盘。 */
+/** 扫描区里也能「移除管理」——只删记录，不动磁盘。 */
 function RemoveDialog({
   repo,
   busy,

@@ -106,7 +106,6 @@ export interface Project {
    * 而不是按人怎么记东西建模。摘要能从 README 读出来就不该存；来源链接只有
    * 一个格子，写不下「B 站 → 视频里提到的仓库 → GitHub」那一串；备注列表是
    * 「流」（N 条、各自时间戳），而人要的是「文档」（一处、持续改）。
-   * 撤销过程见设计文档第 13 节第 19 条。
    */
   record: string
   addedAt: string
@@ -208,7 +207,7 @@ export const REMOTE_CHECK_STATUSES = ['up_to_date', 'behind', 'ahead', 'diverged
  *
  * 为什么较真：界面上「新鲜度」用的是 `latestCheck.checkedAt`。如果失败的检查
  * 也能刷新它，那断网之后点一次「检查更新」，清单页反而会显示**今天刚确认过的
- * 绿色「已是最新」** —— 正是设计文档第 13 节第 10 条要消灭的「没有依据的肯定」。
+ * 绿色「已是最新」** —— 正是这个软件最要消灭的那种「没有依据的肯定」。
  */
 export function isRemoteCheckStatus(status: UpdateStatus): boolean {
   return (REMOTE_CHECK_STATUSES as readonly UpdateStatus[]).includes(status)

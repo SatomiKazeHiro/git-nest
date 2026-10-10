@@ -3,7 +3,7 @@ import type { UpdateReport } from '@git-nest/core/git'
 import { REMOTE_CHECK_STATUSES, type UpdateVerdict } from '@git-nest/core'
 
 /** `update_checks.detail` 的形状（JSON 列，故意不建表：只是给下一次检查留的备忘）。 */
-export interface UpdateCheckDetail {
+ interface UpdateCheckDetail {
   incoming: number
   outgoing: number
   tags: string[]

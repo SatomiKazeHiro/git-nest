@@ -40,7 +40,7 @@ import { VERDICT_REASON } from '../../types.ts'
 import type { InspectOptions, UpdateRecommendation } from './types.ts'
 
 /** 判决需要的全部事实。都可以由调用方复用自己已经读到的结果。 */
-export interface RecommendationFacts {
+ interface RecommendationFacts {
   /** `merge-base HEAD @{u}` 有没有输出。null = 读不出来（不敢下结论） */
   hasCommonAncestor: boolean | null
   /** 本地 HEAD 是不是上游的祖先。null = 读不出来 */
@@ -54,7 +54,7 @@ export interface RecommendationFacts {
 }
 
 /** 决定判决的三个 git 查询（外加一次 baseline 存在性检查）。 */
-export async function readRecommendationFacts(
+ async function readRecommendationFacts(
   path: string,
   options: InspectOptions = {},
 ): Promise<RecommendationFacts | null> {
@@ -81,7 +81,7 @@ export async function readRecommendationFacts(
 }
 
 /** 把「上次见到的上游 SHA」这个事实补进 facts（单独一次 git 调用）。 */
-export async function readBaselinePresence(
+ async function readBaselinePresence(
   path: string,
   baselineSha: string,
   options: InspectOptions = {},

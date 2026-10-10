@@ -30,7 +30,7 @@ let timer: NodeJS.Timeout | null = null
 /** 正在进行的那一轮。定时器与手动触发共用它，避免同一时间跑两遍。 */
 let inFlight: Promise<AutoFetchSummary> | null = null
 
-export interface AutoFetchSummary {
+ interface AutoFetchSummary {
   at: string
   /** 参与本轮的项目数 */
   projects: number

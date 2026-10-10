@@ -11,7 +11,7 @@ import {
  * 清单页那一格：**只回答「跟远程差多少」**。
  *
  * 这里刻意不显示分支名，也不显示「有未提交改动」：
- * - 分支名是 git 客户端的事。设计文档第 1 节写明「不做 git 客户端」，
+ * - 分支名是 git 客户端的事。这个软件不做 git 客户端，
  *   而用户从没问过「它在哪个分支」——他自己很清楚。
  * - 脏不脏是仓库**内部**状态，这个软件管的是仓库**跟上游的关系**。
  *   它只在「要动工作区」的那一刻才有用（更新前的校验），不该长期挂在清单上。
@@ -20,15 +20,15 @@ import {
  * 剩下的三件事就是用户要的三件：落后了没、落后多少、能不能拉。
  */
 /** 超过这个时长就认为「远程情况可能已经变了」 */
-export const STALE_AFTER_MS = 12 * 60 * 60 * 1000
+ const STALE_AFTER_MS = 12 * 60 * 60 * 1000
 
-export interface Freshness {
+ interface Freshness {
   /** 最近一次「检查更新」的时间；null = 从没查过 */
   checkedAt: string | null
   now?: number
 }
 
-export type FreshnessState = 'fresh' | 'stale' | 'never'
+ type FreshnessState = 'fresh' | 'stale' | 'never'
 
 export function freshnessOf({ checkedAt, now = Date.now() }: Freshness): FreshnessState {
   if (!checkedAt) return 'never'
