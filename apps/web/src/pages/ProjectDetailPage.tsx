@@ -206,7 +206,7 @@ function MissingNotice() {
  * 没做「从 SSH 推算出 `https://host/owner/repo`」：自建 host、非标准端口、嵌套路径
  * 都推不准，猜出来的链接比没有链接更坏。
  */
-export function RemoteRow({ url }: { url: string | null }) {
+function RemoteRow({ url }: { url: string | null }) {
   if (!url || !isWebUrl(url)) return null
   return (
     <div className="flex items-baseline gap-2">
@@ -224,7 +224,7 @@ export function RemoteRow({ url }: { url: string | null }) {
 }
 
 /** http(s) 才算网页地址；其余（SSH / file / 本地路径）一律不给链接 */
-export function isWebUrl(url: string): boolean {
+function isWebUrl(url: string): boolean {
   return /^https?:\/\//i.test(url)
 }
 
@@ -245,7 +245,7 @@ export function isWebUrl(url: string): boolean {
  * 这里原来挂的是备注列表（N 条、各自时间戳、能逐条改删），那是个「流」，
  * 而人要的是「文档」；摘要与来源链接也一起撤了——见设计文档第 13 节第 19 条。
  */
-export function RecordView({ record }: { record: string }) {
+function RecordView({ record }: { record: string }) {
   if (!record) {
     return (
       <p className="border border-dashed border-line px-3 py-3 text-[12.5px] text-ink-3">

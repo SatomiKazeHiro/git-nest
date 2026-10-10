@@ -29,8 +29,6 @@ export const createProjectSchema = z.object({
   sortOrder: z.number().int().optional(),
 })
 
-export type CreateProjectInput = z.input<typeof createProjectSchema>
-
 export const updateProjectSchema = z
   .object({
     name: trimmed.min(1, '名称不能为空').max(120).optional(),
@@ -47,8 +45,6 @@ export const updateProjectSchema = z
     sortOrder: z.number().int().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: '没有要修改的字段' })
-
-export type UpdateProjectInput = z.input<typeof updateProjectSchema>
 
 export const listProjectsQuerySchema = z.object({
   category: trimmed.optional(),

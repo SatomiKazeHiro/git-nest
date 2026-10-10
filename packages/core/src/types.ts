@@ -48,8 +48,6 @@ export const CATEGORIES = ['knowledge-base', 'backups', 'experiments', 'tools'] 
  */
 export const CATEGORY_VALUES = ['', ...CATEGORIES] as const
 
-export type Category = (typeof CATEGORIES)[number]
-
 /**
  * 分类的**显示名**。键是存进数据库的字面值，值是界面上给人看的中文。
  *
@@ -176,17 +174,6 @@ export function recommendationFrom(verdict: UpdateVerdict, canPull = false): Upd
   return { verdict, ahead: null, behind: null, canPull, reason: VERDICT_REASON[verdict] }
 }
 
-/** update_checks.status 的取值见 git/types.ts 的 UpdateStatus（同一份定义）。 */
-export interface UpdateCheck {
-  id: number
-  projectId: number
-  checkedAt: string
-  status: UpdateStatus
-  aheadCount: number | null
-  behindCount: number | null
-  detail: string | null
-}
-
 /** 列表页需要的最小检查摘要，M1 恒为 null（无 git 层）。 */
 export interface UpdateCheckSummary {
   checkedAt: string
@@ -311,12 +298,6 @@ export interface ProjectListItem extends Project {
  * 保留这个别名是因为调用方读起来仍然是在说详情页。
  */
 export type ProjectDetail = ProjectListItem
-
-export interface ProjectFilters {
-  category?: string
-  tag?: string
-  q?: string
-}
 
 /** 错误响应统一形状。 */
 export interface ApiErrorBody {

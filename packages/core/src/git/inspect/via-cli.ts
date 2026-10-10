@@ -16,6 +16,7 @@
 import { probe, type RunOptions } from '../runner.ts'
 import type {
   CommitFacts,
+  CommitInspector,
   DivergenceFacts,
   DivergenceInput,
   DivergenceInspector,
@@ -113,10 +114,10 @@ export const readDivergence: DivergenceInspector = async (
  * 没有上游时（纯本地仓库、detached HEAD）退回 `HEAD`：那时"远程"本就不存在，
  * 能显示自己最后一次提交也算有用。
  */
-export async function readUpstreamTipCommit(
+export const readUpstreamTipCommit: CommitInspector = async (
   path: string,
   options: InspectOptions,
-): Promise<CommitFacts | null> {
+): Promise<CommitFacts | null> => {
   const format = `--format=%h${FIELD}%s${FIELD}%an${FIELD}%cI`
   const upstream = await probe(['log', '-1', format, '@{u}'], cwd(path, options))
   const result = upstream.ok ? upstream : await probe(['log', '-1', format, 'HEAD'], cwd(path, options))

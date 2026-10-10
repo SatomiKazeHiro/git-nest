@@ -20,13 +20,6 @@ export function formatRelative(iso: string | null): string {
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
-/** 路径太长时中间省略，保留盘符/开头与末两级目录 */
-export function shortenPath(p: string, keep = 3): string {
-  const parts = p.split('/').filter(Boolean)
-  if (parts.length <= keep + 1) return p
-  return [parts[0], '…', ...parts.slice(-keep)].join('/')
-}
-
 /** 字节 → 人读的体积。**不四舍五入成整数 MB**：按钮上写着「1 MB」而实际是 1.2 MB，
  *  用户点下去才发现被截断，就晚了。 */
 export function formatBytes(n: number): string {

@@ -46,10 +46,6 @@ export function useScheduler(next: Scheduler): void {
   scheduler.setLimit(current().concurrency)
 }
 
-export function currentScheduler(): Scheduler {
-  return scheduler
-}
-
 /** 状态短缓存：列表页一次要问十几个仓库，同一次渲染不该重复跑 git */
 const STATUS_TTL_MS = 3_000
 
