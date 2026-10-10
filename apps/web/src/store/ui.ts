@@ -4,7 +4,7 @@ import { create } from 'zustand'
 /** 未归类的项目在界面上归到这个桶 */
 export const UNCATEGORIZED = '未分类'
 
-export interface Filters {
+interface Filters {
   q: string
   category: string | null
   tag: string | null
@@ -24,6 +24,20 @@ export interface Filters {
   attention: Attention | null
   /** 列表排序；null = 用服务端默认（分类分组 → 名称） */
   sort: ProjectSort | null
+}
+
+/**
+ * 「现在有筛选吗」。
+ *
+ * **不能用真值判断**：`category === ''` 是一个合法的筛选值（「只看没分类的」）。
+ * 真值判断会把它当成没筛选，于是两处同时失灵——工具条上的「清掉筛选」按钮
+ * 不出现，空状态也不说「换个条件看看」，用户就被卡在这里了。
+ *
+ * 它住在 store 里，因为这是**这份状态自己的语义**：工具条与空状态都要问这一句，
+ * 各写一遍迟早只改一处（原来它挂在清单页文件里，靠一条注释约束两处不许飘开）。
+ */
+export function hasFilter(filters: Filters): boolean {
+  return Boolean(filters.q || filters.tag || filters.own || filters.attention) || filters.category !== null
 }
 
 interface UiState {
