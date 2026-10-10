@@ -7,7 +7,7 @@
  *
  * - **每个图标一个文件、逐个 import**：加一个图标要新建文件 + 改所有调用点的
  *   import。图标从 5 个涨到 30 个时，import 那几行会比图标本身还长。
- * - **SVG sprite（`<symbol>` + `<use>`**：加图标倒是只追加一段 `<symbol>`，
+ * - **SVG sprite（`<symbol>` + `<use>`）：加图标倒是只追加一段 `<symbol>`，
  *   但外部文件里的 symbol 不能被稳定地跨文件引用，最后往往还是要把整个 sprite
  *   内联进 HTML，于是又回到一个大文件。
  * - **`.svg` 文件 + 构建插件转 React**：多一个构建依赖，而这里要的只是
@@ -18,24 +18,21 @@
  * 图标多到某个域自己放不下了（>20 个），按域拆成 `icons/status.tsx`、
  * `icons/nav.tsx`，注册表合并导入，调用点照样不变。
  *
- * ## 为什么内联而不是 `<img src="x.svg">`
+ * ## 形状：实心圆底 + 白色内容
  *
- * `<img>` 加载的 SVG **不继承宿主的 `currentColor`**——它是个独立文档。
- * 而这些图标的意义恰恰是「颜色随状态走」，内联才能做到。
+ * 5 个都是**实心圆底**加白色内容，而不是「描边圆 + 描边内容」——白描边压在
+ * 灰色描边上会糊成一团，而实心底是确定能读出来的。
  *
- * 顺带的好处：零额外请求，离线可用（本软件平时不联网）。
+ * 所以这三个颜色是**图标内部写死的，不吃 currentColor**：
+ * - 圆底：`fill="currentColor"`——它由**调用点**决定（见 `STATUS_ICON_TONE`）
+ * - 内容：`stroke="#ffffff"`——它要在任何底色上都看得见，所以**不能**跟着底色变
  *
- * ## 颜色
- *
- * **一律用项目的 token（`text-ok` / `text-bad` / `text-amber` / `text-flat`）**，
- * 不跟图标包自带的色值（那些是为了在白底网页上单独用而调的）。
- * 尤其 `synced` 不用青绿：本项目的不变量是**只有「可更新」是绿的**，
- * 「已同步」刻意做成灰——图标上色必须服从同一条。
+ * `aria-hidden` 是因为旁边就有文字，alt 会把同样的内容念两遍。
  *
  * ## 原始素材
  *
- * `.reference/git-nest-status-icons/`，5 个 24×24、`currentColor`、
- * stroke-width 1.8，与 lucide 的网格对齐。
+ * `.reference/git-nest-status-icons/`，24×24，与 lucide 的网格对齐。
+ * 当前这一版把描边圆改成了实心圆底，内容改成白色，是在这个素材之上的改动。
  */
 
 export type IconProps = {
@@ -44,24 +41,14 @@ export type IconProps = {
   size?: number
 }
 
-/** 5 个图标与 lucide 同一套描边参数——混用两套会看出粗细不一致 */
-const stroke = {
-  viewBox: '0 0 24 24',
-  fill: 'none',
-  stroke: 'currentColor',
-  strokeWidth: 1.8,
-  strokeLinecap: 'round',
-  strokeLinejoin: 'round',
-} as const
-
-function Svg({ className, size = 14, children }: IconProps & { children: React.ReactNode }) {
+export function Svg({ className, size = 14, children }: IconProps & { children: React.ReactNode }) {
   return (
     <svg
-      {...stroke}
+      viewBox="0 0 24 24"
       width={size}
       height={size}
+      fill="none"
       className={className}
-      /* 图标是装饰：旁边就有文字，alt 会把同样的内容念两遍 */
       aria-hidden
     >
       {children}
@@ -69,15 +56,29 @@ function Svg({ className, size = 14, children }: IconProps & { children: React.R
   )
 }
 
+/** 内容统一：白色描边、圆头圆角 */
+const mark = {
+  fill: 'none',
+  stroke: '#ffffff',
+  strokeWidth: 2.1,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+} as const
+
+/** 圆底统一：吃 currentColor，所以底色由调用点给 */
+const disc = (cx: number, cy: number, r: number) => <circle cx={cx} cy={cy} r={r} fill="currentColor" />
+
 /* ── 仓库状态（过滤面板那一段） ─────────────────────────────── */
 
 export function AllRepositoriesIcon(p: IconProps) {
   return (
     <Svg {...p}>
-      <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
-      <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
-      <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
-      <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+      {disc(12, 12, 10)}
+      {/* 四个方块：缩小到 r=10 的圆里，靠左上各让一点，视觉上才是「居中」 */}
+      <rect x="8.3" y="8.3" width="3.3" height="3.3" rx="0.8" fill="#ffffff" />
+      <rect x="12.4" y="8.3" width="3.3" height="3.3" rx="0.8" fill="#ffffff" />
+      <rect x="8.3" y="12.4" width="3.3" height="3.3" rx="0.8" fill="#ffffff" />
+      <rect x="12.4" y="12.4" width="3.3" height="3.3" rx="0.8" fill="#ffffff" />
     </Svg>
   )
 }
@@ -85,9 +86,11 @@ export function AllRepositoriesIcon(p: IconProps) {
 export function UpdatableIcon(p: IconProps) {
   return (
     <Svg {...p}>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 16V7" />
-      <path d="m8.5 10.5 3.5-3.5 3.5 3.5" />
+      {disc(12, 12, 10)}
+      <g {...mark}>
+        <path d="M12 16.2V8.2" />
+        <path d="m8.9 11.3 3.1-3.1 3.1 3.1" />
+      </g>
     </Svg>
   )
 }
@@ -95,8 +98,10 @@ export function UpdatableIcon(p: IconProps) {
 export function SyncedIcon(p: IconProps) {
   return (
     <Svg {...p}>
-      <circle cx="12" cy="12" r="9" />
-      <path d="m7.8 12.2 2.8 2.8 5.8-6" />
+      {disc(12, 12, 10)}
+      <g {...mark}>
+        <path d="m7.9 12.1 2.7 2.7 5.5-5.7" />
+      </g>
     </Svg>
   )
 }
@@ -104,9 +109,11 @@ export function SyncedIcon(p: IconProps) {
 export function NotRecommendedIcon(p: IconProps) {
   return (
     <Svg {...p}>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M8.5 8.5 15.5 15.5" />
-      <path d="M15.5 8.5 8.5 15.5" />
+      {disc(12, 12, 10)}
+      <g {...mark}>
+        <path d="M8.8 8.8 15.2 15.2" />
+        <path d="M15.2 8.8 8.8 15.2" />
+      </g>
     </Svg>
   )
 }
@@ -114,9 +121,12 @@ export function NotRecommendedIcon(p: IconProps) {
 export function PendingCheckIcon(p: IconProps) {
   return (
     <Svg {...p}>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 7.5v5" />
-      <path d="M12 16.2h.01" />
+      {disc(12, 12, 10)}
+      <g {...mark}>
+        <path d="M12 7.6v5.2" />
+        {/* 点用「线帽圆头 + 零长度」画，而不是实心小圆：同一套描边参数，粗细才一致 */}
+        <path d="M12 16.1h.01" />
+      </g>
     </Svg>
   )
 }
@@ -143,15 +153,21 @@ export function Icon({ name, ...rest }: IconProps & { name: IconName }) {
 }
 
 /**
- * 仓库状态那一组的**配色**。
+ * 仓库状态那一组的**底色**。
  *
- * 跟着 token 走而不是图标包自带的色值——理由见本文件顶部。
- * 「全部仓库」是中性灰：它不是一个状态，只是「不筛」。
+ * 加图标时在这里补一行——**形状代码一个字都不用动**（圆底吃 currentColor，
+ * 改的只是调用点拿到的 class）。
+ *
+ * ⚠️ 这五个色值目前**与清单状态列的药丸不是同一套**：
+ * 药丸用的是项目 token（可更新 深绿 / 已同步 **灰** / 不推荐 深红 / 待检查 琥珀），
+ * 而这里是这套更饱和的图标色。于是同一个状态在两处是两种颜色：
+ * 面板里「可更新」是中绿圆点，列表里那行是深绿药丸。
+ * 要对齐的话改的是 `StatusCell.tsx` 的 `ATTENTION_CLASS`，不是这里。
  */
 export const STATUS_ICON_TONE: Record<IconName, string> = {
-  'all-repositories': 'text-ink-3',
-  updatable: 'text-ok',
-  synced: 'text-flat',
-  'not-recommended': 'text-bad',
-  'pending-check': 'text-amber',
+  'all-repositories': 'text-[#2c85f9]',
+  updatable: 'text-[#28a870]',
+  synced: 'text-[#158e8b]',
+  'not-recommended': 'text-[#ec605b]',
+  'pending-check': 'text-[#6d80a1]',
 }

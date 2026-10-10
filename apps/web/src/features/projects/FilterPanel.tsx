@@ -243,7 +243,14 @@ function Item({
         这个筛」，而图标说的是「这一桶是什么状态」，两件事不该共用一个颜色。
         （`items-center` 而不是 `items-baseline`：SVG 没有基线，按基线排会歪。）
       */}
-      {icon ? <Icon name={icon} className={`shrink-0 ${STATUS_ICON_TONE[icon]}`} /> : null}
+      {/*
+        16px：圆底实际只有 14 的 **83%**（viewBox 24 里画的是 r=10 的圆），
+        所以 14 渲染出来只有 11.7px，比 13px 文字的 x-height 还矮，看着像附赠品。
+        16 → 圆底 13.3px，与文字齐平。要更大把这里的 prop 调大即可。
+      */}
+      {icon ? (
+        <Icon name={icon} size={16} className={`shrink-0 ${STATUS_ICON_TONE[icon]}`} />
+      ) : null}
       <span className="min-w-0 flex-1 truncate">{label}</span>
       <span className="font-mono text-[11px] text-ink-3">{count}</span>
     </button>
