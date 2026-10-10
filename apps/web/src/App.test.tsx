@@ -62,10 +62,8 @@ describe('App 的异常兜底', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     renderApp('/projects/1')
 
-    // 顶栏品牌与主导航还在（说明崩的是内容区，不是整个应用）
+    // 标题栏还在（说明崩的是内容区，不是整个应用）
     expect(screen.getByText('git-nest')).toBeTruthy()
-    expect(screen.getByRole('link', { name: '清单' }).getAttribute('href')).toBe('/')
-    expect(screen.getByRole('link', { name: '设置' }).getAttribute('href')).toBe('/settings')
     // 降级界面自己也提供回清单的入口
     expect(screen.getAllByRole('link', { name: /清单/ }).length).toBeGreaterThan(0)
   })

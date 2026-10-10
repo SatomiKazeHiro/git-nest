@@ -1,7 +1,9 @@
-import { useMemo, type ReactNode } from 'react'
+import { useMemo, type ComponentType, type ReactNode } from 'react'
 import { orderBy } from 'es-toolkit'
+import { LaptopMinimal } from 'lucide-react'
 import { categoryLabel, type Attention } from '@git-nest/core'
 import { UNCATEGORIZED, useUiStore } from '@/store/ui'
+import { Icon, STATUS_ICON_TONE, type IconName } from '@/components/icons'
 import { useProjects } from './queries'
 
 /**
@@ -97,27 +99,37 @@ export function FilterPanel() {
         「需要确认」（verdict=diverged）不单列一项：它是少数情况，
         混进「不推荐」那一档会让后者失去「作者改写了历史」那层警告的分量。
       */}
-      <Group title="仓库状态">
-        <Item label="全部仓库" count={projects.length} active={attention === null} onClick={clearAttention} />
+      <Group title="仓库状态" icon={LaptopMinimal}>
         <Item
+          icon="all-repositories"
+          label="全部仓库"
+          count={projects.length}
+          active={attention === null}
+          onClick={clearAttention}
+        />
+        <Item
+          icon="updatable"
           label="可更新"
           count={attentionCounts.ready}
           active={attention === 'ready'}
           onClick={() => setAttention(attention === 'ready' ? null : 'ready')}
         />
         <Item
+          icon="synced"
           label="已同步"
           count={attentionCounts.synced}
           active={attention === 'synced'}
           onClick={() => setAttention(attention === 'synced' ? null : 'synced')}
         />
         <Item
+          icon="not-recommended"
           label="不推荐"
           count={attentionCounts.blocked}
           active={attention === 'blocked'}
           onClick={() => setAttention(attention === 'blocked' ? null : 'blocked')}
         />
         <Item
+          icon="pending-check"
           label="待检查"
           count={attentionCounts.unchecked}
           active={attention === 'unchecked'}
@@ -171,10 +183,30 @@ export function FilterPanel() {
   )
 }
 
-function Group({ title, children }: { title: string; children: ReactNode }) {
+/**
+ * 一段。`icon` 是可选的：给了就在段标题左边放一个。
+ *
+ * 图标走 lucide（项目已经在用），而条目里的状态图标走 `@/components/icons` 的
+ * 注册表——两套并存不冲突：前者是「这一段讲什么」的语义图标（一次性的、
+ * 跟着 lucide 走），后者是「这一桶是什么状态」且要按状态配色（所以自带
+ * `currentColor` 的注册表）。混进注册表反而会让那 5 个状态图标的调色板
+ * 背上「还得给每个图标补一套语义色」的包袱。
+ */
+function Group({
+  title,
+  icon: Icon,
+  children,
+}: {
+  title: string
+  icon?: ComponentType<{ size?: number; className?: string; 'aria-hidden'?: boolean }>
+  children: ReactNode
+}) {
   return (
     <section>
-      <h2 className="mb-1 px-1 text-[11px] font-medium text-ink-3">{title}</h2>
+      <h2 className="mb-1 flex items-center gap-1.5 px-1 text-[11px] font-medium text-ink-3">
+        {Icon ? <Icon size={13} aria-hidden className="shrink-0" /> : null}
+        {title}
+      </h2>
       <div className="flex flex-col">{children}</div>
     </section>
   )
@@ -185,21 +217,33 @@ function Item({
   count,
   active,
   onClick,
+  icon,
 }: {
   label: string
   count: number
   active: boolean
   onClick?: () => void
+  /**
+   * 左侧图标的名字（不是组件）。**按名字传而不是 import 组件**：
+   * 这样注册表里加一个图标，调用点一行都不用改。
+   */
+  icon?: IconName
 }) {
   return (
     <button
       onClick={onClick}
       disabled={!onClick}
       aria-pressed={active}
-      className={`flex cursor-pointer items-baseline gap-1.5 rounded-[3px] px-1 py-1.5 text-left text-[13px] ${
+      className={`flex cursor-pointer items-center gap-1.5 rounded-[3px] px-1 py-1.5 text-left text-[13px] ${
         active ? 'bg-accent-wash text-accent-ink' : 'text-ink-2 hover:bg-sunken hover:text-ink'
       } disabled:cursor-default disabled:text-ink-3 disabled:hover:bg-transparent`}
     >
+      {/*
+        图标带自己的状态色，**不跟着这一行的选中态走**——选中的是「我现在按
+        这个筛」，而图标说的是「这一桶是什么状态」，两件事不该共用一个颜色。
+        （`items-center` 而不是 `items-baseline`：SVG 没有基线，按基线排会歪。）
+      */}
+      {icon ? <Icon name={icon} className={`shrink-0 ${STATUS_ICON_TONE[icon]}`} /> : null}
       <span className="min-w-0 flex-1 truncate">{label}</span>
       <span className="font-mono text-[11px] text-ink-3">{count}</span>
     </button>

@@ -1,7 +1,6 @@
 import { Route, Routes } from 'react-router'
 import { AppShell } from '@/components/AppShell'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
-import { Sidebar } from '@/components/Sidebar'
 import { DetailPlaceholder, Workspace } from '@/features/projects/Workspace'
 import { ProjectDetailPage } from '@/pages/ProjectDetailPage'
 import { SettingsPage } from '@/pages/SettingsPage'
@@ -9,15 +8,8 @@ import { EmptyState } from '@/components/ui'
 
 export function App() {
   return (
-    <AppShell
-      sidebar={
-        // 侧栏也在边界里面：它自己崩掉（比如 categories 拿到意外数据）同样不该白屏
-        <ErrorBoundary>
-          <Sidebar />
-        </ErrorBoundary>
-      }
-    >
-      {/* 兜住页面渲染期的异常：只炸内容区，外壳（标题栏 / 侧栏 / 状态栏）还能用，
+    <AppShell>
+      {/* 兜住页面渲染期的异常：只炸内容区，外壳（标题栏 / 状态栏）还能用，
           所以用户仍然点得回清单，而不是白屏。 */}
       <ErrorBoundary>
         <Routes>

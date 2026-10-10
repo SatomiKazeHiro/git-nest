@@ -33,8 +33,7 @@ interface UiState {
   /** 打开表单时为 null（新建），否则为正在编辑的项目 id */
   editingId: number | null
   formOpen: boolean
-  /** 左栏与详情栏可以折叠——桌面软件的窗格就该能收起来 */
-  navOpen: boolean
+  /** 详情栏可以折叠——桌面软件的窗格就该能收起来 */
   detailOpen: boolean
   setQuery: (q: string) => void
   setCategory: (c: string | null) => void
@@ -51,7 +50,6 @@ interface UiState {
   openCreate: () => void
   openEdit: (id: number) => void
   closeForm: () => void
-  toggleNav: () => void
   toggleDetail: () => void
 }
 
@@ -62,7 +60,6 @@ export const useUiStore = create<UiState>((set) => ({
   selected: new Set<number>(),
   editingId: null,
   formOpen: false,
-  navOpen: true,
   detailOpen: true,
 
   setQuery: (q) => set((s) => ({ filters: { ...s.filters, q } })),
@@ -92,7 +89,6 @@ export const useUiStore = create<UiState>((set) => ({
   openCreate: () => set({ formOpen: true, editingId: null }),
   openEdit: (editingId) => set({ formOpen: true, editingId }),
   closeForm: () => set({ formOpen: false, editingId: null }),
-  toggleNav: () => set((s) => ({ navOpen: !s.navOpen })),
   toggleDetail: () => set((s) => ({ detailOpen: !s.detailOpen })),
 }))
 

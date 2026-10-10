@@ -59,7 +59,6 @@ beforeEach(() => {
     filters: { q: '', category: null, tag: null, own: null, attention: null, sort: null },
     formOpen: false,
     editingId: null,
-    navOpen: true,
     detailOpen: true,
   })
   server.use(
@@ -153,21 +152,12 @@ describe('清单里的「我自己的」记号', () => {
 })
 
 /**
- * 侧栏与过滤面板是**两样东西**：
+ * 过滤面板**只在清单页存在**。
  *
- * ```
- * 清单页：| sidebar | filter panel | content |
- * 设置页：| sidebar | content |
- * ```
- *
- * 侧栏只有页面（点它换一页）；过滤面板是清单页自己的控件（点了只筛眼前这张
- * 表）。混在一列里时「分类」看起来像个能点过去的页面，点了却什么都不换——
- * 那种落差最难察觉。
- *
- * 而且过滤面板**只在清单页存在**：设置页那一栏只有侧栏，筛选没有对象可筛
- * （死控件比消失更糟：点了没反应，用户只会觉得这个应用卡了）。
+ * 设置页里没有可筛的对象，所以那一栏不出现——死控件比消失更糟：
+ * 点了没反应，用户只会觉得这个应用卡了。
  */
-describe('侧栏只放页面，过滤项在另一条列', () => {
+describe('过滤面板只在清单页存在', () => {
   function renderAt(path: string) {
     const client = new QueryClient({
       defaultOptions: { queries: { refetchOnWindowFocus: false, retry: false, gcTime: 0 } },
@@ -180,21 +170,6 @@ describe('侧栏只放页面，过滤项在另一条列', () => {
       ),
     })
   }
-
-  /**
-   * 读 `aria-label` 而不是 `textContent`：侧栏现在是 60px 的图标栏，
-   * **没有可见文字**——按屏幕上的字去查会拿到一堆空串。
-   */
-  const labelsIn = (sel: string) =>
-    [...document.querySelectorAll(`${sel} a, ${sel} button`)].map(
-      (e) => e.getAttribute('aria-label') ?? e.textContent!.trim(),
-    )
-
-  it('侧栏里只有两个页面，一个过滤项都没有', async () => {
-    renderAt('/')
-    await waitFor(() => expect(screen.getByText('theirs')).toBeTruthy())
-    expect(labelsIn('.nav')).toEqual(['清单', '设置'])
-  })
 
   it('过滤面板是四段：仓库状态 / 我自己的 / 分类 / 标签', async () => {
     renderAt('/')
@@ -212,8 +187,6 @@ describe('侧栏只放页面，过滤项在另一条列', () => {
     )
     expect(labels).toContain('我自己的1')
     expect(labels).not.toContain('我自己的')
-    // 侧栏一个过滤项都没沾上
-    expect(labelsIn('.nav')).toEqual(['清单', '设置'])
   })
 
   it('仓库状态五项的计数来自全量，不是筛选后的', async () => {
@@ -269,7 +242,6 @@ describe('侧栏只放页面，过滤项在另一条列', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: '设置' })).toBeTruthy())
 
     expect(document.querySelector('.filter-panel')).toBeNull()
-    expect(labelsIn('.nav')).toEqual(['清单', '设置'])
   })
 })
 

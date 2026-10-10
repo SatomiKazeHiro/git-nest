@@ -29,20 +29,11 @@ export interface GlobalCommand {
 export const GLOBAL_COMMANDS: GlobalCommand[] = [
   { id: 'focus-search', label: '搜索项目', combo: 'Ctrl+F', inInput: true },
   { id: 'open-settings', label: '设置', combo: 'Ctrl+,', inInput: true },
-  { id: 'toggle-nav', label: '显示 / 隐藏左栏', combo: 'Ctrl+B', inInput: true },
   { id: 'toggle-detail', label: '显示 / 隐藏详情栏', combo: 'Ctrl+J', inInput: true },
   { id: 'check-updates', label: '联网检查更新（只查勾选的）', combo: 'Ctrl+Enter' },
   { id: 'select-all', label: '勾选当前清单的全部行', combo: 'Ctrl+A' },
   { id: 'refresh-local', label: '重读本地状态（不联网）', combo: 'F5' },
 ]
-
-/** 行内命令。只在焦点落在清单表里时由表格自己处理。 */
-export const ROW_COMMANDS = [
-  { combo: '↑ / ↓', label: '移动行焦点' },
-  { combo: 'Space', label: '勾选 / 取消勾选这一行' },
-  { combo: 'Enter', label: '在右边详情栏打开' },
-  { combo: 'Delete', label: '把这一行移出清单' },
-] as const
 
 /**
  * 键盘事件 → 规范化的组合键字符串（`Ctrl+Shift+U`、`F5`、`Escape`）。

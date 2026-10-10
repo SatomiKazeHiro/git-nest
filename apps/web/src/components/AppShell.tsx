@@ -4,29 +4,25 @@ import { hasCommand, overlayOpen, registerCommand, runCommand } from '@/lib/comm
 import { GLOBAL_COMMANDS, comboOf, isEditable } from '@/lib/keys'
 import { useUiStore } from '@/store/ui'
 import { ProjectFormDialog } from '@/features/projects/ProjectFormDialog'
-import { MenuBar } from './MenuBar'
-import { StatusBar } from './StatusBar'
 import { TitleBar } from './TitleBar'
 
 /**
- * 窗口外壳：标题栏 / 菜单栏 / 主体（导航栏 + 内容区）/ 状态栏。
+ * 窗口外壳：标题栏 / 主体。
  *
  * **根节点不滚。** 原来这里是 `min-h-screen flex-col` + 粘性顶栏，也就是一个
  * 会滚的网页文档：页面自己滚、顶栏浮在上面、选中提示浮在底部。
- * 桌面软件的窗口是固定的一屏，纵向空间由四条带（标题 / 菜单 / 主体 / 状态）
- * 占掉，滚动只发生在「主体」里面——所以真正要滚的是哪一栏，取决于它有多长，
+ * 桌面软件的窗口是固定的一屏，纵向空间由两条带（标题 / 主体）占掉，
+ * 滚动只发生在「主体」里面——所以真正要滚的是哪一栏，取决于它有多长，
  * 而不是取决于谁加了 `sticky`。
  *
  * 布局规则都写在 `index.css` 的「窗口骨架」一节里，这里只负责把带拼起来，
  * 外加装全局快捷键。
  */
-export function AppShell({ sidebar, children }: { sidebar?: ReactNode; children: ReactNode }) {
+export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
-  const navOpen = useUiStore((s) => s.navOpen)
 
   // 与操作对象无关的那几条命令，挂载一次就够
   useEffect(() => registerCommand('open-settings', () => navigate('/settings')), [navigate])
-  useEffect(() => registerCommand('toggle-nav', () => useUiStore.getState().toggleNav()), [])
   useEffect(() => registerCommand('toggle-detail', () => useUiStore.getState().toggleDetail()), [])
 
   /*
@@ -62,14 +58,9 @@ export function AppShell({ sidebar, children }: { sidebar?: ReactNode; children:
   return (
     <div className="app">
       <TitleBar />
-      <MenuBar />
-      <div className={`body ${navOpen ? '' : 'body-nav-hidden'}`}>
-        {sidebar && navOpen ? (
-          <aside className="nav border-r border-line bg-rail">{sidebar}</aside>
-        ) : null}
+      <div className="body">
         <main className="content">{children}</main>
       </div>
-      <StatusBar />
       {/*
         「编辑资料」弹窗在整个应用里**只挂这一个**。
 
