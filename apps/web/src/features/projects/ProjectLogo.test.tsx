@@ -19,7 +19,8 @@ describe('ProjectLogo', () => {
 
   it('宽度给了就必须给高度：preflight 的 `height: auto` 会把宽图压成细条', () => {
     const { container } = render(<ProjectLogo projectId={1} />)
-    expect(container.querySelector('img')?.style.height).toBe('16px')
+    // 缺省 40：它替换的是清单里那枚图标的位置
+    expect(container.querySelector('img')?.style.height).toBe('40px')
   })
 
   it('加载失败就整个消失——不留破图，也不留占位', () => {

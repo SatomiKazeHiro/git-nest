@@ -65,13 +65,13 @@ function status(overrides: Partial<RepoStatus> = {}): RepoStatus {
   }
 }
 
-function renderRow(s?: RepoStatus) {
+function renderRow(s?: RepoStatus, overrides: Partial<ProjectListItem> = {}) {
   return render(
     <MemoryRouter>
       <table>
         <tbody>
           <ProjectRow
-            project={project}
+            project={{ ...project, ...overrides }}
             status={s}
             current={false}
             onOpen={() => {}}
@@ -127,5 +127,25 @@ describe('ProjectRow · 「同步状态」列不许说没依据的话', () => {
 
     expect(text).toContain('远程领先')
     expect(text).toContain('↓3')
+  })
+})
+
+/**
+ * logo 与那枚文件夹图标**是同一格**：认出 logo 就顶掉它，认不出来才留着。
+ * 并排放两个图标只是占地方——它们回答的是同一个问题（「这是哪个仓库」）。
+ */
+describe('ProjectRow · 仓库那一格的图标', () => {
+  it('认出了 logo：用它顶掉文件夹图标', () => {
+    const { container } = renderRow(status(), { hasLogo: true })
+
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('/api/projects/5/logo')
+    expect(container.querySelector('.lucide-folder-git-2')).toBeNull()
+  })
+
+  it('没认出来：还是那枚文件夹图标（认不出来是常态）', () => {
+    const { container } = renderRow(status())
+
+    expect(container.querySelector('.lucide-folder-git-2')).not.toBeNull()
+    expect(container.querySelector('img')).toBeNull()
   })
 })

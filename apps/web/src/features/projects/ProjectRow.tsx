@@ -64,7 +64,16 @@ export function ProjectRow({
       */}
       <td className="col-repo">
         <span className="flex min-w-0 items-start gap-1.5">
-          <FolderGit2 size={15} aria-hidden className="mt-[3px] shrink-0 text-ink-3" />
+          {/*
+            这一格原来固定是一枚文件夹图标。**认出 logo 时它就被 logo 顶掉**——
+            因为它们是同一件事的两种答案（「这是哪个仓库」），并排放两个图标
+            只是在占地方。没认出来就还是那枚文件夹图标：认不出来是常态。
+          */}
+          {p.hasLogo ? (
+            <ProjectLogo projectId={p.id} />
+          ) : (
+            <FolderGit2 size={15} aria-hidden className="mt-[3px] shrink-0 text-ink-3" />
+          )}
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-1.5">
               {/*
@@ -72,8 +81,6 @@ export function ProjectRow({
                 它不是被丢了：详情页的概览里仍有「身份 · 我自己的」那枚 chip，
                 而批量检查跳过谁，检查弹窗顶部会点名说清楚。
               */}
-              {/* 认出来的 logo。没有就什么都不显示——这一格不是「缺了点什么」 */}
-              {p.hasLogo ? <ProjectLogo projectId={p.id} /> : null}
               <Link
                 to={`/projects/${p.id}`}
                 aria-current={current ? 'page' : undefined}

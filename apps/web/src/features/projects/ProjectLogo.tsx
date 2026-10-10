@@ -13,10 +13,11 @@ import { useState } from 'react'
  */
 export function ProjectLogo({
   projectId,
-  size = 16,
+  size = 40,
   className = '',
 }: {
   projectId: number
+  /** 缺省 40：它替换的是清单里那枚图标的位置 */
   size?: number
   /** 微调位置用（详情页要跟 17px 的标题对齐） */
   className?: string
