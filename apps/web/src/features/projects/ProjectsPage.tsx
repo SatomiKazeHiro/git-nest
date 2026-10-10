@@ -1,10 +1,9 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useDebounce } from 'ahooks'
 import type { ProjectListItem } from '@git-nest/core'
 import { Button, ErrorNote } from '@/components/ui'
 import { ApiError } from '@/lib/api'
-import { registerCommand } from '@/lib/commands'
 import { useUiStore } from '@/store/ui'
 import { useProjects } from './queries'
 import { useStatuses } from '@/features/status/queries'
@@ -39,9 +38,8 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
   */
   const { id } = useParams()
   const currentId = Number(id) || null
-  const detailOpen = useUiStore((s) => s.detailOpen)
-  // 没选中项目就没有详情；`Ctrl+J` 还能把它收起来
-  const showDetail = currentId !== null && detailOpen
+  // 没选中项目就没有详情
+  const showDetail = currentId !== null
   const filters = useUiStore((s) => s.filters)
   const [pendingRemoval, setPendingRemoval] = useState<ProjectListItem | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
@@ -63,25 +61,6 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
     isFetching: statusesLoading,
     refetch: refetchStatuses,
   } = useStatuses((projects ?? []).map((p) => p.id))
-
-  /*
-    注册清单页自己算得出来的那两条命令：
-    - `check-updates` 要作用于「当前筛选出的全部」，而那只有清单页知道；
-    - `focus-search` 要找到那个搜索框。
-
-    `open-create` / `open-scan` **连同菜单栏一起删了**：它们原是菜单项，
-    菜单不在了之后，唯一会调用 `runCommand` 的就是按快捷键表派发的那个
-    keydown 处理器，而表里没有这两条——也就是说那两个闭包永远跑不到。
-  */
-  useEffect(() => {
-    const offs = [
-      registerCommand('check-updates', () => setPanelOpen(true)),
-      registerCommand('focus-search', () => {
-        document.getElementById('project-search')?.focus()
-      }),
-    ]
-    return () => offs.forEach((off) => off())
-  }, [])
 
   if (error) {
     return (
