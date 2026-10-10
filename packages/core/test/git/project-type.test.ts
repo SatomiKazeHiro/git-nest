@@ -1,7 +1,8 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { detectProjectType } from '../../src/git/project-type.ts'
+import { detectProjectType, TYPE_RULES } from '../../src/git/project-type.ts'
+import { PROJECT_TYPES } from '../../src/project-types.ts'
 import { cleanup, tempDir } from '../helpers/repo.ts'
 
 /**
@@ -121,6 +122,17 @@ describe('detectProjectType · 必须读内容才能分的', () => {
 })
 
 describe('detectProjectType · 兜底与认不出来', () => {
+  it('规则表与展示目录必须一致：规则认出来的 type，目录里得有它', () => {
+    /*
+      两处列表分在两个文件里（规则表要用 fs，只能待在 node-only 入口；
+      目录要给 web 显示中文名），所以会漂。漂的后果很安静：规则认出来了，
+      可图标文件按目录的名字找，界面上那个角标永远画不出来。
+    */
+    const known = new Set(PROJECT_TYPES.map((t) => t.type))
+    for (const rule of TYPE_RULES) {
+      expect(known.has(rule.type), `${rule.type} 不在 PROJECT_TYPES 里`).toBe(true)
+    }
+  })
   it('语言那一层', async () => {
     expect(await detectProjectType(project({ 'main.py': 'print(1)' }))).toBe('python')
     expect(await detectProjectType(project({ 'Cargo.toml': '[package]' }))).toBe('rust')

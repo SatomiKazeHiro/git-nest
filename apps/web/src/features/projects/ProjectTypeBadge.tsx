@@ -12,13 +12,23 @@ import { typeIconUrl } from './typeIcons'
  * 图标的来源是 `docs/types/<type>.svg`（见 `typeIcons.ts`）：**没有那个文件就不画**
  * ——认不出来、或者还没收集到那张图标，都是常见的正常状态，界面上不该出现空圈。
  */
-const BADGE_PX = 16
-const ICON_PX = 12
+const DEFAULT_PX = 16
 
-export function ProjectTypeBadge({ type }: { type: string | null }) {
+export function ProjectTypeBadge({
+  type,
+  size = DEFAULT_PX,
+}: {
+  type: string | null
+  /** 白圆的直径。图标按 3/4 缩放（16 → 12），所以放大看的时候比例不变 */
+  size?: number
+}) {
   const [failed, setFailed] = useState(false)
   const url = typeIconUrl(type)
   if (!url || failed) return null
+
+  const icon = Math.round((size * 3) / 4)
+  // 边框跟着放大，否则 4 倍视图里那条线细得像没有
+  const border = Math.max(1, Math.round(size / 16))
 
   return (
     <span
@@ -27,14 +37,14 @@ export function ProjectTypeBadge({ type }: { type: string | null }) {
         塞进去会盖掉文件夹右下角一块，出格一点看起来才像「贴上去的标记」。
       */
       className="absolute -bottom-px -right-px flex items-center justify-center rounded-full border border-line bg-white"
-      style={{ width: BADGE_PX, height: BADGE_PX }}
+      style={{ width: size, height: size, borderWidth: border }}
     >
       <img
         src={url}
         alt=""
         aria-hidden
         onError={() => setFailed(true)}
-        style={{ width: ICON_PX, height: ICON_PX }}
+        style={{ width: icon, height: icon }}
         className="object-contain"
       />
     </span>
