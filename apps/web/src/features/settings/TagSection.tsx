@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useCreateTag, useRemoveTag, useTags } from '@/features/projects/queries'
+import { useCreateTag, useRemoveTag, useTags } from '@/features/tags/queries'
 import { Button, ErrorNote, Input } from '@/components/ui'
 import { ApiError } from '@/lib/api'
 

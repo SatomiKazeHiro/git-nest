@@ -6,8 +6,10 @@ import { MAX_SCAN_RESULTS, type ScannedRepo } from '@git-nest/core'
 import { ApiError, api } from '@/lib/api'
 import { Button, Dialog, ErrorNote, Input } from '@/components/ui'
 import { SettingRow } from './SettingRow'
+import { useInvalidate } from '@/lib/invalidate'
+import { queryKeys } from '@/lib/queryKeys'
+import { useRemoveProject } from '@/features/projects/queries'
 import { useSaveSettings, useSettings } from './queries'
-import { useRemoveProject, useInvalidate } from '@/features/projects/queries'
 
 export interface ScannedRepoWithProject extends ScannedRepo {
   projectId: number | null
@@ -31,7 +33,7 @@ export function useScan() {
       api.post<ScanResponse>('/scan', input),
     onSuccess: (_data, input) => {
       // remember 会把目录写进设置，不刷新的话新加的常用目录不会出现在页面上
-      if (input.remember) void qc.invalidateQueries({ queryKey: ['settings'] })
+      if (input.remember) void qc.invalidateQueries({ queryKey: queryKeys.settings })
     },
   })
 }

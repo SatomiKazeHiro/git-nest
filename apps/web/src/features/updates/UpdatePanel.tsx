@@ -15,7 +15,7 @@ import {
 } from '@/features/status/StatusCell'
 import { isPull, isReport, useUpdateTask, type TaskSnapshot } from './taskStream'
 import { useSettings } from '@/features/settings/queries'
-import { useInvalidate } from '@/features/projects/queries'
+import { useInvalidate } from '@/lib/invalidate'
 
 /**
  * 这一条能不能勾（＝能不能安全快进）。

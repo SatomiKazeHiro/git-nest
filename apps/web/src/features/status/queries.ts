@@ -1,33 +1,19 @@
+/**
+ * 状态这个资源的数据访问。
+ *
+ * **缓存键在 `lib/queryKeys.ts`**（`statusRoot` / `statusBatch` / `statusOne`）。
+ * 它们以前就定义在这个文件里（`statusKeys`），于是 `['status']` 这个根在
+ * `features/projects/queries.ts` 里还有一份——同一个名字两处声明，
+ * 改一处另一处不会报错，只会**默默地不再失效**。
+ */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { MAX_STATUS_IDS, type RepoStatus } from '@git-nest/core'
 import { api } from '@/lib/api'
+import { normalizedIds, queryKeys } from '@/lib/queryKeys'
 
 export interface ProjectStatus {
   projectId: number
   status: RepoStatus
-}
-
-export const statusKeys = {
-  /**
-   * 批量状态的 key。**排序去重之后再拼**：`[1,2]` 与 `[2,1]` 是同一批仓库，
-   * 不该是两条缓存（同一屏数据缓存两份，翻页/勾选顺序一变就多跑一轮 git）。
-   */
-  batch: (ids: number[]) => ['status', sortedIds(ids)] as const,
-  /**
-   * 单个项目的状态。**key 里不带「这次要不要绕缓存」**：
-   * 那是一次请求的参数，不是数据身份；放进 key 会（a）每点一次「重读本地状态」
-   * 多一条永不复用的缓存条目，（b）让 `fresh` 粘在后续所有自动重取上
-   * ——手动动作污染自动读取。
-   */
-  one: (id: number) => ['status', 'one', id] as const,
-}
-
-function idList(ids: number[]): number[] {
-  return [...new Set(ids)].sort((a, b) => a - b)
-}
-
-function sortedIds(ids: number[]): string {
-  return idList(ids).join(',')
 }
 
 /**
@@ -43,9 +29,10 @@ function sortedIds(ids: number[]): string {
  */
 export function useStatuses(ids: number[]) {
   return useQuery({
-    queryKey: statusKeys.batch(ids),
+    queryKey: queryKeys.statusBatch(ids),
     queryFn: async () => {
-      const all = idList(ids)
+      // 与键用同一个归一：键里是排序去重后的 id，请求也必须按同一顺序切块
+      const all = normalizedIds(ids)
       const merged = new Map<number, RepoStatus>()
       for (let i = 0; i < all.length; i += MAX_STATUS_IDS) {
         const chunk = all.slice(i, i + MAX_STATUS_IDS)
@@ -70,7 +57,7 @@ export function useStatuses(ids: number[]) {
 export function useProjectStatus(id: number | null) {
   const qc = useQueryClient()
   const query = useQuery({
-    queryKey: statusKeys.one(id ?? 0),
+    queryKey: queryKeys.statusOne(id ?? 0),
     queryFn: () =>
       api.get<{ status: RepoStatus }>(`/projects/${id}/status`).then((r) => r.status),
     enabled: id !== null,
@@ -83,7 +70,7 @@ export function useProjectStatus(id: number | null) {
       return api.get<{ status: RepoStatus }>(`/projects/${id}/status?fresh=true`).then((r) => r.status)
     },
     onSuccess: (status) => {
-      qc.setQueryData(statusKeys.one(id ?? 0), status)
+      qc.setQueryData(queryKeys.statusOne(id ?? 0), status)
     },
   })
 

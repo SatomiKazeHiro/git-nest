@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { queryKeys } from '@/features/projects/queries'
+import { queryKeys } from '@/lib/queryKeys'
 
 /**
  * wire 上的形状，**照抄服务端返回的四个字段**。

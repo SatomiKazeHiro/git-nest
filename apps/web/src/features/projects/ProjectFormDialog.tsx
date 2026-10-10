@@ -4,13 +4,9 @@ import { CATEGORIES, categoryLabel, createProjectSchema } from '@git-nest/core'
 import { ApiError } from '@/lib/api'
 import { Button, Dialog, ErrorNote, Field, Input, Textarea } from '@/components/ui'
 import { TagPicker } from './TagPicker'
-import {
-  useCreateProject,
-  useProject,
-  useSetProjectTags,
-  useTags,
-  useUpdateProject,
-} from './queries'
+import { useCreateProject, useProject, useSetProjectTags, useUpdateProject } from './queries'
+// 标签是独立资源：选标签这个动作读的是 tags feature 的接口，不是项目自己的
+import { useTags } from '@/features/tags/queries'
 import { useUiStore } from '@/store/ui'
 
 interface FormState {
