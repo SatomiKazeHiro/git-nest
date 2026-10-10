@@ -56,4 +56,5 @@ export {
   type LogOptions,
 } from './log.ts'
 export { scanDirectory, type ScanOptions } from './scan.ts'
+export { readReadme, README_NAMES, type ReadmeResult } from './readme.ts'
 export { pullRepo, type PullOptions } from './pull.ts'

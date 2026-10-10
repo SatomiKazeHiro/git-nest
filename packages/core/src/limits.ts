@@ -31,3 +31,16 @@ export const MAX_BATCH_IDS = 1000
  * 现在扫描的结果集永远不会超过导入能吃的量，这是构造上成立的，不靠人去对。
  */
 export const MAX_SCAN_RESULTS = 500
+
+/**
+ * README 首屏给多少字节、点「加载完整文档」给多少字节。**前后端读同一个数字。**
+ *
+ * 放这里而不是各自写死：web 端要用它判断「这个 README 大到连完整版都别显示了」，
+ * 而 web 端不知道 1MB 这个上限的话，就只能给出一个点了也没用的按钮。
+ * （本文件开头那段注释说的就是这件事——上限曾经是五个各写各的数字。）
+ *
+ * 64KB 约 1500–2000 行，正经的说明文档读不完这一段，而 markdown 渲染到几秒
+ * 卡住也就在这个量级。这两个数**实测校准过**（计划 Task 4 Step 9 量过）。
+ */
+export const README_MAX_BYTES = 64 * 1024
+export const README_FULL_MAX_BYTES = 1024 * 1024

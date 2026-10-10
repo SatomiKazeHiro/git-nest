@@ -4,6 +4,7 @@ import { probe } from './runner.ts'
 import { readRemoteUrl } from './status.ts'
 import { defaultScheduler, type Scheduler } from './scheduler.ts'
 import { MAX_SCAN_RESULTS } from '../limits.ts'
+import { README_NAMES } from './readme.ts'
 import type { ScanResult, ScannedRepo } from './types.ts'
 
 export interface ScanOptions {
@@ -26,8 +27,6 @@ export interface ScanOptions {
    */
   maxResults?: number
 }
-
-const README_NAMES = ['README.md', 'readme.md', 'README.MD', 'README', 'README.txt']
 
 /** 摘要只取 60 个字符，读超过这个大小的 README 是纯浪费（2MB 足够装下任何正经说明） */
 const MAX_README_BYTES = 2 * 1024 * 1024
