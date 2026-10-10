@@ -22,8 +22,8 @@ export interface PullOptions extends Partial<RunOptions> {
    * 那种情况本地 HEAD 仍是新历史的祖先（`recommend.ts` 文件头点名的限制），
    * `pull --ff-only` 会毫无怨言地快进——静默更新到一个被改写的仓库。
    *
-   * **这一条只是兜底**：基线优先取「本机现在指着的上游 ref」（fetch 之前读，
-   * 不变量 10），只有它读不出来时才用这里传进来的值。理由是 SHA 属于**某一条**
+   * **这一条只是兜底**：基线优先取「本机现在指着的上游 ref」（fetch 之前读），
+   * 只有它读不出来时才用这里传进来的值。理由是 SHA 属于**某一条**
    * 上游 ref，而 `update_checks` 里不记那是哪一条——在 A 分支上记录的值拿去问
    * B 分支，答案必然是「不是祖先」，就成了假警报（详见 `detectRewrittenHistory`）。
    */
@@ -59,7 +59,7 @@ export async function pullRepo(path: string, options: PullOptions = {}): Promise
 
     // 「作者改写过历史」这道闸：fetch 之前先记下本机的上游，fetch 之后拿它比。
     // 顺序不能反——pull 内部的 fetch 会把 @{u} 就地更新成新历史，那时再比就永远「还在」了
-    //（不变量 10：读基线必须在 fetch 之前）。
+    //（读基线必须在 fetch 之前）。
     const rewritten = await detectRewrittenHistory(cwd, options.lastUpstreamSha ?? null)
     if (rewritten) return SKIP(rewritten, 'diverged')
 
@@ -124,7 +124,7 @@ async function countPulled(cwd: RunOptions): Promise<number> {
  * B 分支，答案必然是「不是祖先」，那就是假警报，而假警报比「判不出来」坏得多。
  *
  * 三步，每一步失败都退回「不下结论」（返回 null，让 pull 照常去跑并报真实原因）：
- * 1. `fetch --prune origin` —— 只更新 `refs/remotes/*`，不碰工作区（不变量 1）。
+ * 1. `fetch --prune origin` —— 只更新 `refs/remotes/*`，不碰工作区。
  *    失败（断网 / 认证 / 没有 origin）时不拦：那不是「作者改写了历史」，
  *    真正的失败原因交给 pull 自己报更准。
  * 2. `merge-base --is-ancestor <基线> @{u}` —— 退出码 0 = 还在（正常快进），

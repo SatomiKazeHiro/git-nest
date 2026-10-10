@@ -35,7 +35,7 @@ export type { UpdateReport } from '@git-nest/core/git'
  * `Scheduler` 的同仓库队列（chains）是实例私有的，所以任何绕过它、直接调 core
  * 同名函数（于是落到 core 的 `defaultScheduler`）的地方，都等于绕过了
  * 「同仓库串行」——批量 `pull --ff-only` 正在写工作区时，同一个仓库的
- * `git status` / `rev-list` 会并发跑，正是核心不变量 3 要防的 index.lock / refs 竞争。
+ * `git status` / `rev-list` 会并发跑，正是核心不变量要防的 index.lock / refs 竞争。
  * 顺带一提，core 的默认实例并发写死 4，设置页的 concurrency 对它无效。
  */
 let scheduler = new Scheduler({ concurrency: 4 })

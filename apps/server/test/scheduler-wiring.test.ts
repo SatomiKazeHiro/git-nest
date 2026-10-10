@@ -17,7 +17,7 @@ vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 })
  * 但批量 check / apply 与目录扫描当时直接调 core 函数、没把 scheduler 传下去，
  * 于是落到 core 的 `defaultScheduler`（并发写死 4）。后果有两个，都很实在：
  *   1. 同一个仓库上 `pull --ff-only`（写工作区）与 `git status`（读 refs）可以并发
- *      —— 正是核心不变量 3 要防的 index.lock / refs 竞争；
+ *      —— 正是核心不变量要防的 index.lock / refs 竞争；
  *   2. 设置页里的 concurrency 对 check / apply / scan 完全无效。
  *
  * 观测手段：注入一个会计数的 Scheduler，然后看**这个仓库的实际路径**有没有被调度过。

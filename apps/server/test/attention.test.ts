@@ -69,7 +69,7 @@ describe('attention 分类', () => {
     expect(listProjects(db)[0]!.attention).toBe(want)
   })
 
-  it('**检查失败的那次不算数**（不变量 9：断网后不能刷新出「刚确认过的已是最新」）', () => {
+  it('**检查失败的那次不算数**（不变量：断网后不能刷新出「刚确认过的已是最新」）', () => {
     const id = addProject('e')
     addCheck(id, 'up_to_date', 0, { verdict: 'safe', canPull: false }, '2026-10-05T00:00:00.000Z')
     // 后面这次是 error，不在 REMOTE_CHECK_STATUSES 里

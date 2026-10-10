@@ -295,8 +295,8 @@ describe('latestCheck 只能由成功的远程检查提供', () => {
   /**
    * 新鲜度用的是 `latestCheck.checkedAt`（见 StatusCell 的 freshnessOf）。
    * 如果 fetch 失败的检查也能刷新它，那断网之后点一次「检查更新」，
-   * 清单页反而会显示刚确认过的绿色「已是最新」—— 正好是文档第 13 节第 10 条
-   * 要消灭的「没有依据的肯定」。
+   * 清单页反而会显示刚确认过的绿色「已是最新」—— 正是这个软件最要消灭的那种
+   * 「没有依据的肯定」。
    */
   const insertCheck = (projectId: number, status: string, checkedAt: string) =>
     db
