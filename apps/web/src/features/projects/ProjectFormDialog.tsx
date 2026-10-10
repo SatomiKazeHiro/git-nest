@@ -194,6 +194,22 @@ export function ProjectFormDialog() {
           : '把已经在本机的仓库加进清单'
       }
       onClose={closeForm}
+      /*
+        底部按钮从 `<form>` 里搬到弹窗的固定带子上：长表单滚下去时
+        「保存改动」还在原处。回车提交不受影响——`<form onSubmit>` 还包着那些字段。
+      */
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button onClick={closeForm}>
+            <X size={14} aria-hidden />
+            取消
+          </Button>
+          <Button variant="primary" disabled={busy} onClick={submit}>
+            {editingId ? <Check size={14} aria-hidden /> : <Plus size={14} aria-hidden />}
+            {editingId ? '保存改动' : '添加'}
+          </Button>
+        </div>
+      }
     >
       <form
         className="flex flex-col gap-3.5"
@@ -320,17 +336,6 @@ export function ProjectFormDialog() {
         <Field label="标签" hint="标签只在这里改">
           {(id) => <TagPicker id={id} tags={tags} value={tagNames} onChange={setTagNames} />}
         </Field>
-
-        <div className="mt-1 flex justify-end gap-2 border-t border-line-soft pt-3">
-          <Button type="button" onClick={closeForm}>
-            <X size={14} aria-hidden />
-            取消
-          </Button>
-          <Button type="submit" variant="primary" disabled={busy}>
-            {editingId ? <Check size={14} aria-hidden /> : <Plus size={14} aria-hidden />}
-            {editingId ? '保存改动' : '添加'}
-          </Button>
-        </div>
       </form>
     </Dialog>
   )

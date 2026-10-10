@@ -1,22 +1,49 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { Loader } from 'lucide-react'
+import { Button } from './ui'
 
 /**
  * 通用弹窗。**不认识任何业务**：给它标题与内容，其余全归它管——
  * 遮罩、Escape 关闭、点遮罩关闭、焦点（初始落点 / Tab 圈定 / 关闭后还回去）、
- * 内容区自己滚、宽度档位，以及**嵌套时的层级规矩**。
+ * **三段式的版式**（头部 / 可滚的内容 / 固定的底部按钮条），以及嵌套时的层级规矩。
  *
- * 消费者只想「里面放什么」。这五件事不该每个弹窗各写一遍——这个仓库已经
+ * 消费者只想「里面放什么」。这几件事不该每个弹窗各写一遍——这个仓库已经
  * 踩过一次：自制的那版弹窗没有 Escape、没有初始焦点、也不圈焦点，
  * 于是键盘用户 Tab 一下就跑到底下的清单里去了，而屏幕上没有任何提示。
  *
- * 三个槽：
- * - `actions`：头部右侧、关闭按钮**之前**的动作（比如「重新检查」）
- * - `footer`：底部固定的一条（确认 / 取消放这里，别塞进会滚的内容区）
- * - `children`：内容，自己滚
+ * 版式三段（和市面上那套一样）：
+ * - **头部**：标题 + 说明 + `actions`（右侧动作）+ 关闭按钮，不滚动
+ * - **内容**：`children`，自己滚（长表单滚下去时标题与底部按钮都还在）
+ * - **底部**：可选的一条固定带子。三种给法：
+ *   1. 标准按钮 —— `confirm`（右边那枚主按钮）+ `cancel`（左边那枚次要按钮）
+ *   2. 整条自己画 —— `footer`（给了它，`confirm` / `cancel` 不生效）
+ *   3. 不要底部 —— 两者都不给
  *
  * `size`：`default`(32rem) 给表单；`wide`(48rem) 给需要横向空间的内容
  * （表格、报告、设置）。
  */
+
+/** 底部右边那枚主按钮。 */
+export interface DialogConfirm {
+  text: string
+  onClick: () => void
+  /** 按钮左边那枚图标（lucide 元素） */
+  icon?: ReactNode
+  /** `danger` 给「删除 / 移出」这类不可逆的动作 */
+  variant?: 'primary' | 'danger'
+  disabled?: boolean
+  /** 正在处理：禁用并显示转圈（文案仍是你给的那个） */
+  loading?: boolean
+}
+
+/** 底部左边那枚次要按钮。 */
+export interface DialogCancel {
+  text?: string
+  /** 缺省是 `onClose`——大部分「取消」就是关掉 */
+  onClick?: () => void
+  icon?: ReactNode
+  disabled?: boolean
+}
 
 /**
  * 打开着的弹窗。**Escape 与 Tab 只由最上面那个处理**：嵌套时（设置弹窗里再开
@@ -56,6 +83,8 @@ export function Dialog({
   description,
   actions,
   footer,
+  confirm,
+  cancel,
   size = 'default',
   onClose,
   children,
@@ -64,8 +93,15 @@ export function Dialog({
   description?: string
   /** 头部右侧、关闭按钮之前的动作（比如「重新检查」）。 */
   actions?: ReactNode
-  /** 底部固定的一条：确认 / 取消放这里，不跟着内容滚。 */
+  /**
+   * 底部整条自己画。给了它，`confirm` / `cancel` 就不生效。
+   * 条子里怎么排由你自己定——这一层只负责那条带子（固定、有上边框、不跟着内容滚）。
+   */
   footer?: ReactNode
+  /** 底部的**标准按钮**：右边一枚主按钮。不给它（也不给 `footer`）就没有底部条。 */
+  confirm?: DialogConfirm
+  /** 左边那枚次要按钮：默认「取消」并调 `onClose`；传 `false` 表示不要它。 */
+  cancel?: DialogCancel | false
   /** `wide` 给需要横向空间的内容；表单用默认宽度。 */
   size?: 'default' | 'wide'
   onClose: () => void
@@ -201,8 +237,35 @@ export function Dialog({
           {children}
         </div>
 
-        {footer ? (
+        {/*
+          底部那条带子：固定（`shrink-0`）且有上边框，**不在滚动区里**——
+          长表单滚下去时，「保存」还在原处。三种给法见文件头。
+        */}
+        {footer !== undefined ? (
           <footer className="shrink-0 border-t border-line-soft px-5 py-3">{footer}</footer>
+        ) : confirm ? (
+          <footer className="shrink-0 border-t border-line-soft px-5 py-3">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {cancel === false ? null : (
+                <Button onClick={cancel?.onClick ?? closeRef.current} disabled={cancel?.disabled}>
+                  {cancel?.icon}
+                  {cancel?.text ?? '取消'}
+                </Button>
+              )}
+              <Button
+                variant={confirm.variant ?? 'primary'}
+                onClick={confirm.onClick}
+                disabled={confirm.disabled === true || confirm.loading === true}
+              >
+                {confirm.loading ? (
+                  <Loader size={14} aria-hidden className="animate-spin" />
+                ) : (
+                  confirm.icon
+                )}
+                {confirm.text}
+              </Button>
+            </div>
+          </footer>
         ) : null}
       </div>
     </div>

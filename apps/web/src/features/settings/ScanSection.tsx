@@ -195,19 +195,23 @@ function RemoveDialog({
   // 用统一的 Dialog：自制的那版没有 Escape、没有初始焦点、也不圈焦点
   //（键盘用户 Tab 一下就跑到底下的清单里去了）
   return (
-    <Dialog title={`把 ${repo.name} 移出清单？`} onClose={onClose}>
+    <Dialog
+      title={`把 ${repo.name} 移出清单？`}
+      onClose={onClose}
+      cancel={{ text: '留下' }}
+      confirm={{
+        text: '移出清单',
+        icon: <Trash2 size={14} aria-hidden />,
+        variant: 'danger',
+        loading: busy,
+        onClick: onConfirm,
+      }}
+    >
       <p className="text-[13px] text-ink-2">
         只删掉清单里这一条。磁盘上的{' '}
         <span className="font-mono text-[12px]">{repo.dir}</span> 和它的 git 历史都不动，
         你写的那段记录与标签关联会一起清掉。
       </p>
-      <div className="mt-4 flex justify-end gap-2">
-        <Button onClick={onClose}>留下</Button>
-        <Button variant="danger" disabled={busy} onClick={onConfirm}>
-          <Trash2 size={14} aria-hidden />
-          移出清单
-        </Button>
-      </div>
     </Dialog>
   )
 }

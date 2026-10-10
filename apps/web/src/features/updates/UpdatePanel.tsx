@@ -61,6 +61,12 @@ export function UpdatePanel({
   const [confirming, setConfirming] = useState(false)
   const { data: settings } = useSettings()
 
+  /*
+    报告跑完了才有那条动作带子。先把它取成一个局部量：`footer` 是在 props 位置
+    求值的，那个位置没有被内容区那层 `task ? …` 的收窄兜着。
+  */
+  const finished = task?.status === 'done' ? task : null
+
   const reports = useMemo(
     () => (task?.items ?? []).filter((i) => isReport(i.result)),
     [task],
@@ -124,6 +130,49 @@ export function UpdatePanel({
             {busy ? '检查中…' : task ? '重新检查' : '开始检查'}
           </Button>
         </>
+      }
+      /*
+        报告读完才出现的那条动作带子：**搬到弹窗的固定底部**去。
+        它原来是一个塞在内容里的 `<footer>`——报告一长，动作就跟着滚出视野，
+        而用户看完报告要做的正是那一个动作。
+      */
+      footer={
+        finished ? (
+          <div className="flex flex-wrap items-center gap-3">
+            {finished.kind === 'check' ? (
+              <>
+                <span className="text-[13px] text-ink-2">
+                  {checkSummary(results, finished.summary ?? {})}
+                </span>
+                <Button
+                  variant="primary"
+                  disabled={picked.size === 0 || busy}
+                  onClick={() => void startApply([...picked])}
+                >
+                  更新选中的 {picked.size} 个
+                </Button>
+                {updatable.length > 0 && picked.size < updatable.length ? (
+                  <button
+                    onClick={() => setPicked(new Set(updatable.map((i) => i.projectId)))}
+                    className="text-[12.5px] text-accent hover:underline"
+                  >
+                    全选可更新的 {updatable.length} 个
+                  </button>
+                ) : null}
+                {picked.size > 0 ? (
+                  <button
+                    onClick={() => setPicked(new Set())}
+                    className="text-[12.5px] text-ink-3 hover:text-ink"
+                  >
+                    清空勾选
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <span className="text-[13px] text-ink-2">{applySummary(finished)}</span>
+            )}
+          </div>
+        ) : undefined
       }
     >
       {/* 超过服务端一次能处理的量：说清数字与两条出路，而不是让他去撞那个 422 */}
@@ -190,43 +239,6 @@ export function UpdatePanel({
               />
             ))}
           </ul>
-
-          {task.status === 'done' ? (
-            <footer className="flex flex-wrap items-center gap-3 border-t border-line-soft pt-3">
-              {task.kind === 'check' ? (
-                <>
-                  <span className="text-[13px] text-ink-2">
-                    {checkSummary(results, task.summary ?? {})}
-                  </span>
-                  <Button
-                    variant="primary"
-                    disabled={picked.size === 0 || busy}
-                    onClick={() => void startApply([...picked])}
-                  >
-                    更新选中的 {picked.size} 个
-                  </Button>
-                  {updatable.length > 0 && picked.size < updatable.length ? (
-                    <button
-                      onClick={() => setPicked(new Set(updatable.map((i) => i.projectId)))}
-                      className="text-[12.5px] text-accent hover:underline"
-                    >
-                      全选可更新的 {updatable.length} 个
-                    </button>
-                  ) : null}
-                  {picked.size > 0 ? (
-                    <button
-                      onClick={() => setPicked(new Set())}
-                      className="text-[12.5px] text-ink-3 hover:text-ink"
-                    >
-                      清空勾选
-                    </button>
-                  ) : null}
-                </>
-              ) : (
-                <span className="text-[13px] text-ink-2">{applySummary(task)}</span>
-              )}
-            </footer>
-          ) : null}
         </>
       )}
     </Dialog>

@@ -150,3 +150,105 @@ describe('Dialog · 无障碍与槽', () => {
     expect(screen.getByText('正文').closest('footer')).toBeNull()
   })
 })
+
+/**
+ * 底部那条**标准按钮**带子。
+ *
+ * 它是「三段式」里最容易被各个弹窗各自重写一遍的部分：右边一枚主按钮、
+ * 左边一枚次要按钮、固定在底部不跟着内容滚。以前这个仓库有四处各拼一遍
+ * （两处移出清单、编辑资料、更新报告），拼法还各不相同——更新报告那份甚至
+ * 塞在会滚的内容里，报告一长，动作就跟着滚出视野。
+ */
+describe('Dialog · 底部按钮条', () => {
+  it('给了 confirm 就有那条带子，右边是主按钮', () => {
+    const onConfirm = vi.fn()
+    render(
+      <Dialog title="标题" onClose={() => {}} confirm={{ text: '保存', onClick: onConfirm }}>
+        <p>正文</p>
+      </Dialog>,
+    )
+    const save = screen.getByRole('button', { name: '保存' })
+    expect(save.closest('footer')).not.toBeNull()
+    fireEvent.click(save)
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+  })
+
+  it('不给 cancel 也有一枚「取消」，默认就是关掉', () => {
+    const onClose = vi.fn()
+    render(
+      <Dialog title="标题" onClose={onClose} confirm={{ text: '保存', onClick: () => {} }}>
+        <p>正文</p>
+      </Dialog>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancel 可以换文案、换动作', () => {
+    const onBack = vi.fn()
+    render(
+      <Dialog
+        title="标题"
+        onClose={() => {}}
+        cancel={{ text: '留下', onClick: onBack }}
+        confirm={{ text: '移出', onClick: () => {} }}
+      >
+        <p>正文</p>
+      </Dialog>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '留下' }))
+    expect(onBack).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancel: false 就是不要它', () => {
+    render(
+      <Dialog
+        title="标题"
+        onClose={() => {}}
+        cancel={false}
+        confirm={{ text: '知道了', onClick: () => {} }}
+      >
+        <p>正文</p>
+      </Dialog>,
+    )
+    expect(screen.queryByRole('button', { name: '取消' })).toBeNull()
+    expect(screen.getByRole('button', { name: '知道了' })).toBeTruthy()
+  })
+
+  it('loading 期间主按钮不可点（避免重复提交）', () => {
+    render(
+      <Dialog
+        title="标题"
+        onClose={() => {}}
+        confirm={{ text: '保存', onClick: () => {}, loading: true }}
+      >
+        <p>正文</p>
+      </Dialog>,
+    )
+    expect((screen.getByRole('button', { name: /保存/ }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('footer 自己画时，confirm 不生效（一种给法就够）', () => {
+    render(
+      <Dialog
+        title="标题"
+        onClose={() => {}}
+        footer={<button>自定义</button>}
+        confirm={{ text: '保存', onClick: () => {} }}
+      >
+        <p>正文</p>
+      </Dialog>,
+    )
+    expect(screen.getByRole('button', { name: '自定义' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '保存' })).toBeNull()
+  })
+
+  it('两者都不给就没有底部那条——不留一条空带子', () => {
+    const { container } = render(
+      <Dialog title="标题" onClose={() => {}}>
+        <p>正文</p>
+      </Dialog>,
+    )
+    expect(container.querySelector('footer')).toBeNull()
+  })
+})
