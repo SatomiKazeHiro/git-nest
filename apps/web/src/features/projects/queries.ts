@@ -19,6 +19,8 @@ export const queryKeys = {
   tags: ['tags'] as const,
   status: ['status'] as const,
   settings: ['settings'] as const,
+  /** README 全文。`full` 进 key，所以「加载完整文档」就是换一条查询 */
+  readme: (id: number, full: boolean) => ['readme', id, full] as const,
 }
 
 /** 列表查询的参数。`own` 是 '1'/'0'，与 category / tag **叠加**而非互斥。 */

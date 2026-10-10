@@ -26,3 +26,11 @@ export function shortenPath(p: string, keep = 3): string {
   if (parts.length <= keep + 1) return p
   return [parts[0], '…', ...parts.slice(-keep)].join('/')
 }
+
+/** 字节 → 人读的体积。**不四舍五入成整数 MB**：按钮上写着「1 MB」而实际是 1.2 MB，
+ *  用户点下去才发现被截断，就晚了。 */
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
