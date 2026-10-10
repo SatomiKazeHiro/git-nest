@@ -3,7 +3,19 @@ import { FolderGit2, Pencil, Trash2, UserRound } from 'lucide-react'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
 import { formatRelative } from '@/lib/format'
 import { useUiStore } from '@/store/ui'
-import { AttentionBadge, Diff, SyncBadge } from '@/features/status/badges'
+import { AttentionBadge, Diff, SyncBadge, type Comparability } from '@/features/status/badges'
+
+/**
+ * 那两个数字有没有可比的对象。**四种情况分开写**，因为它们都回答「有没有依据」，
+ * 而依据缺在哪一步完全不同——把 `null` 当 0 就会说出没依据的话
+ * （刷新时「同步状态」先显示「一致」那个 bug 就是这么来的；只分出「读没读到」
+ * 一种，它会从「读到了但没有上游」这个门回来）。
+ */
+function comparabilityOf(s: RepoStatus | undefined): Comparability {
+  if (!s) return 'reading'
+  if (!s.isRepo) return 'unreadable'
+  return s.upstream === null ? 'no-upstream' : 'ready'
+}
 
 /**
  * 清单里的一行。
@@ -103,14 +115,14 @@ export function ProjectRow({
       </td>
 
       {/* 同步状态：全中性灰，刻意比左边那列低调——它是上下文，不是行动项。
-          状态还没读回来时它给「—」，**不给「一致」**（说明见 SyncBadge）。 */}
+          没有可比对象时它给「—」或「没有上游」，**不给「一致」**（说明见 SyncBadge）。 */}
       <td className="col-sync">
         <SyncBadge
           ahead={status?.ahead ?? null}
           behind={status?.behind ?? null}
           upstreamGone={status?.upstreamGone ?? false}
           hasCheck={p.attention !== 'unchecked'}
-          hasStatus={status !== undefined}
+          comparable={comparabilityOf(status)}
         />
       </td>
 
@@ -120,7 +132,7 @@ export function ProjectRow({
           ahead={status?.ahead ?? null}
           behind={status?.behind ?? null}
           hasCheck={p.attention !== 'unchecked'}
-          hasStatus={status !== undefined}
+          comparable={comparabilityOf(status)}
         />
       </td>
 

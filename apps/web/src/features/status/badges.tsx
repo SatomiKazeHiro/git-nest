@@ -110,6 +110,19 @@ export function AttentionBadge({
 }
 
 /**
+ * 那两个数字能不能拿来下结论。**四种情况必须分开**——它们都回答「有没有依据」，
+ * 但依据缺在哪一步完全不同：
+ * - `reading`：这一行的 git 状态还没读回来（刷新后清单先到、状态 1–2 秒后才到）
+ * - `unreadable`：读到了，但这个目录不是可读的 git 仓库（不在了 / 不是仓库 / 出错）
+ * - `no-upstream`：是仓库，但当前分支没有可比的上下游（比如上游被取消配置了）
+ * - `ready`：有上游，`ahead/behind` 是刚读到的数字
+ *
+ * 前两种都给 `—`，第三种说「没有上游」——**都不是 0**。把 `null` 当 0 就是
+ * 「刷新时先显示『一致』」那个 bug 的来源；少分一种，它就会从另一个门回来。
+ */
+export type Comparability = 'reading' | 'unreadable' | 'no-upstream' | 'ready'
+
+/**
  * 「跟远程差多少」。**全用中性灰**：它是上下文，不是行动项——
  * 该动不动看左边那列的彩色药丸。
  */
@@ -118,39 +131,34 @@ export function SyncBadge({
   behind,
   upstreamGone,
   hasCheck,
-  hasStatus,
+  comparable,
 }: {
   ahead: number | null
   behind: number | null
   upstreamGone: boolean
   /** 有没有「合格检查」——没有的话所有数字都不可信，只能说「未知」 */
   hasCheck: boolean
-  /**
-   * 这一行的 git 状态**读回来了吗**。
-   *
-   * 不能省，也不能靠 `ahead === null` 推断：刷新页面时清单先到、逐仓库的状态
-   * 1–2 秒后才到，而 `ahead/behind` 在**还没读到**和**读到了但不可比**（没有上游）
-   * 两种情况下都是 null。把两者混成一个，没读到的时候就会显示「一致」——
-   * 一个没有依据的肯定。（与 `DeriveInput.skipDirty` 同一条道理：把前提写明，
-   * 而不是依赖某个值恰好是什么。）
-   */
-  hasStatus: boolean
+  /** 见 `Comparability`。**必填**：不靠 `ahead === null` 反推，那是同一个坑 */
+  comparable: Comparability
 }) {
   const a = ahead ?? 0
   const b = behind ?? 0
-  const text = !hasStatus
-    ? '—'
-    : !hasCheck
-      ? '未知'
-      : upstreamGone
-        ? '上游已关闭'
-        : a > 0 && b > 0
-          ? '已分叉'
-          : b > 0
-            ? '远程领先'
-            : a > 0
-              ? '本地领先'
-              : '一致'
+  const text =
+    comparable === 'reading' || comparable === 'unreadable'
+      ? '—'
+      : !hasCheck
+        ? '未知'
+        : upstreamGone
+          ? '上游已关闭'
+          : comparable === 'no-upstream'
+            ? '没有上游'
+            : a > 0 && b > 0
+              ? '已分叉'
+              : b > 0
+                ? '远程领先'
+                : a > 0
+                  ? '本地领先'
+                  : '一致'
   return (
     <span className="inline-flex items-center whitespace-nowrap rounded-full bg-flat-bg px-2 py-[3px] text-[11.5px] text-flat">
       {text}
@@ -169,18 +177,20 @@ export function Diff({
   ahead,
   behind,
   hasCheck,
-  hasStatus,
+  comparable,
 }: {
   ahead: number | null
   behind: number | null
   /** 没有合格检查时**不给数字**——`↓0 ↑0` 是编出来的，不是查到的 */
   hasCheck: boolean
-  /** 状态还没读回来时同理：此刻谁也不知道那两个数是多少 */
-  hasStatus: boolean
+  /** 同上：只有 `ready` 才拿得到可信的数字 */
+  comparable: Comparability
 }) {
-  // 没有依据就不给数字。两种「没有依据」：还没读到（刷新后要 1–2 秒），
-  // 以及没有合格的远程检查。
-  if (!hasStatus || !hasCheck) return <span className="text-[12px] text-ink-3">—</span>
+  // 没有依据就不给数字。`↓0 ↑0` 是编出来的，不是查到的——而「没读到」「读不出来」
+  // 「没有上游」都算没有依据（它们都让那两个数字是 null）。
+  if (comparable !== 'ready' || !hasCheck) {
+    return <span className="text-[12px] text-ink-3">—</span>
+  }
   const a = ahead ?? 0
   const b = behind ?? 0
   return (
