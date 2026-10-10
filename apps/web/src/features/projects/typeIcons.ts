@@ -8,11 +8,28 @@
   `import.meta.glob` 是构建期的：Vite 会把匹配到的 svg 收集成一张表，
   所以运行时不需要额外请求去问「有没有这张图」。
 */
-const ICONS = import.meta.glob('../../../../../docs/types/*.svg', {
-  eager: true,
-  query: '?url',
-  import: 'default',
-}) as Record<string, string>
+const ICONS = import.meta.glob(
+  [
+    /*
+      两个模式，都是刻意的：
+
+      - `{svg,SVG}`：Windows 上很容易存成 `.SVG`。只写小写的话，那个文件**根本不进**
+        这张表，而症状是「我明明放进去了，它还是缺」——最难查的一类。
+      - 第二个模式多一层 `**`，允许按子目录分类（例如前端那个子目录里的 `Vue.svg`）。
+        取的是文件名，所以放哪一层都认。
+
+      （写这两条注释时注意：上面那个通配符别照着打进来——`星号加斜杠` 会把块注释
+      提前闭合，整份文件跟着语法错，报的错还落在几十行之外。）
+    */
+    '../../../../../docs/types/*.{svg,SVG}',
+    '../../../../../docs/types/**/*.{svg,SVG}',
+  ],
+  {
+    eager: true,
+    query: '?url',
+    import: 'default',
+  },
+) as Record<string, string>
 
 /**
  * 归一化：小写 + 去掉一切非字母数字。
