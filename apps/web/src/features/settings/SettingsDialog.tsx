@@ -1,4 +1,4 @@
-import { Dialog } from '@/components/ui'
+import { Dialog } from '@/components/Dialog'
 import { useUiStore } from '@/store/ui'
 import { CommandsSection } from './CommandsSection'
 import { GitSection } from './GitSection'

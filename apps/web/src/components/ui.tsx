@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { useId, type ButtonHTMLAttributes, type ReactNode } from 'react'
 
 type Variant = 'primary' | 'ghost' | 'danger'
 /**
@@ -93,89 +93,6 @@ export function Input(props: InputProps) {
 export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const { className = '', ...rest } = props
   return <textarea {...rest} className={`${inputClass} resize-y leading-6 ${className}`} />
-}
-
-export function Dialog({
-  title,
-  description,
-  actions,
-  size = 'default',
-  onClose,
-  children,
-}: {
-  title: string
-  description?: string
-  /** 头部右侧、关闭按钮之前的动作（比如「重新检查」）。 */
-  actions?: ReactNode
-  /** `wide` 给需要横向空间的报告类内容（如更新报告）；表单用默认宽度。 */
-  size?: 'default' | 'wide'
-  onClose: () => void
-  children: ReactNode
-}) {
-  const panelRef = useRef<HTMLDivElement>(null)
-  /*
-    **Escape 与初始焦点不能挂在 `onClose` 上。**
-    调用方全传内联箭头（`onClose={() => {...}}`），引用每次渲染都变；
-    而更新面板每来一个 SSE 事件就重渲染一次 —— effect 跟着重跑，
-    每跑一次就把焦点抢回面板里第一个可聚焦元素。用户正在勾选复选框，
-    焦点一直被打断，键盘操作（空格勾选）直接失灵。
-    所以：Escape 用 ref 读最新的 onClose；焦点只在挂载时给一次。
-  */
-  const closeRef = useRef(onClose)
-  closeRef.current = onClose
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeRef.current()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [])
-
-  useEffect(() => {
-    panelRef.current?.querySelector<HTMLElement>('input, textarea, button')?.focus()
-  }, [])
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/25 p-6 pt-[8vh]"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
-      {/*
-        内容区自己滚（`min-h-0 flex-1 overflow-y-auto`），标题、头部动作与关闭按钮
-        留在原地。原来是整个遮罩层滚——长表单滚下去之后标题和关闭按钮都不见了。
-      */}
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        className={`flex max-h-[85vh] w-full flex-col rounded-[4px] border border-line bg-panel shadow-[0_8px_32px_rgba(19,24,29,0.14)] ${
-          size === 'wide' ? 'max-w-3xl' : 'max-w-lg'
-        }`}
-      >
-        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-line-soft px-5 py-4">
-          <div className="min-w-0">
-            <h2 className="text-[15px] font-semibold text-ink">{title}</h2>
-            {description ? <p className="mt-0.5 text-[12px] text-ink-3">{description}</p> : null}
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {actions}
-            <button
-              onClick={onClose}
-              aria-label="关闭"
-              className="-mr-1 rounded-[3px] px-1.5 py-0.5 font-mono text-[15px] leading-6 text-ink-3 hover:bg-accent-wash hover:text-ink"
-            >
-              ×
-            </button>
-          </div>
-        </header>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
-      </div>
-    </div>
-  )
 }
 
 export function EmptyState({

@@ -6,7 +6,8 @@ import {
   type UpdateRecommendation,
   type UpdateReport,
 } from '@git-nest/core'
-import { Button, Dialog, ErrorNote, Meta } from '@/components/ui'
+import { Button, ErrorNote, Meta } from '@/components/ui'
+import { Dialog } from '@/components/Dialog'
 import { Delta, RecommendationCell } from '@/features/status/badges'
 import { statusText, statusTone } from '@/features/status/text'
 import { isPull, isReport, useUpdateTask, type TaskSnapshot } from './taskStream'

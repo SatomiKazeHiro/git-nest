@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import type { ProjectListItem } from '@git-nest/core'
-import { Button, Dialog, ErrorNote } from '@/components/ui'
+import { Button, ErrorNote } from '@/components/ui'
+import { Dialog } from '@/components/Dialog'
 import { ApiError } from '@/lib/api'
 import { useRemoveProject } from './queries'
 
