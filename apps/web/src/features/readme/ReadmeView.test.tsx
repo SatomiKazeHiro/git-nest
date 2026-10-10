@@ -164,6 +164,21 @@ describe('安全 · 网络访问', () => {
       'noreferrer',
     )
   })
+
+  /*
+    这一条钉的是「**解码发生在闸门之前**」，而不是「闸门认得 entity」。
+    `[点我](&#106;avascript:alert(1))` 在 markdown 源里是 entity 编码的，
+    remark 会在进入 `urlTransform` 之前把它解成 `javascript:alert(1)`，
+    所以闸门拿到的是本体、白名单直接拦下。**换成纯函数那条用例测不到这一点**
+    ——纯函数只能测它收到什么之后怎么做，测不到它收到的是什么。
+  */
+  it('entity 编码的 javascript: 在真实渲染路径上也不是链接', async () => {
+    body = '[点我](&#106;avascript:alert(1))\n'
+    const { container } = renderView()
+    const text = await screen.findByText('点我')
+    expect(container.querySelector('a')).toBeNull()
+    expect(text.closest('a')).toBeNull()
+  })
 })
 
 describe('分级加载', () => {
@@ -213,24 +228,34 @@ describe('分级加载', () => {
     expect(screen.queryByRole('button', { name: /加载完整文档/ })).toBeNull()
   })
 
-  it('加载完整失败 → 按钮还在，下面说清为什么，不是一声不响', async () => {
+  it('加载完整失败 → 按钮还在，再点一次真的又发了一次请求', async () => {
+    let fullCalls = 0
     server.use(
       http.get('/api/projects/:id/readme', ({ request }) => {
         const full = new URL(request.url).searchParams.get('full') === '1'
-        if (full) return HttpResponse.json({ message: '读不出来了' }, { status: 500 })
+        if (full) {
+          fullCalls += 1
+          // 第一次失败，第二次成功——顺带证明重试这条路真的通到服务端
+          if (fullCalls === 1) return HttpResponse.json({ message: '读不出来了' }, { status: 500 })
+          return HttpResponse.json({
+            file: 'README.md', content: '# 标题\n\n正文。\n', truncated: false, bytes: 200,
+          })
+        }
         return HttpResponse.json({
-          file: 'README.md',
-          content: '# 标题\n',
-          truncated: true,
-          bytes: MID,
+          file: 'README.md', content: '# 标题\n', truncated: true, bytes: MID,
         })
       }),
     )
     renderView()
     fireEvent.click(await screen.findByRole('button', { name: /加载完整文档/ }))
     await waitFor(() => expect(screen.getByText(/读不出来了/)).toBeTruthy())
-    // 渐变与按钮都留着，还能再点一次
-    expect(screen.getByRole('button', { name: /加载完整文档/ })).toBeTruthy()
+    // 渐变与按钮都留着
     expect(document.querySelector('.readme-more')).toBeTruthy()
+
+    // **再点一次**：`onClick` 走的是 `full ? refetch() : setFull(true)` 的
+    // 另一支。原来没有用例执行过 `refetch()`，这一支等于没被测过。
+    fireEvent.click(screen.getByRole('button', { name: /加载完整文档/ }))
+    await waitFor(() => expect(fullCalls).toBe(2))
+    await waitFor(() => expect(screen.queryByRole('button', { name: /加载完整文档/ })).toBeNull())
   })
 })

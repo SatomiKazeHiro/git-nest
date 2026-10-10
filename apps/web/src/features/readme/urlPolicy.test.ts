@@ -34,6 +34,13 @@ describe('readmeUrl · 链接', () => {
     ['/absolute/path', '绝对路径'],
     ['', '空串'],
     ['   ', '纯空白'],
+    // entity 编码：真正的攻击面是这一种，闸门安全**不是因为它认得**，
+    // 而是因为 remark 在 `urlTransform` 之前就把 `&#106;` 解成了 `j`。
+    // 哪天 remark 换了实现（把解码挪到闸门之后），这里收到的就是字面量
+    // `&#106;avascript:`——开头的协议正则不匹配，仍然返回 ''（歪打正着），
+    // 但如果那时有人为「让相对链接能用」放宽了那个正则，它立刻变成洞。
+    ['&#106;avascript:alert(1)', 'entity 编码的 javascript:'],
+    ['&#x6a;avascript:alert(1)', '十六进制 entity'],
   ])('拦下 %s（%s）', (u) => {
     expect(readmeUrl(u, 'link')).toBe('')
   })

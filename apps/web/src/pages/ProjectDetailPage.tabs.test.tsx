@@ -176,4 +176,36 @@ describe('详情栏的标签页', () => {
     expect(screen.getByRole('tab', { name: '概览' }).getAttribute('tabindex')).toBe('0')
     expect(screen.getByRole('tab', { name: 'README' }).getAttribute('tabindex')).toBe('-1')
   })
+
+  /*
+    下面两条是 ARIA 规范要求、而「条件渲染」会破坏的东西。
+
+    `aria-controls` 必须指向一个**存在**的元素 id。原来两个 panel 是二选一渲染的，
+    于是任何时刻未选中的那个标签的 `aria-controls` 都指向一个 null——规范违背，
+    读屏软件查「这个标签控制哪块内容」会拿到一个查不到的 id。
+
+    修法是两个 panel 都渲染、未选中的用 `hidden` 藏起来（`hidden` 不参与布局也不进
+    无障碍树，代价接近零）。
+
+    `tabpanel` 还要能接住焦点：README 若被协议闸门全拦成纯文字（一个满是
+    `javascript:` 链接的仓库——那正是 Review Focus 第 1 条要求的输入），
+    面板里一个可聚焦元素都没有，Tab 键会直接跳出面板。`tabIndex={0}` 就是那个落点。
+  */
+  it('两个标签的 aria-controls 都指向真实存在的 panel', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('demo')).toBeTruthy())
+
+    for (const name of ['概览', 'README']) {
+      const controls = screen.getByRole('tab', { name }).getAttribute('aria-controls')
+      expect(controls).toBeTruthy()
+      expect(document.getElementById(controls!)).not.toBeNull()
+    }
+  })
+
+  it('panel 能接住焦点（Tab 键进得去，哪怕里面全是不可点的文字）', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('demo')).toBeTruthy())
+
+    expect(screen.getByRole('tabpanel').getAttribute('tabindex')).toBe('0')
+  })
 })

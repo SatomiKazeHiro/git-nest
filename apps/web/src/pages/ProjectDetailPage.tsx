@@ -113,25 +113,36 @@ export function ProjectDetailPage() {
 
       <TabBar tabs={TABS} value={tab} onChange={setTab} />
 
-      {tab === 'overview' ? (
-        <div role="tabpanel" id="panel-overview" aria-labelledby="tab-overview">
-          <OverviewPanel
-            project={project}
-            status={status}
-            refresh={() => refresh.mutate()}
-            isRefreshing={refresh.isPending}
-          />
-        </div>
-      ) : (
-        <div
-          role="tabpanel"
-          id="panel-readme"
-          aria-labelledby="tab-readme"
-          className="min-h-0 flex-1 overflow-auto px-4 py-3"
-        >
-          <ReadmeView projectId={project.id} />
-        </div>
-      )}
+      {/*
+        两个 panel **都渲染**，未选中的用 `hidden` 藏起来。
+
+        原来这里是二选一渲染，于是任何时刻未选中的那个标签，它的 `aria-controls`
+        都指向一个**不存在的**元素——ARIA 规范要求它引用真实存在的 id，
+        读屏软件查「这个标签控制哪块内容」会拿到一个查不到的 id。
+        `hidden` 的元素不参与布局也不进无障碍树，代价接近零。
+
+        panel 上的 `tabIndex={0}`：README 若被协议闸门全拦成纯文字
+        （一个满是 `javascript:` 链接的仓库），面板里一个可聚焦元素都没有，
+        Tab 键会直接跳出面板。这个落点让键盘永远进得来。
+      */}
+      <div role="tabpanel" id="panel-overview" aria-labelledby="tab-overview" tabIndex={0} hidden={tab !== 'overview'}>
+        <OverviewPanel
+          project={project}
+          status={status}
+          refresh={() => refresh.mutate()}
+          isRefreshing={refresh.isPending}
+        />
+      </div>
+      <div
+        role="tabpanel"
+        id="panel-readme"
+        aria-labelledby="tab-readme"
+        tabIndex={0}
+        hidden={tab !== 'readme'}
+        className="min-h-0 flex-1 overflow-auto px-4 py-3"
+      >
+        <ReadmeView projectId={project.id} />
+      </div>
 
       {/* 添加时间是整栏里最不重要的一个事实：沉到最底下，用最小的字。
           顺带它终于不用等宽了——那不是代码。
