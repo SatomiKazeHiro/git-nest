@@ -9,9 +9,15 @@
  * - **全局命令**：都带 Ctrl（或 F5），在任何地方都成立。
  * - **行内命令**（↑↓ / Space / Enter / Delete）：没有修饰键，只有当焦点在表格里
  *   才该生效。混进全局表的话，用户在设置页按 Delete 就会把某个项目删了。
+ *
+ * **这张表同时是命令 id 的唯一来源**（`CommandId`，见文件末尾）：`registerCommand`
+ * 只收表里的 id。菜单栏已经不在了，快捷键处理器是唯一的派发方——一条命令要能被
+ * 触发就必须在表里，所以「注册一条没人按得到的命令」和「id 拼错」现在都是
+ * 编译错误，而不是两个安静跑到死的闭包（清单页原来就留着这样的两个，见
+ * `commands.ts` 的文件头）。
  */
 
-/** 全局命令。`inInput` 表示「焦点在输入框里时也允许」—— */
+/** id 的类型见文件末尾的 `CommandId`——**不要**在这里手写联合类型。 */
 export interface GlobalCommand {
   id: string
   label: string
@@ -19,20 +25,33 @@ export interface GlobalCommand {
   /**
    * 焦点在输入框 / 文本域里时，按这个键要不要仍然生效。
    *
-   * 默认**不生效**，这是保守的一边：Ctrl+A 在文本框里必须还是「选中这段文字」，
-   * 不能变成「勾选清单里全部行」——那是很难发现的劫持。少数确实该在输入时也
-   * 管的（把焦点挪到搜索框、进设置、折叠某栏）显式标 true。
+   * **每一条都显式写出来**：默认值也是行为的一部分，藏在省略里就等于没写，
+   * 而读的人没法从表上看出这条命令在输入时到底管不管。默认不生效是保守的一边
+   * ——Ctrl+A 在文本框里必须还是「选中这段文字」，不能变成「勾选清单里全部行」，
+   * 那是很难发现的劫持。少数确实该在输入时也管的（把焦点挪到搜索框、进设置、
+   * 折叠某栏）写 true。
    */
-  inInput?: boolean
+  inInput: boolean
 }
 
-export const GLOBAL_COMMANDS: GlobalCommand[] = [
+export const GLOBAL_COMMANDS = [
   { id: 'focus-search', label: '搜索项目', combo: 'Ctrl+F', inInput: true },
   { id: 'open-settings', label: '设置', combo: 'Ctrl+,', inInput: true },
   { id: 'toggle-detail', label: '显示 / 隐藏详情栏', combo: 'Ctrl+J', inInput: true },
-  { id: 'check-updates', label: '联网检查更新（当前筛选出的全部）', combo: 'Ctrl+Enter' },
-  { id: 'refresh-local', label: '重读本地状态（不联网）', combo: 'F5' },
-]
+  {
+    id: 'check-updates',
+    label: '联网检查更新（当前筛选出的全部）',
+    combo: 'Ctrl+Enter',
+    inInput: false,
+  },
+  { id: 'refresh-local', label: '重读本地状态（不联网）', combo: 'F5', inInput: false },
+] as const satisfies readonly GlobalCommand[]
+
+/**
+ * 命令 id。**从上面那张表派生**，不手写——手写就又有了两个来源，
+ * 而这两个来源之间没有任何东西保证一致。
+ */
+export type CommandId = (typeof GLOBAL_COMMANDS)[number]['id']
 
 /**
  * 键盘事件 → 规范化的组合键字符串（`Ctrl+Shift+U`、`F5`、`Escape`）。

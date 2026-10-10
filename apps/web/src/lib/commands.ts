@@ -1,3 +1,5 @@
+import type { CommandId } from './keys'
+
 /**
  * 命令注册表。
  *
@@ -7,11 +9,17 @@
  * 没人注册的命令就当没有这回事：快捷键处理器在拦截之前会先问一句，
  * 没有接手人就不 `preventDefault`，于是浏览器自己的 Ctrl+R / Ctrl+W
  * 之类照常工作。
+ *
+ * **id 的类型是 `CommandId`**（从 `keys.ts` 那张快捷键表派生）：表里没有的 id
+ * 注册不进来。以前这里是裸 `string`，于是清单页一直留着两个菜单栏时代的注册
+ * （`open-create` / `open-scan`）——菜单删掉之后，`GLOBAL_COMMANDS` 里没有它们，
+ * 唯一会调用 `runCommand` 的就是那个按表派发的 keydown 处理器，也就是说
+ * 那两个闭包**永远跑不到**。它们照样编译、照样过 review，只是永远不执行。
  */
 
 type Handler = () => void
 
-const handlers = new Map<string, Handler>()
+const handlers = new Map<CommandId, Handler>()
 
 /**
  * 注册一个命令，返回注销函数。
@@ -19,18 +27,18 @@ const handlers = new Map<string, Handler>()
  * 注销时**只删自己那一份**：如果同一个 id 被重新注册过（StrictMode 的双次挂载、
  * 或者将来清单页拆成两块），先来的那一份的清理不该把后继者带走。
  */
-export function registerCommand(id: string, fn: Handler): () => void {
+export function registerCommand(id: CommandId, fn: Handler): () => void {
   handlers.set(id, fn)
   return () => {
     if (handlers.get(id) === fn) handlers.delete(id)
   }
 }
 
-export function hasCommand(id: string): boolean {
+export function hasCommand(id: CommandId): boolean {
   return handlers.has(id)
 }
 
-export function runCommand(id: string): boolean {
+export function runCommand(id: CommandId): boolean {
   const fn = handlers.get(id)
   if (!fn) return false
   fn()

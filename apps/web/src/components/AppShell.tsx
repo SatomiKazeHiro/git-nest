@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router'
 import { hasCommand, overlayOpen, registerCommand, runCommand } from '@/lib/commands'
 import { GLOBAL_COMMANDS, comboOf, isEditable } from '@/lib/keys'
 import { useUiStore } from '@/store/ui'
-import { ProjectFormDialog } from '@/features/projects/ProjectFormDialog'
 import { TitleBar } from './TitleBar'
 
 /**
@@ -61,16 +60,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="body">
         <main className="content">{children}</main>
       </div>
-      {/*
-        「编辑资料」弹窗在整个应用里**只挂这一个**。
-
-        它原来被清单页和详情页各渲染了一次——清单页的行上有「编辑资料」，
-        详情页顶上也有一个，两处各挂一份是可行的，因为 `formOpen` 是全局的、
-        后渲染的那份只是没被看见。但两处挂载本身就是「同一个编辑器、两个门」
-        的松散实现：清单与详情同时可见时（比如宽窗口）就会有两个实例。
-        挂到外壳上，「项目的可写字段只在这里改」这条约定就有了唯一落点。
-      */}
-      <ProjectFormDialog />
     </div>
   )
 }

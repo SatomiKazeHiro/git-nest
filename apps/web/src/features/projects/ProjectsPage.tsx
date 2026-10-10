@@ -97,23 +97,23 @@ export function ProjectsPage() {
   }, [projects])
 
   /*
-    注册只有清单页算得出来的命令：「全选」要知道当前筛出了哪些行，
-    「检查更新」要决定检查勾选的那些还是当前筛选出的全部。
-    挂载时注册、卸载时注销——菜单栏与快捷键问的就是这张表。
-  */
-  const openCreate = useUiStore((s) => s.openCreate)
+    注册清单页自己算得出来的那两条命令：
+    - `check-updates` 要作用于「当前筛选出的全部」，而那只有清单页知道；
+    - `focus-search` 要找到那个搜索框。
 
+    `open-create` / `open-scan` **连同菜单栏一起删了**：它们原是菜单项，
+    菜单不在了之后，唯一会调用 `runCommand` 的就是按快捷键表派发的那个
+    keydown 处理器，而表里没有这两条——也就是说那两个闭包永远跑不到。
+  */
   useEffect(() => {
     const offs = [
-      registerCommand('open-create', openCreate),
       registerCommand('check-updates', () => setPanelOpen(true)),
-      registerCommand('open-scan', () => navigate('/settings#scan')),
       registerCommand('focus-search', () => {
         document.getElementById('project-search')?.focus()
       }),
     ]
     return () => offs.forEach((off) => off())
-  }, [openCreate, navigate])
+  }, [])
 
   if (error) {
     return (
