@@ -5,6 +5,7 @@ import {
   getRepoStatus,
   getRepoStatuses,
   pullRepo,
+  readReadme,
   readRemoteUrl,
   readRepoFacts,
   scanDirectory,
@@ -16,7 +17,8 @@ import type { DB } from '../db/index.ts'
 import { readSettings } from './settings.ts'
 import { lastUpstreamSha } from '../repos/updates.ts'
 
-export { analyzeUpdates, getLog, getRepoStatus, pullRepo }
+export { analyzeUpdates, getLog, getRepoStatus, pullRepo, readReadme }
+export { README_MAX_BYTES, README_FULL_MAX_BYTES } from '@git-nest/core'
 export type { UpdateReport } from '@git-nest/core/git'
 
 /**

@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { MAX_STATUS_IDS, idParamSchema, type RepoStatus } from '@git-nest/core'
 import type { DB } from '../db/index.ts'
-import { repoFacts, repoLog, repoStatus, repoStatusesLean } from '../lib/git.ts'
+import { repoFacts, repoLog, repoStatus, repoStatusesLean, readReadme, README_MAX_BYTES, README_FULL_MAX_BYTES } from '../lib/git.ts'
 import { badRequest, notFound } from '../lib/errors.ts'
 
 /**
@@ -88,6 +88,37 @@ export const gitRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
     } catch (err) {
       throw badRequest(err instanceof Error ? err.message : '读不到提交记录')
     }
+  })
+
+  /**
+   * README 全文。
+   *
+   * `?full=1` 是界面上「加载完整文档」那一下：上限从 64KB 抬到 1MB。
+   *
+   * **「没有 README」是 200 + `file: null`**，不是错误——很多仓库本来就没有说明，
+   * 那是正常状态。而「目录没了 / 不是仓库」是 400：那是界面必须说出来的异常。
+   * 两者混成同一个结果的话，用户会在项目已经不在了的时候读到「它没有 README」。
+   * 判据与 `/log` 完全一致（都走 `repoFacts`，一条 git 进程都不起）。
+   *
+   * 上限来自 core 的 `limits.ts`，**web 端读的是同一个常量**——否则 web 端
+   * 不知道 1MB 这个天花板，就会给出一个点了也没用的按钮。
+   */
+  fastify.get('/projects/:id/readme', async (req) => {
+    const { id } = req.params as { id: string }
+    const path = requirePath(db, idParamSchema.parse(id))
+
+    const facts = await repoFacts(path)
+    if (facts.error) {
+      throw badRequest(
+        facts.error.kind === 'missing'
+          ? '目录不在了，读不到 README'
+          : '这个目录不是 git 仓库，读不到 README',
+      )
+    }
+
+    const query = (req.query ?? {}) as { full?: string }
+    const maxBytes = query.full === '1' ? README_FULL_MAX_BYTES : README_MAX_BYTES
+    return readReadme(path, { maxBytes })
   })
 }
 
