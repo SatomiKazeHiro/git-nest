@@ -13,8 +13,9 @@
  *    「跟远程差多少、该不该拉」，不是「你工作区脏没脏」。
  *
  * **依赖方向**：本文件只往下依赖 `@git-nest/core`、`@/components/ui`、
- * `@/lib/format` 与同目录的 `StatusCell`。**不许反向依赖 `features/projects`
- * 或 `pages`**——那会让状态域认识「项目详情页」，正是把这块搬出来要断掉的边。
+ * `@/lib/format` 与同目录的 `text` / `badges`。**不许反向依赖
+ * `features/projects` 或 `pages`**——那会让状态域认识「项目详情页」，
+ * 正是把这块搬出来要断掉的边。
  */
 import { AlertTriangle, CheckCircle2, HelpCircle, RefreshCw } from 'lucide-react'
 import {
@@ -28,7 +29,8 @@ import {
 } from '@git-nest/core'
 import { Button, Meta } from '@/components/ui'
 import { formatRelative } from '@/lib/format'
-import { Delta, VERDICT_TONE, freshnessOf, statusTitle, textFor, toneFor } from './StatusCell'
+import { VERDICT_TONE, freshnessOf, statusTitle, textFor, toneFor } from './text'
+import { Delta } from './badges'
 
 /**
  * 判决块的「长相」：底色 + 图标。

@@ -162,7 +162,7 @@ export function Icon({ name, ...rest }: IconProps & { name: IconName }) {
  * 药丸用的是项目 token（可更新 深绿 / 已同步 **灰** / 不推荐 深红 / 待检查 琥珀），
  * 而这里是这套更饱和的图标色。于是同一个状态在两处是两种颜色：
  * 面板里「可更新」是中绿圆点，列表里那行是深绿药丸。
- * 要对齐的话改的是 `StatusCell.tsx` 的 `ATTENTION_CLASS`，不是这里。
+ * 要对齐的话改的是 `features/status/badges.tsx` 的 `ATTENTION_CLASS`，不是这里。
  */
 export const STATUS_ICON_TONE: Record<IconName, string> = {
   'all-repositories': 'text-[#2c85f9]',

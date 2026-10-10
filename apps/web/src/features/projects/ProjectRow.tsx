@@ -3,7 +3,7 @@ import { FolderGit2, Pencil, Trash2, UserRound } from 'lucide-react'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
 import { formatRelative } from '@/lib/format'
 import { useUiStore } from '@/store/ui'
-import { AttentionBadge, Diff, SyncBadge } from '@/features/status/StatusCell'
+import { AttentionBadge, Diff, SyncBadge } from '@/features/status/badges'
 
 /**
  * 清单里的一行。

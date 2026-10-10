@@ -7,7 +7,7 @@ import { formatRelative } from '@/lib/format'
 import { registerCommand } from '@/lib/commands'
 import { useUiStore } from '@/store/ui'
 import { useProjectStatus } from '@/features/status/queries'
-import { AttentionBadge } from '@/features/status/StatusCell'
+import { AttentionBadge } from '@/features/status/badges'
 // 判决卡住在状态域（`features/status/StatusPanel`），页面只负责把它摆进来。
 // 那三条状态政策（只有 safe 配绿、不是仓库就不重算、脏标记降级）跟着它一起走。
 import { StatusPanel } from '@/features/status/StatusPanel'

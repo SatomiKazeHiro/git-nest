@@ -7,12 +7,8 @@ import {
   type UpdateReport,
 } from '@git-nest/core'
 import { Button, Dialog, ErrorNote, Meta } from '@/components/ui'
-import {
-  RecommendationCell,
-  statusText,
-  statusTone,
-  Delta,
-} from '@/features/status/StatusCell'
+import { Delta, RecommendationCell } from '@/features/status/badges'
+import { statusText, statusTone } from '@/features/status/text'
 import { isPull, isReport, useUpdateTask, type TaskSnapshot } from './taskStream'
 import { useSettings } from '@/features/settings/queries'
 import { useInvalidate } from '@/lib/invalidate'
