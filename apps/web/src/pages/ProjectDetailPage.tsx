@@ -55,7 +55,7 @@ export function ProjectDetailPage() {
   }
 
   return (
-    <div className="flex min-h-full flex-col">
+    <div className="flex h-full flex-col">
       {status?.status === 'missing' ? <MissingNotice /> : null}
 
       {/*
@@ -71,7 +71,7 @@ export function ProjectDetailPage() {
         超长前缀、目录里有空格），必须允许在任何位置断开，否则会把整个栏撑宽。
         不用 `break-all` ——那会把正常汉字也逐个拆开。
       */}
-      <header className="flex flex-wrap items-start gap-x-3 gap-y-2 border-b border-line px-4 py-3">
+      <header className="flex flex-wrap items-start gap-x-3 gap-y-2 px-4 py-3">
         {/*
           行动分类的药丸放在**抬头跟着名字**，不是下面「推不推荐更新」那一节的标题行。
           那节的 `Recommendation` 面板隔二十来像素就写着「可更新 / 别拉 / 要你决定」
@@ -139,7 +139,7 @@ export function ProjectDetailPage() {
         aria-labelledby="tab-readme"
         tabIndex={0}
         hidden={tab !== 'readme'}
-        className="min-h-0 flex-1 overflow-auto px-4 py-3"
+        className="min-h-0 flex-1 overflow-hidden"
       >
         <ReadmeView projectId={project.id} />
       </div>

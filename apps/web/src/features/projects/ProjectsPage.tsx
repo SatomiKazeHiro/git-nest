@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Link, useNavigate, useOutlet, useParams } from 'react-router'
 import { groupBy, orderBy } from 'es-toolkit'
 import { useDebounce } from 'ahooks'
 import {
@@ -23,8 +23,9 @@ import {
 import { Button, Dialog, EmptyState, ErrorNote, Input } from '@/components/ui'
 import { ApiError } from '@/lib/api'
 import { registerCommand } from '@/lib/commands'
+import { GLOBAL_COMMANDS } from '@/lib/keys'
 import { formatRelative } from '@/lib/format'
-import { UNCATEGORIZED, useSelectedCount, useSelectedIds, useUiStore, type Filters } from '@/store/ui'
+import { UNCATEGORIZED, useUiStore, type Filters } from '@/store/ui'
 import { useProjects, useRemoveProject } from './queries'
 import { AttentionBadge, Diff, SyncBadge } from '@/features/status/StatusCell'
 import { useStatuses } from '@/features/status/queries'
@@ -52,9 +53,12 @@ export function ProjectsPage() {
   */
   const { id } = useParams()
   const currentId = Number(id) || null
+  // 子路由的元素（概览那两页 / README），由我们决定放在哪——见下面 list-scroll 里那段
+  const outlet = useOutlet()
+  const detailOpen = useUiStore((s) => s.detailOpen)
+  // 没选中项目就没有详情；`Ctrl+J` 还能把它收起来
+  const showDetail = currentId !== null && detailOpen
   const filters = useUiStore((s) => s.filters)
-  // 用内容稳定的 id 列表，而不是 `s.selected` 那个每次都换引用的 Set
-  const selectedIds = useSelectedIds()
   const [pendingRemoval, setPendingRemoval] = useState<ProjectListItem | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
 
@@ -92,24 +96,15 @@ export function ProjectsPage() {
     ).map(([name, items]) => ({ name, items, filterable: name !== UNCATEGORIZED }))
   }, [projects])
 
-  /** 表里从上到下的行顺序——上下键要按这个走，而不是按 `projects` 的原顺序 */
-  const ordered = useMemo(() => groups.flatMap((g) => g.items), [groups])
-
   /*
     注册只有清单页算得出来的命令：「全选」要知道当前筛出了哪些行，
     「检查更新」要决定检查勾选的那些还是当前筛选出的全部。
     挂载时注册、卸载时注销——菜单栏与快捷键问的就是这张表。
   */
-  const setSelection = useUiStore((s) => s.setSelection)
-  const clearSelection = useUiStore((s) => s.clearSelection)
   const openCreate = useUiStore((s) => s.openCreate)
-  const toggleSelected = useUiStore((s) => s.toggleSelected)
 
   useEffect(() => {
-    const ids = ordered.map((p) => p.id)
     const offs = [
-      registerCommand('select-all', () => setSelection(ids)),
-      registerCommand('clear-selection', clearSelection),
       registerCommand('open-create', openCreate),
       registerCommand('check-updates', () => setPanelOpen(true)),
       registerCommand('open-scan', () => navigate('/settings#scan')),
@@ -118,69 +113,7 @@ export function ProjectsPage() {
       }),
     ]
     return () => offs.forEach((off) => off())
-  }, [ordered, setSelection, clearSelection, openCreate, navigate])
-
-  /* 行焦点：roving tabindex，整张表在 Tab 序里只占一个停靠点。 */
-  const [focusedId, setFocusedId] = useState<number | null>(null)
-  const tbodyRef = useRef<HTMLTableSectionElement>(null)
-
-  const focusRow = useCallback((id: number | null) => {
-    setFocusedId(id)
-    tbodyRef.current?.querySelector<HTMLElement>(`[data-row="${id}"]`)?.focus()
-  }, [])
-
-  /** 相对 `from` 移动 delta 行 */
-  const moveFocus = (from: number | null, delta: number) => {
-    if (ordered.length === 0) return
-    const at = from === null ? -1 : ordered.findIndex((p) => p.id === from)
-    const next = at < 0 ? 0 : Math.min(ordered.length - 1, Math.max(0, at + delta))
-    const row = ordered[next]
-    if (row) focusRow(row.id)
-  }
-
-  const onTableKeyDown = (e: React.KeyboardEvent<HTMLTableSectionElement>) => {
-    /*
-      「现在是哪一行」**从事件所在的行读，不从 state 读**。
-      state 只用来画 tabindex（让整张表在 Tab 序里只占一个停靠点），
-      真要移动焦点时却去读它，就会踩到「刚点完一行、还没重渲染就按键」的时序：
-      handler 闭包里的 focusedId 还是上一次的值，于是按 ↓ 停在原地。
-      从 DOM 读永远是准的——行焦点本来就是 DOM 的事。
-    */
-    const row = (e.target as HTMLElement).closest('tr[data-row]') as HTMLElement | null
-    const here = row ? Number(row.dataset.row) : null
-
-    // 名字是链接、勾选框是 input、行内还有两个按钮——它们各自有原生行为，
-    // 这里一律不插手。尤其 Space：焦点在勾选框上时浏览器自己会切换它，
-    // 我们再来一次就是**双翻转**（按一下没反应或反着来）。
-    const inControl = (e.target as HTMLElement).closest('input, a, button') !== null
-
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault()
-        moveFocus(here, 1)
-        return
-      case 'ArrowUp':
-        e.preventDefault()
-        moveFocus(here, -1)
-        return
-      case ' ':
-        if (inControl || here === null) return
-        e.preventDefault()
-        toggleSelected(here)
-        return
-      case 'Enter':
-        if (inControl || here === null) return
-        e.preventDefault()
-        navigate(`/projects/${here}`)
-        return
-      case 'Delete':
-        if (inControl || here === null) return
-        e.preventDefault()
-        setPendingRemoval(ordered.find((p) => p.id === here) ?? null)
-        return
-      default:
-    }
-  }
+  }, [openCreate, navigate])
 
   if (error) {
     return (
@@ -198,63 +131,78 @@ export function ProjectsPage() {
         onScan={() => navigate('/settings#scan')}
       />
 
-      <ListHeader rows={ordered} />
+      <ListHeader />
 
-      <div className="list-scroll px-4 pb-6">
+      {/*
+        清单区：**清单表 + 详情并排**，选中项目时右边那一轨才长出来。
+
+        用 `useOutlet()` 而不是把 `<Outlet/>` 留在 Workspace：那才是 react-router
+        提供的「在父级布局里拿到子路由元素」的方式，所以这里能自己决定它落在哪。
+        **不渲染时是真的不渲染**，不是留一块空壳。
+      */}
+      <div className={`list-scroll ${showDetail ? 'list-scroll-has-detail' : ''}`}>
         {/*
-          状态那一列读不出来时必须说出来。原来这个错误被丢掉了（只解构了 data），
-          于是超过服务端上限、后端挂了、超时——用户看到的都是每一行「读状态…」，
-          永远不恢复，也没有任何解释。清单本身是好的，所以这里只挂一条可重试的提示，
-          不把整页变成错误页。
+          清单那一轨。**收列断点的基准是这一层**（`.list-pane` 上的
+          `container-type`），不是外面那个 `.list-scroll`——详情打开时整个清单区
+          没变窄，变窄的是表格那一轨。基准放错的话，表格已经挤到要收列了、
+          断点却还没触发。
         */}
-        {statusesError && projects && projects.length > 0 ? (
-          <div className="mt-3 flex flex-wrap items-center gap-3 border-l-2 border-signal-bad bg-panel px-3 py-2">
-            <span className="text-[13px] text-signal-bad">
-              读不到仓库状态：{statusesError instanceof ApiError ? statusesError.message : '服务端没应答'}
-              <span className="text-ink-3">（清单本身没问题，只有「落后 / 远程更新 / 上次检查」这几列是空的）</span>
-            </span>
-            <Button onClick={() => void refetchStatuses()} disabled={statusesLoading}>
-              {statusesLoading ? '重试中…' : '重试'}
-            </Button>
-          </div>
-        ) : null}
+        <div className="list-pane px-4 pb-6 h-full overflow-auto">
+          {/*
+            状态那一列读不出来时必须说出来。原来这个错误被丢掉了（只解构了 data），
+            于是超过服务端上限、后端挂了、超时——用户看到的都是每一行「读状态…」，
+            永远不恢复，也没有任何解释。清单本身是好的，所以这里只挂一条可重试的提示，
+            不把整页变成错误页。
+          */}
+          {statusesError && projects && projects.length > 0 ? (
+            <div className="mt-3 flex flex-wrap items-center gap-3 border-l-2 border-signal-bad bg-panel px-3 py-2">
+              <span className="text-[13px] text-signal-bad">
+                读不到仓库状态：{statusesError instanceof ApiError ? statusesError.message : '服务端没应答'}
+                <span className="text-ink-3">（清单本身没问题，只有「落后 / 远程更新 / 上次检查」这几列是空的）</span>
+              </span>
+              <Button onClick={() => void refetchStatuses()} disabled={statusesLoading}>
+                {statusesLoading ? '重试中…' : '重试'}
+              </Button>
+            </div>
+          ) : null}
 
-        {isPending ? (
-          <p className="py-10 font-mono text-[13px] text-ink-3">正在读清单…</p>
-        ) : !projects || projects.length === 0 ? (
-          <EmptyList filtering={hasFilter(filters)} />
-        ) : (
-          /*
-            一张平表：**一个表头 + 平铺的行**。
+          {isPending ? (
+            <p className="py-10 font-mono text-[13px] text-ink-3">正在读清单…</p>
+          ) : !projects || projects.length === 0 ? (
+            <EmptyList filtering={hasFilter(filters)} />
+          ) : (
+            /*
+              一张平表：**一个表头 + 平铺的行**。
 
-            这里踩过两个坑，都是「把分组塞进表里」造成的：
-            1. 最早是每个分区一个 `<ul>` + 各印一份表头 → 好几张表叠着。
-            2. 后来改成一张表，却把分区渲染成一整行分隔条（`colSpan` 的 `<tr>`）
-               → 换汤不换药，看着还是「一坨分区叠着一坨」。
+              这里踩过两个坑，都是「把分组塞进表里」造成的：
+              1. 最早是每个分区一个 `<ul>` + 各印一份表头 → 好几张表叠着。
+              2. 后来改成一张表，却把分区渲染成一整行分隔条（`colSpan` 的 `<tr>`）
+                 → 换汤不换药，看着还是「一坨分区叠着一坨」。
 
-            现在表里**完全没有分区这回事**：分类是侧栏的事（点一下就筛那一类），
-            在表里再来一层就是重复。行按分类排序，同类自然连在一起。
-          */
-          <table className="list-table">
-            <ColumnHeader />
-            <tbody ref={tbodyRef} onKeyDown={onTableKeyDown}>
-              {groups.flatMap((group) =>
-                group.items.map((p) => (
-                  <ProjectRow
-                    key={p.id}
-                    project={p}
-                    status={statuses?.get(p.id)}
-                    current={currentId === p.id}
-                    focused={focusedId === p.id}
-                    onFocus={() => setFocusedId(p.id)}
-                    onOpen={() => navigate(`/projects/${p.id}`)}
-                    onRemove={() => setPendingRemoval(p)}
-                  />
-                )),
-              )}
-            </tbody>
-          </table>
-        )}
+              现在表里**完全没有分区这回事**：分类是侧栏的事（点一下就筛那一类），
+              在表里再来一层就是重复。行按分类排序，同类自然连在一起。
+            */
+            <table className="list-table">
+              <ColumnHeader />
+              <tbody>
+                {groups.flatMap((group) =>
+                  group.items.map((p) => (
+                    <ProjectRow
+                      key={p.id}
+                      project={p}
+                      status={statuses?.get(p.id)}
+                      current={currentId === p.id}
+                      onOpen={() => navigate(`/projects/${p.id}`)}
+                      onRemove={() => setPendingRemoval(p)}
+                    />
+                  )),
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {showDetail ? <aside className="detail border-l border-line bg-panel h-full overflow-hidden">{outlet}</aside> : null}
       </div>
 
       {pendingRemoval ? (
@@ -264,7 +212,7 @@ export function ProjectsPage() {
           屏幕上就同时出现两张「表」）。 */}
       {panelOpen ? (
         <UpdatePanel
-          ids={selectedIds.length > 0 ? selectedIds : (projects ?? []).map((p) => p.id)}
+          ids={(projects ?? []).map((p) => p.id)}
           onClose={() => setPanelOpen(false)}
         />
       ) : null}
@@ -314,7 +262,6 @@ function ColumnHeader() {
   return (
     <thead className="tr-tint column-header sticky top-0 z-[5]">
       <tr className="border-b border-line text-[11px] text-ink-3">
-        <th className="col-check" />
         <th className="col-repo">仓库</th>
         <th className="col-branch">当前分支</th>
         <th className="col-attention">状态</th>
@@ -341,18 +288,14 @@ const ALL_GROUPS = '__all__'
  * （决定 8），所以两边必须是一份状态：各存一份的话，改了这边另一边不亮，
  * 用户会以为它们各筛各的。
  *
- * 「全选」选的是**当前筛出来的这些行**，不是库里全部——所以批量动作不会
- * 带走那些已经被筛掉的、用户根本没看见的项目。
+ * 「分组」那个下拉里的「未分类」是**空串**，而「全部」需要另一个值——
+ * 两个选项共用空串时，选了「未分类」下拉会显示成「全部」，筛的却是空串。
  */
-function ListHeader({ rows }: { rows: ProjectListItem[] }) {
+function ListHeader() {
   const filters = useUiStore((s) => s.filters)
   const setAttention = useUiStore((s) => s.setAttention)
   const setCategory = useUiStore((s) => s.setCategory)
   const setSort = useUiStore((s) => s.setSort)
-  const selectedIds = useSelectedIds()
-  const setSelection = useUiStore((s) => s.setSelection)
-  const clearSelection = useUiStore((s) => s.clearSelection)
-  const allSelected = rows.length > 0 && selectedIds.length === rows.length
 
   return (
     <div className="flex flex-wrap items-center gap-3 border-b border-line-soft px-4 py-1.5">
@@ -399,19 +342,21 @@ function ListHeader({ rows }: { rows: ProjectListItem[] }) {
         <option value="behind">按落后数</option>
       </Sel>
 
-      <label className="ml-auto flex shrink-0 cursor-pointer items-center gap-1.5 text-[12.5px] text-ink-2">
-        <input
-          type="checkbox"
-          className="list-check"
-          checked={allSelected}
-          // 一行都没有时禁用：勾了等于没勾，是死控件
-          disabled={rows.length === 0}
-          onChange={(e) =>
-            e.target.checked ? setSelection(rows.map((p) => p.id)) : clearSelection()
-          }
-        />
-        全选
-      </label>
+      {/*
+        全局快捷键的提示。**它们本来有一行专门显示这个**（在状态栏里），
+        那一行删掉以后，五个还能按的键就成了「有但没人知道」。
+
+        只显示组合键、说明挂在 title 上，与原来那一行同一套做法。
+
+        `refresh-local`（F5）不在这里：它由详情页注册，清单页没打开详情时按了没用。
+      */}
+      <span className="ml-auto flex shrink-0 items-center gap-3 font-mono text-[11px] text-ink-3">
+        {GLOBAL_COMMANDS.filter((c) => c.id !== 'refresh-local').map((c) => (
+          <span key={c.id} title={c.label}>
+            {c.combo}
+          </span>
+        ))}
+      </span>
     </div>
   )
 }
@@ -457,7 +402,6 @@ function Toolbar({
   const setQuery = useUiStore((s) => s.setQuery)
   const clearFilters = useUiStore((s) => s.clearFilters)
   const openCreate = useUiStore((s) => s.openCreate)
-  const selectedCount = useSelectedCount()
   const filtering = hasFilter(filters)
 
   return (
@@ -482,7 +426,6 @@ function Toolbar({
       ) : null}
       <span className="shrink-0 font-mono text-[12px] text-ink-3">
         {total} 个项目
-        {selectedCount > 0 ? ` · 已选 ${selectedCount}` : ''}
       </span>
       <div className="ml-auto flex shrink-0 items-center gap-2">
         {/* 「联网」两个字是必须的：详情页还有一个只读本地的按钮，
@@ -514,8 +457,6 @@ function ProjectRow({
   project: p,
   status,
   current,
-  focused,
-  onFocus,
   onOpen,
   onRemove,
 }: {
@@ -523,23 +464,15 @@ function ProjectRow({
   status: RepoStatus | undefined
   /** 这一行是不是正显示在右边详情栏里的那个 */
   current: boolean
-  /** 行焦点（roving tabindex）：整张表在 Tab 序里只占一个停靠点 */
-  focused: boolean
-  onFocus: () => void
   onOpen: () => void
   onRemove: () => void
 }) {
-  const selected = useUiStore((s) => s.selected.has(p.id))
-  const toggleSelected = useUiStore((s) => s.toggleSelected)
   const openEdit = useUiStore((s) => s.openEdit)
   // 目录没了：置灰但保留入口，让用户能改路径或移除——不自动消失
   const gone = status?.status === 'missing'
 
   return (
     <tr
-      data-row={p.id}
-      tabIndex={focused ? 0 : -1}
-      onFocus={onFocus}
       className={`row-link ${current ? 'row-current' : ''} ${gone ? 'opacity-50' : ''}`}
       title={gone ? '目录不在了。点「编辑资料」可以把它指到新位置。' : undefined}
       onClick={(e) => {
@@ -555,15 +488,6 @@ function ProjectRow({
         onOpen()
       }}
     >
-      <td className="col-check">
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={() => toggleSelected(p.id)}
-          aria-label={`选择 ${p.name}`}
-          className="list-check"
-        />
-      </td>
       {/*
         「仓库」一列把名称与路径并在一起（两行），不是两个列：列宽省下来的
         地方正好给「当前分支」腾位置，而路径本来就是「哪一份」的唯一凭据，

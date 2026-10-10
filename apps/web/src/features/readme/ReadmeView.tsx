@@ -53,7 +53,7 @@ export function ReadmeView({ projectId }: { projectId: number }) {
   const tooBig = bytes > README_FULL_MAX_BYTES
 
   return (
-    <div className="text-[12.5px] text-ink-3">
+    <div className="text-[12.5px] text-ink-3 h-full overflow-auto px-4 py-3">
       <p className="mb-2 font-mono">
         {data.file} · {formatBytes(bytes)}
       </p>

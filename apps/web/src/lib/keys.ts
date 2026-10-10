@@ -30,8 +30,7 @@ export const GLOBAL_COMMANDS: GlobalCommand[] = [
   { id: 'focus-search', label: '搜索项目', combo: 'Ctrl+F', inInput: true },
   { id: 'open-settings', label: '设置', combo: 'Ctrl+,', inInput: true },
   { id: 'toggle-detail', label: '显示 / 隐藏详情栏', combo: 'Ctrl+J', inInput: true },
-  { id: 'check-updates', label: '联网检查更新（只查勾选的）', combo: 'Ctrl+Enter' },
-  { id: 'select-all', label: '勾选当前清单的全部行', combo: 'Ctrl+A' },
+  { id: 'check-updates', label: '联网检查更新（当前筛选出的全部）', combo: 'Ctrl+Enter' },
   { id: 'refresh-local', label: '重读本地状态（不联网）', combo: 'F5' },
 ]
 
@@ -68,9 +67,4 @@ export function isEditable(target: EventTarget | null): boolean {
   if (!el || !el.tagName) return false
   const tag = el.tagName.toUpperCase()
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
-}
-
-/** 给菜单栏显示用：`Ctrl+Shift+U` → `Ctrl+Shift+U`（Win 习惯原样显示）。 */
-export function comboLabel(combo: string): string {
-  return combo
 }

@@ -1,6 +1,6 @@
 import { useMemo, type ComponentType, type ReactNode } from 'react'
 import { orderBy } from 'es-toolkit'
-import { LaptopMinimal } from 'lucide-react'
+import { LaptopMinimal, Shapes, Tag } from 'lucide-react'
 import { categoryLabel, type Attention } from '@git-nest/core'
 import { UNCATEGORIZED, useUiStore } from '@/store/ui'
 import { Icon, STATUS_ICON_TONE, type IconName } from '@/components/icons'
@@ -9,26 +9,18 @@ import { useProjects } from './queries'
 /**
  * 过滤面板：**清单页自己的控件**，只筛这一页的内容。
  *
- * 它以前和侧栏（导航）混在同一列里，于是「分类」看起来像一个能点过去的
- * 页面，点了却只是筛了眼前这张表。分成两列之后「属于哪儿」不用解释：
- *
- * ```
- * 清单页：| sidebar | filter panel | content |
- * 设置页：| sidebar | content |
- * ```
- *
- * 也就是说**它只在清单页存在**——设置页那一栏只有侧栏，筛选没有对象可筛。
- * （`Workspace` 就是清单页的布局路由，所以「只在清单页」这件事是结构保证的，
- * 不需要在这里判断当前路由。）
+ * 它**只在清单页存在**——设置页里没有可筛的对象，筛选留在那儿就是个死控件
+ * （点了没反应，用户只会觉得这个应用卡了）。`Workspace` 就是清单页的布局路由，
+ * 所以「只在清单页」这件事是结构保证的，不需要在这里判断当前路由。
  *
  * 四段：**仓库状态 / 我自己的 / 分类 / 标签**。前两个是「布尔」维度，
  * 后两个是「按名字分组」——混在一段里的话读者分不清它们是同一类东西。
  *
- * 面板自己会滚：分类和标签多了以后只滚这一列，侧栏与清单表都不动。
+ * 面板自己会滚：分类和标签多了以后只滚这一列，清单区不动。
  */
 export function FilterPanel() {
   /*
-    数数用的必须是**不带任何筛选**的那一份：侧栏的计数是全量口径。
+    数数用的必须是**不带任何筛选**的那一份：这里的计数是全量口径。
     跟着当前筛选变的话，「可更新 12」会在你筛完别的东西之后悄悄换成另一个数，
     而那个数看着仍然像是在报告全量的情况。
   */
@@ -153,7 +145,7 @@ export function FilterPanel() {
         </Group>
       ) : null}
 
-      <Group title="分类">
+      <Group title="分类" icon={Shapes}>
         {categories.length === 0 ? <Hint>还没有项目</Hint> : null}
         {categories.map(([name, n]) => (
           <Item
@@ -173,7 +165,7 @@ export function FilterPanel() {
         ))}
       </Group>
 
-      <Group title="标签">
+      <Group title="标签" icon={Tag}>
         {tags.length === 0 ? <Hint>还没有标签</Hint> : null}
         {tags.map(([name, n]) => (
           <Item key={name} label={name} count={n} active={tag === name} onClick={() => setTag(name)} />

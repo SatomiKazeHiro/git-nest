@@ -1,7 +1,7 @@
 import { Route, Routes } from 'react-router'
 import { AppShell } from '@/components/AppShell'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
-import { DetailPlaceholder, Workspace } from '@/features/projects/Workspace'
+import { Workspace } from '@/features/projects/Workspace'
 import { ProjectDetailPage } from '@/pages/ProjectDetailPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { EmptyState } from '@/components/ui'
@@ -9,7 +9,7 @@ import { EmptyState } from '@/components/ui'
 export function App() {
   return (
     <AppShell>
-      {/* 兜住页面渲染期的异常：只炸内容区，外壳（标题栏 / 状态栏）还能用，
+      {/* 兜住页面渲染期的异常：只炸内容区，外壳（标题栏）还能用，
           所以用户仍然点得回清单，而不是白屏。 */}
       <ErrorBoundary>
         <Routes>
@@ -20,7 +20,11 @@ export function App() {
             而不是另一个页面。
           */}
           <Route element={<Workspace />}>
-            <Route path="/" element={<DetailPlaceholder />} />
+            {/*
+              `/` 没有子路由元素：**没选中项目时清单下面就是什么都不渲染**。
+              原来的「还没选中项目」占位说的是右边那一栏，而那一栏已经没有了。
+            */}
+            <Route path="/" element={null} />
             <Route path="/projects/:id" element={<ProjectDetailPage />} />
           </Route>
           <Route path="/settings" element={<SettingsPage />} />
