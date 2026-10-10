@@ -56,5 +56,18 @@ export {
   type LogOptions,
 } from './log.ts'
 export { scanDirectory, type ScanOptions } from './scan.ts'
-export { readReadme, README_NAMES, type ReadmeResult } from './readme.ts'
+export { readReadme, readmeStamp, README_NAMES, type ReadmeResult } from './readme.ts'
+export {
+  findLogo,
+  chooseLogo,
+  scoreLogo,
+  explicitLogo,
+  isPreviewish,
+  isImagePath,
+  readmeImages,
+  normalizeLogoRef,
+  LOGO_MAX_BYTES,
+  type LogoPick,
+  type LogoCandidate,
+} from './logo.ts'
 export { pullRepo, type PullOptions } from './pull.ts'

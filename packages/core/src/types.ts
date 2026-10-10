@@ -289,6 +289,17 @@ export interface ProjectListItem extends Project {
   latestCheck: UpdateCheckSummary | null
   /** 服务端算好的行动分类。前端只渲染，不重算。 */
   attention: Attention
+  /**
+   * 从仓库里认出来的 logo 有没有。
+   *
+   * **只给一个布尔，不给路径**：那是一条仓库内的相对路径，它没有任何理由顺着
+   * HTTP 出去（README 那一路也是「路径不出本机」）。要图的时候去打
+   * `/api/projects/:id/logo`——它自己会去仓库里读。
+   *
+   * 这个布尔是必要的，不是图省事：没有它，列表里每一行都得发一个 `<img>` 去试，
+   * 而**大多数项目没有 logo**，十几个 404 会在控制台里红成一片。
+   */
+  hasLogo: boolean
 }
 
 /**

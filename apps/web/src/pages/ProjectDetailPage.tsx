@@ -15,6 +15,7 @@ import { UpdatePanel } from '@/features/updates/UpdatePanel'
 import { useProject } from '@/features/projects/queries'
 // 「远程」与「记录」都是项目域自己的展示，不属于「详情页」这个组合根
 import { RemoteRow } from '@/features/projects/RemoteRow'
+import { ProjectLogo } from '@/features/projects/ProjectLogo'
 import { RecordView } from '@/features/projects/RecordView'
 import { ReadmeView } from '@/features/readme/ReadmeView'
 
@@ -74,6 +75,10 @@ export function ProjectDetailPage() {
         不用 `break-all` ——那会把正常汉字也逐个拆开。
       */}
       <header className="flex flex-wrap items-start gap-x-3 gap-y-2 px-4 py-3">
+        {/* 认出来的 logo，和清单里那一行同一个来源。没有就什么都不显示 */}
+        {project.hasLogo ? (
+          <ProjectLogo projectId={project.id} size={24} className="mt-0.5" />
+        ) : null}
         {/*
           行动分类的药丸放在**抬头跟着名字**，不是下面「推不推荐更新」那一节的标题行。
           那节的 `Recommendation` 面板隔二十来像素就写着「可更新 / 别拉 / 要你决定」

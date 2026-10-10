@@ -74,4 +74,22 @@ export const migrations = [
       );
     `,
   },
+  {
+    id: '003_project_logos',
+    sql: `
+      -- 从仓库里认出来的 logo。**一张结论表**，和 update_checks 同一类东西：
+      -- 存「选中了哪个文件」+「得出它时 README 的指纹」，**不存图片本身**
+      -- （不变量：能从仓库自己读出来的不存）。
+      --
+      -- path 为 NULL = 识别过了、这个项目没有 logo。那是个结论，不是「还没算」——
+      -- 分不开的话，每次打开清单都要把没有 logo 的项目重算一遍。
+      -- stamp 与当前指纹不一致 = 结论过期（README 变了），下次请求时才重算。
+      CREATE TABLE project_logos (
+        project_id INTEGER PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+        path       TEXT,
+        stamp      TEXT NOT NULL,
+        picked_at  TEXT NOT NULL
+      );
+    `,
+  },
 ] as const

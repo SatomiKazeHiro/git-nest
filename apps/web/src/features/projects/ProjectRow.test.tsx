@@ -28,6 +28,7 @@ const project: ProjectListItem = {
   addedAt: '2026-10-01T00:00:00Z',
   sortOrder: 1,
   tags: [],
+  hasLogo: false,
   // 库里有上次检查的结论 → hasCheck 为真 → 修之前这两条路都会显示「一致」
   latestCheck: {
     checkedAt: '2026-10-05T00:00:00Z',

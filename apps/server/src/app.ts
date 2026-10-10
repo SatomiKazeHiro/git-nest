@@ -8,6 +8,7 @@ import { HttpError, toErrorBody } from './lib/errors.ts'
 import { bindSettings, useScheduler } from './lib/git.ts'
 import { projectRoutes, tagRoutes } from './routes/index.ts'
 import { gitRoutes } from './routes/git.ts'
+import { logoRoutes } from './routes/logo.ts'
 import { updateRoutes } from './routes/updates.ts'
 import { settingsRoutes } from './routes/settings.ts'
 import { scanRoutes } from './routes/scan.ts'
@@ -73,6 +74,7 @@ export function buildApp(options: AppOptions = {}) {
   app.register(projectRoutes(db), { prefix: '/api' })
   app.register(tagRoutes(db), { prefix: '/api' })
   app.register(gitRoutes(db), { prefix: '/api' })
+  app.register(logoRoutes(db), { prefix: '/api' })
   app.register(updateRoutes(db), { prefix: '/api' })
   app.register(settingsRoutes(db), { prefix: '/api' })
   app.register(scanRoutes(db), { prefix: '/api' })

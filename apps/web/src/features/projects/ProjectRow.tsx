@@ -1,9 +1,10 @@
 import { Link } from 'react-router'
-import { FolderGit2, Pencil, Trash2, UserRound } from 'lucide-react'
+import { FolderGit2, Pencil, Trash2 } from 'lucide-react'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
 import { formatRelative } from '@/lib/format'
 import { useUiStore } from '@/store/ui'
 import { AttentionBadge, Diff, SyncBadge, type Comparability } from '@/features/status/badges'
+import { ProjectLogo } from './ProjectLogo'
 
 /**
  * 那两个数字有没有可比的对象。**四种情况分开写**，因为它们都回答「有没有依据」，
@@ -67,21 +68,12 @@ export function ProjectRow({
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-1.5">
               {/*
-                「我自己的」用图标而不是圆点：清单里已经有两列用颜色编码 git
-                事实（状态 / 差异），再来一个圆点会让人以为是某种状态。
-                灰色也是刻意的——它是你自己的标注，不是 git 报出来的事实。
-                读屏读到的是「我自己的 bilibili-digest」。
-                它**不是按钮**：可写字段只在「编辑资料」里改。
+                「我自己的」在**清单里不再出现**（原来这里有一枚小人的图标）。
+                它不是被丢了：详情页的概览里仍有「身份 · 我自己的」那枚 chip，
+                而批量检查跳过谁，检查弹窗顶部会点名说清楚。
               */}
-              {p.isOwn ? (
-                <>
-                  {/* title 挂在外层 span 上：lucide 图标不接 title 属性 */}
-                  <span className="shrink-0 text-ink-3" title="我自己的项目：批量检查默认跳过它">
-                    <UserRound size={12} aria-hidden />
-                  </span>
-                  <span className="sr-only">我自己的</span>
-                </>
-              ) : null}
+              {/* 认出来的 logo。没有就什么都不显示——这一格不是「缺了点什么」 */}
+              {p.hasLogo ? <ProjectLogo projectId={p.id} /> : null}
               <Link
                 to={`/projects/${p.id}`}
                 aria-current={current ? 'page' : undefined}

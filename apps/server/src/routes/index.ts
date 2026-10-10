@@ -23,6 +23,7 @@ import {
   updateProject,
 } from '../repos/projects.ts'
 import { createTag, listTags, setProjectTags, tagUsageCount, deleteTag } from '../repos/tags.ts'
+import { scanLogos, scanProjectLogo } from '../lib/logo-scan.ts'
 
 type InferOutput<S> = S extends ZodType<infer O, unknown> ? O : never
 
@@ -38,16 +39,25 @@ export const projectRoutes = (db: DB): FastifyPluginAsync => {
     fastify.get('/projects', async (req) => {
       const q = parse(listProjectsQuerySchema, req.query ?? {})
       const projects = listProjects(db, q)
-      // 这一轮还没有分页，total 就等于全部命中数；下一轮加 page/perPage 时
-      // 只要把它换成真实的 COUNT，前后端都不用再动别的地方。
-      return { projects, total: projects.length }
+      /*
+        顺手把 logo 结论算好（只算 README 指纹变了的那些，见 `lib/logo-scan.ts`）。
+        放在列表这一趟里，而不是让每一行自己去请求：前端要靠一个布尔决定
+        「这一行到底要不要显示图」，而那个布尔只有这里能给。
+      */
+      const logos = await scanLogos(db, projects)
+      return {
+        projects: projects.map((p) => ({ ...p, hasLogo: logos.has(p.id) })),
+        // 这一轮还没有分页，total 就等于全部命中数；下一轮加 page/perPage 时
+        // 只要把它换成真实的 COUNT，前后端都不用再动别的地方。
+        total: projects.length,
+      }
     })
 
     fastify.get('/projects/:id', async (req) => {
       const { id } = req.params as { id: string }
       const project = getProject(db, idParamSchema.parse(id))
       if (!project) throw notFound('项目')
-      return { project }
+      return { project: { ...project, hasLogo: (await scanProjectLogo(db, project)) !== null } }
     })
 
     fastify.post('/projects', async (req, reply) => {

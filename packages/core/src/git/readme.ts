@@ -21,6 +21,23 @@ export interface ReadmeResult {
 }
 
 /**
+ * README 指纹：`<大小>:<修改时间>`；没有可读的 README 就是 `'none'`。
+ *
+ * 给「从 README 里认出一个结论」的功能用（现在只有 logo）：结论连着得出它时的
+ * 指纹一起存，下次先比指纹——**一样就不重算，不一样才重算**。
+ *
+ * 比挂在「什么时候该重认」上的钩子准：改了 README 不一定拉取，拉取了也不一定
+ * 改 README。指纹只对「README 变了」这一件事负责，而那正是唯一的判据。
+ */
+export async function readmeStamp(dir: string): Promise<string> {
+  for (const name of README_NAMES) {
+    const stat = await fs.promises.stat(path.join(dir, name)).catch(() => null)
+    if (stat?.isFile()) return `${stat.size}:${Math.round(stat.mtimeMs)}`
+  }
+  return 'none'
+}
+
+/**
  * 读仓库根目录的 README。
  *
  * **不落库、不缓存**（不变量：能从仓库自己读出来的不存）。每次现读——
