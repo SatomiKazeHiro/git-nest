@@ -1,73 +1,38 @@
 import { useEffect, useRef, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link, useLocation } from 'react-router'
-import { Check, Download, Eraser, FolderSearch, Loader, Trash2, X } from 'lucide-react'
-import { MAX_SCAN_RESULTS, type ScannedRepo } from '@git-nest/core'
-import { ApiError, api } from '@/lib/api'
+import { useLocation } from 'react-router'
+import { FolderSearch, Loader, Trash2, X } from 'lucide-react'
+import { ApiError } from '@/lib/api'
 import { Button, Dialog, ErrorNote, Input } from '@/components/ui'
 import { SettingRow } from './SettingRow'
-import { useInvalidate } from '@/lib/invalidate'
-import { queryKeys } from '@/lib/queryKeys'
-import { useRemoveProject } from '@/features/projects/queries'
 import { useSaveSettings, useSettings } from './queries'
-
- interface ScannedRepoWithProject extends ScannedRepo {
-  projectId: number | null
-  projectName: string | null
-  projectCategory: string | null
-}
-
-interface ScanResponse {
-  dir: string
-  /** 这次一共发现多少个仓库目录（可能多于 found.length） */
-  candidates: number
-  /** 是否因为「一次扫描最多列 N 个」而少列了 */
-  truncated: boolean
-  found: ScannedRepoWithProject[]
-}
-
- function useScan() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (input: { dir: string; depth: number; remember: boolean }) =>
-      api.post<ScanResponse>('/scan', input),
-    onSuccess: (_data, input) => {
-      // remember 会把目录写进设置，不刷新的话新加的常用目录不会出现在页面上
-      if (input.remember) void qc.invalidateQueries({ queryKey: queryKeys.settings })
-    },
-  })
-}
-
- function useImport() {
-  const invalidate = useInvalidate()
-  return useMutation({
-    mutationFn: (input: { paths: string[]; category: string }) =>
-      api.post<{ created: { id: number; name: string }[]; skipped: { path: string; reason: string }[] }>(
-        '/projects/import',
-        input,
-      ),
-    onSuccess: invalidate,
-  })
-}
+import { useRemoveProject } from '@/features/projects/queries'
+import { ScanResults } from './ScanResults'
+import { useScan, type ScanResponse, type ScannedRepoWithProject } from './scanQueries'
 
 /**
  * 扫描目录 → 勾选 → 入库。
  *
  * 扫描是只读的：它不写库、不动仓库。入库也是一条条 insert，
  * 名字取目录名、远程地址从 git 读，其余元数据留给用户补。
+ *
+ * 这一层只管**怎么扫**：目录、层数、常用目录、以及移除之后要重扫一遍。
+ * 「扫出来之后怎么选、怎么导」在 `ScanResults`——那份 state 只对某一次结果有意义。
  */
 export function ScanSection() {
   const { data: settings } = useSettings()
   const saveSettings = useSaveSettings()
   const scan = useScan()
-  const importRepos = useImport()
   const [dir, setDir] = useState('')
   const [depth, setDepth] = useState(1)
-  const [picked, setPicked] = useState<Set<string>>(new Set())
   const [result, setResult] = useState<ScanResponse | null>(null)
   const [banner, setBanner] = useState<string | null>(null)
-  const [confirmingImport, setConfirmingImport] = useState(false)
   const [removing, setRemoving] = useState<ScannedRepoWithProject | null>(null)
+  /*
+    每扫成功一次就 +1，用它当 `ScanResults` 的 key：**换一次结果就是换一个组件实例**，
+    勾选与「已确认」跟着一起清掉。放在这里而不是让结果组件自己比较 props，
+    是因为「两次扫描之间没有关系」这件事只有发起扫描的人知道。
+  */
+  const [scanSeq, setScanSeq] = useState(0)
   const removeProject = useRemoveProject()
 
   // 从清单页点「扫描目录」跳过来时（/settings#scan），直接把焦点放到输入框
@@ -98,68 +63,14 @@ export function ScanSection() {
         onSuccess: (res) => {
           setResult(res)
           setBanner(null)
-          // 新扫出来、还没在清单里的默认不勾：导入这种事宁少勿多
-          setPicked(new Set())
-          setConfirmingImport(false)
+          // 新扫出来、还没在清单里的默认不勾：导入这种事宁少勿多（状态在 ScanResults 里，
+          // 这里换 key 就等于把它清空）
+          setScanSeq((n) => n + 1)
         },
         onError: (e) => {
           setResult(null)
           setBanner(e instanceof ApiError ? e.message : '扫描失败')
         },
-      },
-    )
-  }
-
-  const toggle = (p: string) =>
-    setPicked((prev) => {
-      const next = new Set(prev)
-      if (next.has(p)) next.delete(p)
-      else next.add(p)
-      return next
-    })
-
-  const untracked = result?.found.filter((r) => !r.alreadyTracked) ?? []
-  const tracked = result?.found.filter((r) => r.alreadyTracked) ?? []
-  // 超过阈值要先确认范围（沿用 github-kb 的惯例）。
-  // **判据是本地 state，不能用 `importRepos.isIdle`**：mutation 一旦跑过一次
-  // 就再也不是 idle（success / error 都算），于是「导入过一批之后，确认闸永久失效」
-  // ——再勾 30 个仓库会直接导入。参照 UpdatePanel 的 confirming 写法。
-  const overThreshold = picked.size > (settings?.confirmThreshold ?? 20)
-
-  const doImport = () => {
-    /*
-      **服务端的硬上限**（core 的同一个常量）。构造上不可达——扫描列出的候选数
-      （`MAX_SCAN_RESULTS`）就等于导入能接受的最大条数，所以勾不出更多。
-      留这一句是为了「改扫描上限却忘了导入」时能当场看到原因，而不是吃一个
-      422「参数有误」；顺手也让这个约束在代码里显式存在，而不是靠两边数字碰巧相等。
-    */
-    if (picked.size > MAX_SCAN_RESULTS) {
-      setBanner(
-        `一次最多添加 ${MAX_SCAN_RESULTS} 个（现在勾了 ${picked.size} 个）：分两批添加，或把扫描目录填得更具体一些。`,
-      )
-      return
-    }
-    if (overThreshold && !confirmingImport) {
-      setConfirmingImport(true)
-      return
-    }
-    setConfirmingImport(false)
-    importRepos.mutate(
-      { paths: [...picked], category: '' },
-      {
-        onSuccess: (res) => {
-          const msg =
-            res.created.length > 0
-              ? `已添加 ${res.created.length} 个`
-              : '没有新的可添加'
-          setBanner(
-            res.skipped.length > 0
-              ? `${msg}；跳过 ${res.skipped.length} 个（${res.skipped[0]?.reason}…）`
-              : msg,
-          )
-          setPicked(new Set())
-        },
-        onError: (e) => setBanner(e instanceof ApiError ? e.message : '添加失败'),
       },
     )
   }
@@ -250,102 +161,15 @@ export function ScanSection() {
       ) : null}
 
       {result ? (
-        <div className="mt-4 border border-line">
-          <header className="flex flex-wrap items-center gap-2 border-b border-line-soft px-3 py-2">
-            <span className="min-w-0 truncate font-mono text-[12px] text-ink-2">{result.dir}</span>
-            <span className="text-[12px] text-ink-3">
-              找到 {result.candidates} 个仓库{untracked.length > 0 ? `，${untracked.length} 个还没添加` : ''}
-            </span>
-            {untracked.length > 0 ? (
-              <button
-                onClick={() =>
-                  setPicked(
-                    picked.size === untracked.length
-                      ? new Set()
-                      : new Set(untracked.map((r) => r.dir)),
-                  )
-                }
-                className="ml-auto text-[12.5px] text-accent hover:underline"
-              >
-                {picked.size === untracked.length ? '全不选' : '全选'}
-              </button>
-            ) : null}
-          </header>
-
-          {/*
-            被上限截断时必须说出来：静默少列几个，用户会以为「这个目录下就这么多仓库」，
-            而那是假话（扫描是把目录树变成工作量的动作，不封顶的话一个盘根 + depth 3
-            就是上万次 git 进程）。
-          */}
-          {result.truncated ? (
-            <p className="border-b border-line-soft bg-panel px-3 py-2 text-[12.5px] text-signal-ahead">
-              这个目录下的仓库比一次能列出的多：上面只是前 {result.found.length} 个（共发现{' '}
-              {result.candidates} 个）。把目录填得更具体一些，或者关掉往下的层数再扫一次。
-            </p>
-          ) : null}
-
-          {result.found.length === 0 ? (
-            <p className="px-3 py-4 text-[13px] text-ink-3">
-              这个目录下面没找到 git 仓库。往里多扫几层试试。
-            </p>
-          ) : (
-            <ul>
-              {result.found.map((repo) => (
-                <ScanRow
-                  key={repo.dir}
-                  repo={repo}
-                  picked={picked.has(repo.dir)}
-                  onToggle={() => toggle(repo.dir)}
-                  onRemove={() => setRemoving(repo)}
-                />
-              ))}
-            </ul>
-          )}
-
-          {tracked.length > 0 ? (
-            <p className="border-t border-line-soft px-3 py-2 text-[12px] text-ink-3">
-              灰色的是已在清单里的，点名字可以直接去看
-            </p>
-          ) : null}
-
-          {picked.size > 0 ? (
-            <footer className="flex flex-wrap items-center gap-2 border-t border-line-soft px-3 py-2">
-              {confirmingImport && overThreshold ? (
-                <>
-                  <span className="text-[12.5px] text-signal-ahead">
-                    要一次加入 {picked.size} 个（超过确认阈值 {settings?.confirmThreshold ?? 20}），确认吗？
-                  </span>
-                  <Button variant="primary" onClick={doImport} disabled={importRepos.isPending}>
-                    <Check size={14} aria-hidden />
-                    确认加入这 {picked.size} 个
-                  </Button>
-                  <Button onClick={() => setConfirmingImport(false)}>再想想</Button>
-                </>
-              ) : (
-                <>
-                  <Button
-                    variant="primary"
-                    onClick={doImport}
-                    disabled={importRepos.isPending}
-                  >
-                    <Download size={14} aria-hidden />
-                    添加选中的 {picked.size} 个
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setPicked(new Set())
-                      setConfirmingImport(false)
-                    }}
-                  >
-                    <Eraser size={14} aria-hidden />
-                    清空勾选
-                  </Button>
-                </>
-              )}
-            </footer>
-          ) : null}
-        </div>
+        <ScanResults
+          key={scanSeq}
+          result={result}
+          confirmThreshold={settings?.confirmThreshold ?? 20}
+          onNotice={setBanner}
+          onRemove={setRemoving}
+        />
       ) : null}
+
       {removing?.projectId ? (
         <RemoveDialog
           repo={removing}
@@ -398,80 +222,5 @@ function RemoveDialog({
         </Button>
       </div>
     </Dialog>
-  )
-}
-
-function ScanRow({
-  repo,
-  picked,
-  onToggle,
-  onRemove,
-}: {
-  repo: ScannedRepoWithProject
-  picked: boolean
-  onToggle: () => void
-  onRemove: () => void
-}) {
-  return (
-    <li
-      className={`flex items-center gap-2.5 border-b border-line-soft px-3 py-1.5 last:border-b-0 ${
-        repo.alreadyTracked ? 'opacity-55' : ''
-      }`}
-    >
-      {repo.alreadyTracked ? (
-        <span className="w-3.5 shrink-0" title="已经在清单里了" />
-      ) : (
-        <input
-          type="checkbox"
-          checked={picked}
-          onChange={onToggle}
-          aria-label={`选择 ${repo.name}`}
-          className="list-check shrink-0"
-        />
-      )}
-
-      {repo.projectId ? (
-        <Link
-          to={`/projects/${repo.projectId}`}
-          className="w-40 min-w-0 shrink-0 truncate font-mono text-[12.5px] text-ink-2 hover:text-accent hover:underline"
-        >
-          {repo.name}
-        </Link>
-      ) : (
-        <span className="w-40 min-w-0 shrink-0 truncate font-mono text-[12.5px] text-ink">
-          {repo.name}
-        </span>
-      )}
-
-      <span className="hidden w-40 min-w-0 shrink-0 truncate font-mono text-[11.5px] text-ink-3 sm:block">
-        {repo.remoteUrl ?? '—'}
-      </span>
-
-      <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-2">
-        {repo.summary ?? <span className="text-ink-3">（没有摘要）</span>}
-      </span>
-
-      {repo.alreadyTracked ? (
-        <span className="flex shrink-0 items-center gap-2">
-          <span className="font-mono text-[11px] text-ink-3">
-            已在清单{repo.projectCategory ? ` · ${repo.projectCategory}` : ''}
-          </span>
-          {repo.projectId ? (
-            <button
-              onClick={onRemove}
-              className="inline-flex items-center gap-1 text-[11.5px] text-ink-2 underline decoration-dotted hover:text-signal-bad"
-              title="只从清单里移除这一条，磁盘上的仓库不动"
-            >
-              <Trash2 size={11} aria-hidden />
-              移出清单
-            </button>
-          ) : null}
-        </span>
-      ) : (
-        <span className="shrink-0 font-mono text-[11px] text-ink-3">
-          {repo.summarySource === 'readme' ? 'README' : repo.summarySource === 'commit' ? 'commit' : '—'}
-        </span>
-      )}
-    </li>
   )
 }
