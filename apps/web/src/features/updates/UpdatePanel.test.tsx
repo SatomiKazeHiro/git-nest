@@ -249,6 +249,93 @@ describe('勾选更新流程', () => {
     expect(screen.getByText(/visperse 是你自己写的项目，跳过不查/)).toBeTruthy()
   })
 
+  it('单独重试某一行：只重查那一个，别的行留着上一次的结论', async () => {
+    const requested: (number[] | undefined)[] = []
+    /*
+      重试那一次的任务**只带一个项目**——真实服务端就是这样：items 由它收到的
+      ids 生成。第一版夹具图省事复用了三条的 lastCheckTask，于是三行都被刷成
+      pending，「别的行留着结论」当场就不成立了（测试把我拦下来了）。
+    */
+    const retryTask = {
+      id: 'task-retry',
+      kind: 'check' as const,
+      status: 'running' as const,
+      total: 1,
+      done: 0,
+      items: [{ projectId: 1, name: 'behind-one', state: 'pending' as const }],
+    }
+
+    server.use(
+      http.post('/api/updates/check', async ({ request }) => {
+        const body = (await request.json()) as { ids?: number[] }
+        requested.push(body.ids)
+        return HttpResponse.json(requested.length === 1 ? lastCheckTask : retryTask, {
+          status: 202,
+        })
+      }),
+    )
+
+    renderPanel()
+
+    // 第一轮：整批。1 号失败（网络），2、3 号有结论
+    await click(/开始检查/)
+    const first = await waitForStream()
+    first.emit({
+      type: 'item',
+      done: 1,
+      item: {
+        projectId: 1,
+        name: 'behind-one',
+        state: 'failed',
+        error: '连不上远程。检查网络、代理或 DNS',
+      },
+    })
+    first.emit({
+      type: 'item',
+      done: 2,
+      item: { projectId: 2, name: 'up-to-date', state: 'done', result: report('up_to_date', 0) },
+    })
+    first.emit({
+      type: 'item',
+      done: 3,
+      item: {
+        projectId: 3,
+        name: 'diverged',
+        state: 'done',
+        result: report('diverged', 1, '分叉那边的提交'),
+      },
+    })
+    first.emit({ type: 'closed' })
+
+    await waitFor(() =>
+      expect(screen.getByText('连不上远程。检查网络、代理或 DNS')).toBeTruthy(),
+    )
+    // 只有失败的那一行有「重试」
+    expect(screen.getAllByRole('button', { name: '重试' })).toHaveLength(1)
+
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+
+    // **只发了这一个 id**——不是把整批再来一遍
+    await waitFor(() => expect(requested).toHaveLength(2))
+    expect(requested[1], '重试只该重查失败的那一个').toEqual([1])
+
+    const second = await waitForStream()
+    second.emit({
+      type: 'item',
+      done: 1,
+      item: { projectId: 1, name: 'behind-one', state: 'done', result: report('behind', 2) },
+    })
+    second.emit({ type: 'closed' })
+
+    // 这一行换成了新结论；另外两行的旧结论**没有被抹掉**
+    await waitFor(() => expect(screen.getByText('落后远程')).toBeTruthy())
+    expect(screen.queryByText('连不上远程。检查网络、代理或 DNS')).toBeNull()
+    expect(screen.getByText('已是最新')).toBeTruthy()
+    expect(screen.getByText('已分叉')).toBeTruthy()
+    // 整张表都跑过了，没有谁退回「待检查」
+    expect(screen.queryByText('待检查')).toBeNull()
+  })
+
   it('超过确认阈值时先问一遍，不直接开跑', async () => {
     let checks = 0
     let settingsCalls = 0

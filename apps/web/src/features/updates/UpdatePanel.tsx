@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import {
   MAX_BATCH_IDS,
@@ -10,7 +10,7 @@ import { Button, ErrorNote, Meta } from '@/components/ui'
 import { Dialog } from '@/components/Dialog'
 import { Delta, RecommendationCell } from '@/features/status/badges'
 import { statusText, statusTone } from '@/features/status/text'
-import { isPull, isReport, useUpdateTask, type TaskSnapshot } from './taskStream'
+import { isPull, isReport, useUpdateTask, type TaskItem, type TaskSnapshot } from './taskStream'
 import { useSettings } from '@/features/settings/queries'
 import { useInvalidate } from '@/lib/invalidate'
 
@@ -95,11 +95,29 @@ export function UpdatePanel({
   */
   const finished = task?.status === 'done' ? task : null
 
-  const reports = useMemo(
-    () => (task?.items ?? []).filter((i) => isReport(i.result)),
-    [task],
-  )
-  const results = useMemo(() => reports.map((i) => i.result).filter(isReport), [reports])
+  /*
+    这一屏上**每个项目最近一次的结果**，按项目 id 攒着。
+
+    以前渲染的是「当前这个任务的 items」——一次任务就是一张表，于是「单独重试」
+    无从下手：重试一个会把别的行一起抹掉。改成累积之后，一次任务只覆盖它自己带到
+    的那几行，其余行留着上一次的结论；全部重查时服务端照样把每个项目都带来
+    （从 pending 起步），整张表自然被刷成新的。
+  */
+  const [rows, setRows] = useState<Map<number, TaskItem>>(new Map())
+
+  useEffect(() => {
+    if (!task) return
+    setRows((prev) => {
+      const next = new Map(prev)
+      for (const item of task.items) next.set(item.projectId, item)
+      return next
+    })
+  }, [task])
+
+  const rowItems = [...rows.values()]
+  const reports = rowItems.filter((i) => isReport(i.result))
+  const results = reports.map((i) => i.result).filter(isReport)
+  const failedCount = rowItems.filter((i) => i.state === 'failed').length
   // 「全选可更新的」也得用同一个判据，否则会把「别拉」的那些一起勾上
   const updatable = reports.filter((i) => isReport(i.result) && canPullNow(i.result))
   /** 判定为「别拉」的仓库名——报告列表上方单独提示一句，免得埋在 20 行里 */
@@ -124,6 +142,26 @@ export function UpdatePanel({
       else next.add(projectId)
       return next
     })
+
+  /**
+   * 只重查这一个。**不走「整批再来一遍」**：那是一次真实的联网 fetch，
+   * 几十个仓库要跑几十秒，而用户要修的往往只是其中一个（网络抖动、代理抽风）。
+   */
+  const retryOne = (projectId: number) => {
+    // 先把这一行清掉：它要重跑，界面上就不该还挂着上一次的结论
+    setRows((prev) => {
+      const next = new Map(prev)
+      next.delete(projectId)
+      return next
+    })
+    // 勾选也一起撤：那是对**旧结论**的勾，新结论出来之前不该保留
+    setPicked((prev) => {
+      const next = new Set(prev)
+      next.delete(projectId)
+      return next
+    })
+    void startCheck([projectId])
+  }
 
   const startCheckNow = () => {
     if (overLimit) return
@@ -164,7 +202,7 @@ export function UpdatePanel({
           ) : finished ? (
             <span className="text-[13px] text-ink-2">
               {finished.kind === 'check'
-                ? checkSummary(results, finished.summary ?? {})
+                ? checkSummary(results, failedCount)
                 : applySummary(finished)}
             </span>
           ) : null}
@@ -242,38 +280,25 @@ export function UpdatePanel({
         <p className="mb-3 text-[12.5px] text-ink-3">{skipNote(skipped.map((t) => t.name))}</p>
       ) : null}
 
-      {!task ? (
-        settingsPending ? (
-          // 还不知道「自己的项目要不要一起查」，此刻画出来的列表一定是错的
-          <p className="py-10 text-center font-mono text-[12px] text-ink-3">…</p>
-        ) : targets.length === 0 ? (
-          /*
-            `targets` 为空只可能是**清单是空的**（列表页没勾选时是「全部筛选结果」，
-            非空清单永远不会是 0）。这里不能再说「先去清单里勾选」——弹窗盖着清单，
-            那句话在弹窗里做不到；「开始检查」同时是禁用的。
-          */
-          <p className="text-[13px] text-ink-2">
-            清单里还没有项目。先在清单页添加一个（或扫描一个目录），再回来检查。
-          </p>
-        ) : willCheck.length === 0 ? (
-          <p className="text-[13px] text-ink-2">
-            这批项目都是你自己写的，一个都不在检查范围内——想查它们，去设置里打开「自己的项目也参与检查」。
-          </p>
-        ) : (
-          /*
-            **开跑之前就把它列出来**：将要检查谁，一行一个。
-            点「开始检查」之后，任务流回来的每一行按项目 id 原地替换——服务端也按
-            我们给的顺序返回，所以这一屏不会重排，只是每行的内容从「待检查」变成结果。
-            跳过的那些不在这里，它们由上面那句话交代。
-          */
-          <ul>
-            {willCheck.map((t) => (
-              <PendingRow key={t.id} name={t.name} />
-            ))}
-          </ul>
-        )
-      ) : task.status === 'failed' ? (
-        <ErrorNote message={task.error ?? '任务失败'} />
+      {/* 整轮跑不起来（服务端拒了 / 流断了）：说清楚，列表照旧在下面 */}
+      {task?.status === 'failed' ? <ErrorNote message={task.error ?? '任务失败'} /> : null}
+
+      {settingsPending ? (
+        // 还不知道「自己的项目要不要一起查」，此刻画出来的列表一定是错的
+        <p className="py-10 text-center font-mono text-[12px] text-ink-3">…</p>
+      ) : targets.length === 0 ? (
+        /*
+          `targets` 为空只可能是**清单是空的**（列表页没勾选时是「全部筛选结果」，
+          非空清单永远不会是 0）。这里不能再说「先去清单里勾选」——弹窗盖着清单，
+          那句话在弹窗里做不到；「开始检查」同时是禁用的。
+        */
+        <p className="text-[13px] text-ink-2">
+          清单里还没有项目。先在清单页添加一个（或扫描一个目录），再回来检查。
+        </p>
+      ) : willCheck.length === 0 ? (
+        <p className="text-[13px] text-ink-2">
+          这批项目都是你自己写的，一个都不在检查范围内——想查它们，去设置里打开「自己的项目也参与检查」。
+        </p>
       ) : (
         <>
           {/*
@@ -288,15 +313,26 @@ export function UpdatePanel({
             </p>
           ) : null}
 
+          {/*
+            列表**一直在**：开跑前每行是「待检查」，跑起来之后按项目 id 原地换内容。
+            单独重试也只换那一行——这正是把结果攒在 `rows` 里、而不是直接渲染
+            `task.items` 的原因。
+          */}
           <ul>
-            {task.items.map((item) => (
-              <TaskRow
-                key={item.projectId}
-                item={item}
-                checked={picked.has(item.projectId)}
-                onToggle={() => toggle(item.projectId)}
-              />
-            ))}
+            {willCheck.map((t) => {
+              const item = rows.get(t.id)
+              return item ? (
+                <TaskRow
+                  key={t.id}
+                  item={item}
+                  checked={picked.has(t.id)}
+                  onToggle={() => toggle(t.id)}
+                  onRetry={() => retryOne(t.id)}
+                />
+              ) : (
+                <PendingRow key={t.id} name={t.name} />
+              )
+            })}
           </ul>
         </>
       )}
@@ -344,10 +380,12 @@ function TaskRow({
   item,
   checked,
   onToggle,
+  onRetry,
 }: {
-  item: TaskSnapshot['items'][number]
+  item: TaskItem
   checked: boolean
   onToggle: () => void
+  onRetry: () => void
 }) {
   const rep = isReport(item.result) ? item.result : null
   const recommendation = rep?.recommendation ?? null
@@ -398,6 +436,20 @@ function TaskRow({
           >
             {item.result.summary}
           </span>
+        ) : null}
+
+        {/*
+          单独重试：只重查这一个仓库。失败往往是网络 / 代理这类整批性的毛病，
+          但重试**不该**把那些已经查好的再 fetch 一遍——那要几十秒。
+        */}
+        {item.state === 'failed' ? (
+          <button
+            onClick={onRetry}
+            className="ml-auto shrink-0 text-[12px] text-accent hover:underline"
+            title="只重查这一个仓库"
+          >
+            重试
+          </button>
         ) : null}
       </div>
 
@@ -463,21 +515,30 @@ function ReportCell({ report }: { report: UpdateReport }) {
 /**
  * 检查完的那句话。
  *
+ * **它描述的是「屏幕上这些行」，不是「刚才那一次任务」**：删掉某一行单独重试之后，
+ * 一句话如果还按最后一次任务算，就会只报那一个仓库。所以这些数全从累积的行里来
+ * ——只有 `failed` 得单独数（失败的仓库没有 report，是一条 item 状态）。
+ *
  * 「可更新」按**判决**分，不按 status：作者 force push 过的仓库 status 同样是 `behind`，
  * 但它不能拉。原来写「N 个可更新」把这两种混在一起，和勾选框的判据自相矛盾——
  * 用户问的「有展示推荐与否的 UI 吗」就是这一条。现在分成「可安全快进」与「别拉」。
  */
-function checkSummary(reports: UpdateReport[], summary: Record<string, number>): string {
+function checkSummary(reports: UpdateReport[], failed: number): string {
   const parts: string[] = []
   const pullable = reports.filter(canPullNow).length
   const dontPull = reports.filter((r) => isDontPull(r.recommendation)).length
+  const count = (status: UpdateReport['status']) => reports.filter((r) => r.status === status).length
+  // 桶要互斥，不然「N 个没法检查」会和其它桶重复计数（与服务端同一个口径）
+  const counted = count('behind') + count('diverged') + count('up_to_date') + count('ahead')
+  const unassessable = reports.length - counted
+
   if (pullable > 0) parts.push(`${pullable} 个可安全快进`)
   if (dontPull > 0) parts.push(`${dontPull} 个别拉`)
-  if (summary.upToDate) parts.push(`${summary.upToDate} 个已是最新`)
-  if (summary.ahead) parts.push(`${summary.ahead} 个领先远程`)
-  if (summary.diverged) parts.push(`${summary.diverged} 个已分叉`)
-  if (summary.skipped) parts.push(`${summary.skipped} 个没法检查`)
-  if (summary.failed) parts.push(`${summary.failed} 个失败`)
+  if (count('up_to_date') > 0) parts.push(`${count('up_to_date')} 个已是最新`)
+  if (count('ahead') > 0) parts.push(`${count('ahead')} 个领先远程`)
+  if (count('diverged') > 0) parts.push(`${count('diverged')} 个已分叉`)
+  if (unassessable > 0) parts.push(`${unassessable} 个没法检查`)
+  if (failed > 0) parts.push(`${failed} 个失败`)
   return parts.length > 0 ? `检查完：${parts.join('、')}` : '检查完了'
 }
 
