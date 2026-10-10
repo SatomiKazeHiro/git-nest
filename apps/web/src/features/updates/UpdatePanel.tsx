@@ -392,6 +392,17 @@ function TaskRow({
   const pullable = canPullNow(rep)
   const dontPull = isDontPull(recommendation)
 
+  /**
+   * 这一行**没拿到结论**吗？没拿到才给「重试」。
+   *
+   * **不能只看 `item.state === 'failed'`**：网络失败根本不会让任务项失败——
+   * `analyze` 自己把 git 的报错收成一个带 `error` 的报告（状态 `error`），服务端
+   * 照样 `markDone`。`state === 'failed'` 只在 `analyze` 抛异常时出现，很罕见。
+   * 第一版就挂在这个条件上：按钮写好了、测试也过了（我那条测试恰好用了
+   * `state: 'failed'` 这个假形状），而真机上一个都不显示。
+   */
+  const noConclusion = item.state === 'failed' || rep?.error != null
+
   return (
     <li className="border-b border-line-soft py-2 last:border-b-0">
       <div className="flex items-center gap-2.5">
@@ -442,7 +453,7 @@ function TaskRow({
           单独重试：只重查这一个仓库。失败往往是网络 / 代理这类整批性的毛病，
           但重试**不该**把那些已经查好的再 fetch 一遍——那要几十秒。
         */}
-        {item.state === 'failed' ? (
+        {noConclusion ? (
           <button
             onClick={onRetry}
             className="ml-auto shrink-0 text-[12px] text-accent hover:underline"

@@ -277,17 +277,26 @@ describe('勾选更新流程', () => {
 
     renderPanel()
 
-    // 第一轮：整批。1 号失败（网络），2、3 号有结论
+    // 第一轮：整批。1 号连不上远程，2、3 号有结论
     await click(/开始检查/)
     const first = await waitForStream()
+    /*
+      **这是真实形状**：网络失败不会让任务项失败——`analyze` 把 git 的报错收成一个
+      带 `error` 的报告（状态 `error`），服务端照样 `markDone`。
+      第一版测试图省事用了 `state: 'failed'`（那只在 analyze 抛异常时出现），
+      于是测试绿着、真机上一个「重试」都不显示。
+    */
     first.emit({
       type: 'item',
       done: 1,
       item: {
         projectId: 1,
         name: 'behind-one',
-        state: 'failed',
-        error: '连不上远程。检查网络、代理或 DNS',
+        state: 'done',
+        result: {
+          ...report('error', 0),
+          error: { kind: 'network', message: '连不上远程。检查网络、代理或 DNS' },
+        },
       },
     })
     first.emit({
