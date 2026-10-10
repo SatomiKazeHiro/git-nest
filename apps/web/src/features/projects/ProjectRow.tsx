@@ -102,13 +102,15 @@ export function ProjectRow({
         />
       </td>
 
-      {/* 同步状态：全中性灰，刻意比左边那列低调——它是上下文，不是行动项 */}
+      {/* 同步状态：全中性灰，刻意比左边那列低调——它是上下文，不是行动项。
+          状态还没读回来时它给「—」，**不给「一致」**（说明见 SyncBadge）。 */}
       <td className="col-sync">
         <SyncBadge
           ahead={status?.ahead ?? null}
           behind={status?.behind ?? null}
           upstreamGone={status?.upstreamGone ?? false}
           hasCheck={p.attention !== 'unchecked'}
+          hasStatus={status !== undefined}
         />
       </td>
 
@@ -118,6 +120,7 @@ export function ProjectRow({
           ahead={status?.ahead ?? null}
           behind={status?.behind ?? null}
           hasCheck={p.attention !== 'unchecked'}
+          hasStatus={status !== undefined}
         />
       </td>
 
