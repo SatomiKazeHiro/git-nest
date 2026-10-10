@@ -131,21 +131,32 @@ describe('ProjectRow · 「同步状态」列不许说没依据的话', () => {
 })
 
 /**
- * logo 与那枚文件夹图标**是同一格**：认出 logo 就顶掉它，认不出来才留着。
+ * logo 与那张**默认文件夹图**是同一格：认出 logo 就顶掉它，认不出来才留着。
  * 并排放两个图标只是占地方——它们回答的是同一个问题（「这是哪个仓库」）。
+ * 而且两种答案现在是同一类东西（都是 32×32 的图），不再是一图一 lucide 图标。
  */
 describe('ProjectRow · 仓库那一格的图标', () => {
-  it('认出了 logo：用它顶掉文件夹图标', () => {
+  it('认出了 logo：用它顶掉默认的文件夹图', () => {
     const { container } = renderRow(status(), { hasLogo: true })
+    const imgs = [...container.querySelectorAll('img')]
 
-    expect(container.querySelector('img')?.getAttribute('src')).toBe('/api/projects/5/logo')
-    expect(container.querySelector('.lucide-folder-git-2')).toBeNull()
+    expect(imgs).toHaveLength(1)
+    expect(imgs[0]?.getAttribute('src')).toBe('/api/projects/5/logo')
   })
 
-  it('没认出来：还是那枚文件夹图标（认不出来是常态）', () => {
+  it('没认出来：显示 docs/folder.svg 那张默认图（认不出来是常态）', () => {
     const { container } = renderRow(status())
+    const imgs = [...container.querySelectorAll('img')]
+    const src = imgs[0]?.getAttribute('src') ?? ''
 
-    expect(container.querySelector('.lucide-folder-git-2')).not.toBeNull()
-    expect(container.querySelector('img')).toBeNull()
+    expect(imgs).toHaveLength(1)
+    expect(imgs[0]?.getAttribute('width')).toBe('32')
+    /*
+      钉的是**契约**而不是 URL 的样子：这张默认图不是取图接口。
+      小于 4KB 的资源会被 Vite 内联成 data URI（构建与测试里就是这样），
+      开发服务器上则是普通 URL——两种形态都对，断言不该依赖其中一种。
+    */
+    expect(src.startsWith('/api/')).toBe(false)
+    expect(src.includes('folder.svg') || src.startsWith('data:image/svg+xml')).toBe(true)
   })
 })

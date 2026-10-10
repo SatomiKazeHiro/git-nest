@@ -1,10 +1,11 @@
 import { Link } from 'react-router'
-import { FolderGit2, Pencil, Trash2 } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
 import { formatRelative } from '@/lib/format'
 import { useUiStore } from '@/store/ui'
 import { AttentionBadge, Diff, SyncBadge, type Comparability } from '@/features/status/badges'
 import { ProjectLogo } from './ProjectLogo'
+import { folderUrl } from './folderIcon'
 
 /**
  * 那两个数字有没有可比的对象。**四种情况分开写**，因为它们都回答「有没有依据」，
@@ -67,12 +68,22 @@ export function ProjectRow({
           {/*
             这一格原来固定是一枚文件夹图标。**认出 logo 时它就被 logo 顶掉**——
             因为它们是同一件事的两种答案（「这是哪个仓库」），并排放两个图标
-            只是在占地方。没认出来就还是那枚文件夹图标：认不出来是常态。
+            只是在占地方。没认出来就还是那枚文件夹：认不出来是常态。
+
+            默认图用的是 `docs/folder.svg`（32×32，与 logo 同尺寸），不再是 lucide
+            的图标——同一格里两种东西长得完全不一样，会显得像两个不同的字段。
           */}
           {p.hasLogo ? (
             <ProjectLogo projectId={p.id} />
           ) : (
-            <FolderGit2 size={15} aria-hidden className="mt-[3px] shrink-0 text-ink-3" />
+            <img
+              src={folderUrl}
+              alt=""
+              aria-hidden
+              width={32}
+              height={32}
+              className="shrink-0 rounded-[3px]"
+            />
           )}
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-1.5">
