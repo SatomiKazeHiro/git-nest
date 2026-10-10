@@ -62,6 +62,14 @@ export function ReadmeView({ projectId }: { projectId: number }) {
         <Markdown
           remarkPlugins={[remarkGfm]}
           /*
+            **原始 HTML 一律丢掉。**
+            不装 `rehype-raw` 时 react-markdown 的默认行为是把 raw HTML
+            **渲染成文本**——于是 README 里一个 `<a id="store-install"></a>`
+            这样的锚点会在界面上原样显示成一行尖括号标签（实测踩到过）。
+            `skipHtml` 才是「不渲染」：丢的是标记，不是内容。
+          */
+          skipHtml
+          /*
             **唯一那个闸门。** 拦下的 URL 变成空串，下面的 components 看到
             `href === ''` 就渲染成普通文字——不是留一个点了没反应的蓝链接。
             （图片与链接放行的协议不同，`node.tagName` 就是要区分的那一位。）

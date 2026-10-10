@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { AlertTriangle, CheckCircle2, HelpCircle, Pencil, RefreshCw } from 'lucide-react'
-import { categoryLabel, isRemoteCheckStatus, deriveStatus, VERDICT_LABEL, type RepoStatus, type UpdateRecommendation, type UpdateStatus, type UpdateVerdict } from '@git-nest/core'
+import { categoryLabel, isRemoteCheckStatus, deriveStatus, VERDICT_LABEL, type ProjectDetail, type RepoStatus, type UpdateRecommendation, type UpdateStatus, type UpdateVerdict } from '@git-nest/core'
 import { Button, ErrorNote, Meta } from '@/components/ui'
 import { formatRelative } from '@/lib/format'
 import { registerCommand } from '@/lib/commands'
@@ -10,12 +10,21 @@ import { useProjectStatus } from '@/features/status/queries'
 import { AttentionBadge, Delta, VERDICT_TONE, statusTitle, textFor, toneFor, freshnessOf } from '@/features/status/StatusCell'
 import { UpdatePanel } from '@/features/updates/UpdatePanel'
 import { useProject } from '@/features/projects/queries'
+import { ReadmeView } from '@/features/readme/ReadmeView'
 
 export function ProjectDetailPage() {
   const { id } = useParams()
   const projectId = Number(id)
   const openEdit = useUiStore((s) => s.openEdit)
   const [updating, setUpdating] = useState(false)
+  /*
+    详情栏的两页。**默认落在概览**——打开一个项目最常见的需求是看它现在什么状态，
+    而「这个仓库是讲什么的」是第二问。
+
+    **切换不改 URL**（理由见 `TabBar`）。换个项目时这个组件重挂载，
+    于是自然回到概览——这正是该有的行为。
+  */
+  const [tab, setTab] = useState<'overview' | 'readme'>('overview')
   const validId = Number.isFinite(projectId) ? projectId : null
   const { data: project, isPending, error } = useProject(validId)
   // 状态提到页面这一层：missing 的提示要出现在页面最上面，不只是状态面板里
@@ -102,63 +111,31 @@ export function ProjectDetailPage() {
         </p>
       </header>
 
-      <div className="flex flex-1 flex-col gap-4 px-4 py-4">
-        <StatusPanel
-          status={status}
-          isFetching={refresh.isPending}
-          onRefresh={() => refresh.mutate()}
-          lastCheckAt={project.latestCheck?.checkedAt ?? null}
-          lastCheckStatus={project.latestCheck?.status ?? null}
-        />
+      <TabBar tabs={TABS} value={tab} onChange={setTab} />
 
-        <RemoteRow url={project.remoteUrl} />
-
-        {/*
-          分类与标签并成一行 chip。
-          原来它们各占一个 7rem 标签列 + 右边一个 chip 盒——**包了两层**：
-          「分类」两个字、然后一个等宽字、再然后一个带框的小块。
-          这一行里没有真正的「值」需要和「标签」对齐，chip 自己就是值。
-        */}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-          {/*
-            「我自己的」是这个项目最重要的一条元信息——它决定批量检查会不会
-            跳过它。分类可以为空，这一项不行：勾上了却看不出来，等于没勾。
-          */}
-          {project.isOwn ? (
-            <>
-              <span className="text-[11px] text-ink-3">身份</span>
-              <Chip>我自己的</Chip>
-            </>
-          ) : null}
-          <span className="text-[11px] text-ink-3">分类</span>
-          <Chip>{project.category ? categoryLabel(project.category) : '未分类'}</Chip>
-          {project.tags.length > 0 ? (
-            <>
-              <span className="ml-1 text-[11px] text-ink-3">标签</span>
-              {project.tags.map((t) => (
-                <Chip key={t.id}>{t.name}</Chip>
-              ))}
-            </>
-          ) : null}
+      {tab === 'overview' ? (
+        <div role="tabpanel" id="panel-overview" aria-labelledby="tab-overview">
+          <OverviewPanel
+            project={project}
+            status={status}
+            refresh={() => refresh.mutate()}
+            isRefreshing={refresh.isPending}
+          />
         </div>
-
-        {/*
-          记录单独立一段，且是**正文**字号与颜色。
-          它原来是个 `text-ink-2` 的灰字、还缩在标签列右边那一格宽里，
-          跟「添加时间」一个权重——而它是这个项目里**唯一由你写的东西**，
-          剩下的字段都是从 git 读来的。自己写的话不该是这个项目里最不容易被
-          读到的一块。
-        */}
-        <section>
-          <h2 className="mb-1.5 text-[11px] font-medium text-ink-3">
-            记录
-          </h2>
-          <RecordView record={project.record} />
-        </section>
-      </div>
+      ) : (
+        <div
+          role="tabpanel"
+          id="panel-readme"
+          aria-labelledby="tab-readme"
+          className="min-h-0 flex-1 overflow-auto px-4 py-3"
+        >
+          <ReadmeView projectId={project.id} />
+        </div>
+      )}
 
       {/* 添加时间是整栏里最不重要的一个事实：沉到最底下，用最小的字。
-          顺带它终于不用等宽了——那不是代码。 */}
+          顺带它终于不用等宽了——那不是代码。
+          **它在标签栏外面**：它说的是这个项目，不是「这一页」。 */}
       <footer className="mt-auto border-t border-line px-4 py-2 text-[11px] text-ink-3">
         加入清单于 {formatRelative(project.addedAt)}
       </footer>
@@ -551,5 +528,152 @@ function withLinks(text: string): ReactNode[] {
     ) : (
       part
     ),
+  )
+}
+
+/**
+ * 概览页：**原来那些内容，一处都不动**。
+ *
+ * 单独成组件是为了让标签页只管「切」，不管「里面是什么」——
+ * 否则每加一页就要动一次这个大组件的内部结构。
+ *
+ * props 是搬运的结果，不是新设计：原来那几个值本来就在 `ProjectDetailPage` 的
+ * 作用域里（`project`、`status`、`refresh.mutate`、`refresh.isPending`、
+ * `project.latestCheck?.…`），搬进子组件后要显式收进来，仅此而已。
+ */
+function OverviewPanel({
+  project,
+  status,
+  refresh,
+  isRefreshing,
+}: {
+  project: ProjectDetail
+  status: RepoStatus | undefined
+  refresh: () => void
+  isRefreshing: boolean
+}) {
+  return (
+    <div className="flex flex-1 flex-col gap-4 px-4 py-4">
+      <StatusPanel
+        status={status}
+        isFetching={isRefreshing}
+        onRefresh={refresh}
+        lastCheckAt={project.latestCheck?.checkedAt ?? null}
+        lastCheckStatus={project.latestCheck?.status ?? null}
+      />
+
+      <RemoteRow url={project.remoteUrl} />
+
+      {/*
+        分类与标签并成一行 chip。
+        原来它们各占一个 7rem 标签列 + 右边一个 chip 盒——**包了两层**：
+        「分类」两个字、然后一个等宽字、再然后一个带框的小块。
+        这一行里没有真正的「值」需要和「标签」对齐，chip 自己就是值。
+      */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        {/*
+          「我自己的」是这个项目最重要的一条元信息——它决定批量检查会不会
+          跳过它。分类可以为空，这一项不行：勾上了却看不出来，等于没勾。
+        */}
+        {project.isOwn ? (
+          <>
+            <span className="text-[11px] text-ink-3">身份</span>
+            <Chip>我自己的</Chip>
+          </>
+        ) : null}
+        <span className="text-[11px] text-ink-3">分类</span>
+        <Chip>{project.category ? categoryLabel(project.category) : '未分类'}</Chip>
+        {project.tags.length > 0 ? (
+          <>
+            <span className="ml-1 text-[11px] text-ink-3">标签</span>
+            {project.tags.map((t) => (
+              <Chip key={t.id}>{t.name}</Chip>
+            ))}
+          </>
+        ) : null}
+      </div>
+
+      {/*
+        记录单独立一段，且是**正文**字号与颜色。
+        它原来是个 `text-ink-2` 的灰字、还缩在标签列右边那一格宽里，
+        跟「添加时间」一个权重——而它是这个项目里**唯一由你写的东西**，
+        剩下的字段都是从 git 读来的。自己写的话不该是这个项目里最不容易被
+        读到的一块。
+      */}
+      <section>
+        <h2 className="mb-1.5 text-[11px] font-medium text-ink-3">
+          记录
+        </h2>
+        <RecordView record={project.record} />
+      </section>
+    </div>
+  )
+}
+
+const TABS = [
+  { key: 'overview', label: '概览' },
+  { key: 'readme', label: 'README' },
+] as const
+
+/**
+ * 标签栏。
+ *
+ * **只管「切」，不管内容。** 切换**不改 URL**：「正在看哪个项目」住在 URL 里
+ * （`/projects/:id`），而「看它的哪一页」是这一次看的局部状态。改了 URL 的话
+ * 浏览器的前进后退就会开始记录「我翻到第几页」，而那不是一个值得记的动作。
+ *
+ * 键盘：左右方向键在两个之间移动，Home / End 跳首尾；未选中的那个 `tabIndex=-1`，
+ * 所以整组只占 Tab 序里的一个停靠点（与清单表那个 roving tabindex 同一套想法）。
+ *
+ * 选中态用**蓝**——蓝在这个应用里表示「你能点的 / 当前选中的」。
+ */
+function TabBar<T extends string>({
+  tabs,
+  value,
+  onChange,
+}: {
+  tabs: readonly { key: T; label: string }[]
+  value: T
+  onChange: (v: T) => void
+}) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([])
+  const at = tabs.findIndex((t) => t.key === value)
+  const go = (next: number) => {
+    const t = tabs[next]
+    if (!t) return
+    onChange(t.key)
+    refs.current[next]?.focus()
+  }
+
+  return (
+    <div role="tablist" className="flex shrink-0 gap-1 border-b border-line px-4">
+      {tabs.map((t, i) => (
+        <button
+          key={t.key}
+          role="tab"
+          ref={(el) => {
+            refs.current[i] = el
+          }}
+          aria-selected={t.key === value}
+          aria-controls={`panel-${t.key}`}
+          id={`tab-${t.key}`}
+          tabIndex={t.key === value ? 0 : -1}
+          onClick={() => onChange(t.key)}
+          onKeyDown={(e) => {
+    if (e.key === 'ArrowRight') { e.preventDefault(); go((at + 1) % tabs.length) }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); go((at - 1 + tabs.length) % tabs.length) }
+    if (e.key === 'Home') { e.preventDefault(); go(0) }
+    if (e.key === 'End') { e.preventDefault(); go(tabs.length - 1) }
+          }}
+          className={`-mb-px cursor-pointer border-b-2 px-2 py-1.5 text-[12.5px] ${
+            t.key === value
+              ? 'border-accent font-medium text-accent-ink'
+              : 'border-transparent text-ink-3 hover:text-ink-2'
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
   )
 }

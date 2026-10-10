@@ -114,6 +114,17 @@ describe('安全 · 执行', () => {
     expect(container.querySelector('script')).toBeNull()
     expect((window as unknown as { __pwned?: boolean }).__pwned).toBeUndefined()
   })
+
+  it('**原始 HTML 被丢掉，而不是当文字显示出来**', async () => {
+    // 不装 rehype-raw 时 react-markdown 的默认行为是把 raw HTML **渲染成文本**，
+    // 于是 README 里一个 `<a id="x"></a>` 锚点会在界面上原样显示成一行标签。
+    // spec §2.2 要的是「一律不渲染」——丢内容是诚实的，显示标签是噪音。
+    body = '前面\n\n<a id="store-install"></a>\n\n后面\n'
+    renderView()
+    await waitFor(() => expect(screen.getByText('前面')).toBeTruthy())
+    expect(screen.queryByText(/store-install/)).toBeNull()
+    expect(screen.getByText('后面')).toBeTruthy()
+  })
 })
 
 describe('安全 · 网络访问', () => {
