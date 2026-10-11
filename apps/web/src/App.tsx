@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router'
+﻿import { Route, Routes } from 'react-router'
 import { AppShell } from '@/layouts/AppShell'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Workspace } from '@/features/projects/Workspace'
@@ -42,7 +42,7 @@ export function App() {
             {/*
               图标预览页（开发用）。**不在 Workspace 里面**：那个布局路由会渲染
               清单与详情栏，而这一页不读接口、不碰任何项目，只是把
-              `docs/types/` 里现有的图标按角标的实际规格摆出来。
+              `assets/types/` 里现有的图标按角标的实际规格摆出来。
             */}
             <Route path="/preview" element={<PreviewPage />} />
             <Route

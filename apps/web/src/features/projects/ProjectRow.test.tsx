@@ -1,11 +1,11 @@
-import { describe, expect, it, vi } from 'vitest'
+﻿import { describe, expect, it, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
 import { ProjectRow } from './ProjectRow'
 
 /*
-  类型角标的图标来自使用者自己填的 `docs/types/`（现在大概还是空的），
+  类型角标的图标来自使用者自己填的 `assets/types/`（现在大概还是空的），
   所以「查图标」那一层换成可控的：这里要测的是**角标出不出现在该出现的地方**。
 */
 vi.mock('./typeIcons', () => ({
@@ -153,7 +153,7 @@ describe('ProjectRow · 仓库那一格的图标', () => {
     expect(imgs[0]?.getAttribute('src')).toBe('/api/projects/5/logo')
   })
 
-  it('没认出来：显示 docs/folder.svg 那张默认图（认不出来是常态）', () => {
+  it('没认出来：显示 assets/folder.svg 那张默认图（认不出来是常态）', () => {
     const { container } = renderRow(status())
     const imgs = [...container.querySelectorAll('img')]
     const src = imgs[0]?.getAttribute('src') ?? ''

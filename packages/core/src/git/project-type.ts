@@ -1,4 +1,4 @@
-import fs from 'node:fs'
+﻿import fs from 'node:fs'
 import path from 'node:path'
 
 /**
@@ -9,9 +9,9 @@ import path from 'node:path'
  *
  * ## `type` 就是图标文件名
  *
- * 返回的字符串（`'vue'`、`'nestjs'`、`'cpp'`…）**就是 `docs/types/<type>.svg`**
+ * 返回的字符串（`'vue'`、`'nestjs'`、`'cpp'`…）**就是 `apps/web/src/assets/types/<type>.svg`**
  * 里那个 `<type>`。所以这张规则表同时是**命名约定**：加一个类型 = 加一条规则 +
- * 一个同名 svg，不用改别的地方。`docs/types/README.md` 里有一份可勾选的清单。
+ * 一个同名 svg，不用改别的地方。`apps/web/src/assets/types/README.md` 里有一份可勾选的清单。
  *
  * ## 一个仓库常常同时命中好几层
  *

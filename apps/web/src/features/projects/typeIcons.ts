@@ -1,5 +1,5 @@
-/*
-  类型角标的图标：`docs/types/<type>.svg`，**由使用者自己放**（不随代码库一起提供）。
+﻿/*
+  类型角标的图标：`assets/types/<type>.svg`，**由使用者自己放**（不随代码库一起提供）。
 
   为什么用 glob 而不是一张手写的映射表：**加一个类型不该改代码**。
   把图标丢进那个目录，对应的项目立刻就有角标；没有对应文件就不画角标——和 logo
@@ -21,8 +21,8 @@ const ICONS = import.meta.glob(
       （写这两条注释时注意：上面那个通配符别照着打进来——`星号加斜杠` 会把块注释
       提前闭合，整份文件跟着语法错，报的错还落在几十行之外。）
     */
-    '../../../../../docs/types/*.{svg,SVG}',
-    '../../../../../docs/types/**/*.{svg,SVG}',
+    '@/assets/types/*.{svg,SVG}',
+    '@/assets/types/**/*.{svg,SVG}',
   ],
   {
     eager: true,
@@ -63,7 +63,7 @@ export function matchesType(fileBase: string, type: string): boolean {
 /**
  * `<type>` → 图标 URL。目录里没有这个文件就返回 `null`（界面上不画角标）。
  *
- * 命名约定见 `docs/types/README.md`：建议小写、无空格（`nextjs`、`react-native`），
+ * 命名约定见 `assets/types/README.md`：建议小写、无空格（`nextjs`、`react-native`），
  * 但**大写与空格也能对上**——见上面 `normalizeIconName` 的说明。
  */
 export function typeIconUrl(type: string | null): string | null {

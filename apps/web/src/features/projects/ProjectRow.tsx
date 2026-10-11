@@ -1,4 +1,4 @@
-import { Link } from 'react-router'
+﻿import { Link } from 'react-router'
 import { Pencil, Trash2 } from 'lucide-react'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
 import { formatRelative } from '@/lib/format'
@@ -6,7 +6,7 @@ import { useUiStore } from '@/store/ui'
 import { AttentionBadge, Diff, SyncBadge, type Comparability } from '@/features/status/badges'
 import { ProjectLogo } from './ProjectLogo'
 import { ProjectTypeBadge } from './ProjectTypeBadge'
-import { folderUrl } from './folderIcon'
+import folderUrl from '@/assets/folder.svg'
 
 /**
  * 那两个数字有没有可比的对象。**四种情况分开写**，因为它们都回答「有没有依据」，
@@ -71,7 +71,7 @@ export function ProjectRow({
             因为它们是同一件事的两种答案（「这是哪个仓库」），并排放两个图标
             只是在占地方。没认出来就还是那枚文件夹：认不出来是常态。
 
-            默认图用的是 `docs/folder.svg`（32×32，与 logo 同尺寸），不再是 lucide
+            默认图用的是 `assets/folder.svg`（32×32，与 logo 同尺寸），不再是 lucide
             的图标——同一格里两种东西长得完全不一样，会显得像两个不同的字段。
           */}
           {p.hasLogo ? (

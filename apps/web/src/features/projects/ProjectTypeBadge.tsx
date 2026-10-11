@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { typeIconUrl } from './typeIcons'
 
 /**
@@ -9,7 +9,7 @@ import { typeIconUrl } from './typeIcons'
  * 的成套图标），直接压在彩色文件夹上会糊在一起。白圆把它们统一成同一种底，
  * 也顺手把「这是角标、不是文件夹的一部分」说清楚了。
  *
- * 图标的来源是 `docs/types/<type>.svg`（见 `typeIcons.ts`）：**没有那个文件就不画**
+ * 图标的来源是 `assets/types/<type>.svg`（见 `typeIcons.ts`）：**没有那个文件就不画**
  * ——认不出来、或者还没收集到那张图标，都是常见的正常状态，界面上不该出现空圈。
  */
 const DEFAULT_PX = 16

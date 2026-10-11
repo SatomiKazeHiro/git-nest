@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 类型目录：`type`（＝图标文件名）→ 显示名与分组。
  *
  * **这是展示用的清单，判定规则在 `git/project-type.ts`**（那边要读文件系统，
@@ -15,7 +15,7 @@ export interface ProjectTypeInfo {
   /** 界面上显示的名字 */
   label: string
   group: string
-  /** 第一批要收集的吗（`docs/types/README.md` 里那份清单就是按它分的） */
+  /** 第一批要收集的吗（`apps/web/src/assets/types/README.md` 里那份清单就是按它分的） */
   firstBatch: boolean
 }
 
@@ -123,7 +123,7 @@ export const PROJECT_TYPES: readonly ProjectTypeInfo[] = [
   ]),
   /*
     「远程仓库」不是项目类型：它说的是这个仓库有没有远程。逻辑后面再定，
-    但图标已经在 `docs/types/` 里了，预览页先把它一起显示出来。
+    但图标已经在 `apps/web/src/assets/types/` 里了，预览页先把它一起显示出来。
   */
   ...group('其它', false, [['remote', '远程仓库']]),
 ]

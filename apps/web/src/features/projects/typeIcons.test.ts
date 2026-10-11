@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+﻿import { describe, expect, it } from 'vitest'
 import { matchesType, normalizeIconName, typeIconUrl } from './typeIcons'
 
 /**
@@ -52,7 +52,7 @@ describe('typeIcons · 文件名怎么和规则表对上', () => {
 
   it('对着**真实目录**再验一次：别名与空格那两条路真的能取到图', () => {
     /*
-      这条读的是 `docs/types/` 里实际存在的文件（图标是仓库的一部分）。
+      这条读的是 `assets/types/` 里实际存在的文件（图标是仓库的一部分）。
       故意让它依赖真实文件：上一版的失败正是「规则对了、名字对不上、界面上全空」，
       而那件事**不报错**。宁可这条红。
     */

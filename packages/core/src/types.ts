@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 传输层类型：server 与 web 共用。
  *
  * 约定：对外一律用 camelCase；本地绝对路径（path）只出现在 server 内部与本机响应里，
@@ -303,7 +303,7 @@ export interface ProjectListItem extends Project {
   /**
    * 认出来的项目类型（`'vue'`、`'nestjs'`、`'cpp'`…），认不出是 `null`。
    *
-   * 它就是 `docs/types/<type>.svg` 里的那个名字——前端拿它去查图标。
+   * 它就是 `apps/web/src/assets/types/<type>.svg` 里的那个名字——前端拿它去查图标。
    * **`null` 是常见结果**（一半以上的仓库认不出来），界面上不显示角标。
    */
   projectType: string | null

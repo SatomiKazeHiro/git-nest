@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from 'vitest'
+﻿import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render } from '@testing-library/react'
 
 /*
-  `docs/types/` 里有没有那张图是**使用者自己填的**（现在很可能是空的），
+  `assets/types/` 里有没有那张图是**使用者自己填的**（现在很可能是空的），
   所以这里把「查图标」那一层换成可控的：要测的是**角标本身的几何**，
   不是文件系统里有没有文件。
 */
