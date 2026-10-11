@@ -95,6 +95,59 @@
     height: 100%;
   }
 
+  /*
+    统一的滚动条。
+
+    默认滚动条**各家长得不一样**：Chromium 是灰蓝色厚条（Windows 上还带两端小箭头）、
+    Firefox 是半透明细条、Safari 在 macOS 上是「滚动时才浮出来」的覆盖式。
+    而这个界面同时有五个滚动区（左栏、清单、详情、弹窗内容、README 里的宽表格），
+    差异会一起出现在眼前。
+
+    两条路都得写，因为**没有一条覆盖所有浏览器**：
+    - `scrollbar-width` / `scrollbar-color`：标准属性（Firefox、Chromium 121+）。
+      它们**可继承**，所以挂在 `:root` 上就够，不必逐个容器写。
+    - `::-webkit-scrollbar*`：WebKit 系（Safari、旧 Chromium）只认这组。
+      这组**不继承**，所以必须写成 `*::-webkit-scrollbar`。
+    Chromium 121+ 设了标准属性之后会忽略那组伪元素——两边不冲突，各取所需。
+
+    颜色全走主题变量：以后改主题（或加深色）滚动条自己跟着变，不用回来改这里。
+    轨道用**透明**而不是某个底色：那几个滚动区的底色并不相同（rail / bg / panel），
+    透明才能让各自的底色透出来。
+  */
+  :root {
+    /* 静止时淡、指上去深一档：滚动条是「需要时才该被看见」的东西 */
+    --sb-thumb: color-mix(in srgb, var(--color-ink-3) 38%, transparent);
+    --sb-thumb-hover: color-mix(in srgb, var(--color-ink-3) 62%, transparent);
+    --sb-size: 10px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--sb-thumb) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: var(--sb-size);
+    height: var(--sb-size);
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--sb-thumb);
+    /* 透明边框 + content-box 裁切：滑块比轨道细一圈，四周留出呼吸的缝 */
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--sb-thumb-hover);
+  }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  /* Windows 上那对两端的小箭头（只有旧 Chromium 会画）不要 */
+  *::-webkit-scrollbar-button {
+    display: none;
+  }
+
   /* 数据位一律等宽：分支名、路径、计数 */
   code,
   kbd,
