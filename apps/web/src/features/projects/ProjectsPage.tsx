@@ -8,6 +8,7 @@ import { useUiStore } from '@/store/ui'
 import { useProjects } from './queries'
 import { useStatuses } from '@/features/status/queries'
 import { UpdatePanel } from '@/features/updates/UpdatePanel'
+import { detailPath } from './detailPath'
 import { Toolbar } from './ListToolbar'
 import { ProjectTable } from './ProjectTable'
 import { RemoveDialog } from './RemoveDialog'
@@ -120,7 +121,7 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
             statuses={statuses}
             currentId={currentId}
             isPending={isPending}
-            onOpen={(projectId) => navigate(`/projects/${projectId}`)}
+            onOpen={(projectId) => navigate(detailPath(currentId, projectId))}
             onRemove={(p) => setPendingRemoval(p)}
           />
         </div>

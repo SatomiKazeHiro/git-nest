@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Link, useParams } from 'react-router'
-import { AlertTriangle, Pencil, RefreshCw } from 'lucide-react'
+import { Link, useNavigate, useParams } from 'react-router'
+import { AlertTriangle, Pencil, RefreshCw, X } from 'lucide-react'
 import { categoryLabel, type ProjectDetail, type RepoStatus } from '@git-nest/core'
 import { TabBar } from '@/components/TabBar'
 import { Button, ErrorNote } from '@/components/ui'
@@ -29,6 +29,7 @@ export function ProjectDetailPage() {
   const { id } = useParams()
   const projectId = Number(id)
   const openEdit = useUiStore((s) => s.openEdit)
+  const navigate = useNavigate()
   const [updating, setUpdating] = useState(false)
   /*
     详情栏的两页。**默认落在概览**——打开一个项目最常见的需求是看它现在什么状态，
@@ -108,6 +109,15 @@ export function ProjectDetailPage() {
           >
             <RefreshCw size={14} aria-hidden />
             联网检查更新
+          </Button>
+          {/*
+            「关闭」：详情是清单里的第二轨，关掉它 = 回清单。
+            在此之前只能靠浏览器的后退键——而在这个界面里，后退键的意思不是
+            「关掉右栏」（它可能一路退到别的页面去）。清单不动、筛选全留着。
+          */}
+          <Button onClick={() => navigate('/')} title="关掉右边这一栏（清单与筛选都不动）">
+            <X size={14} aria-hidden />
+            关闭
           </Button>
         </div>
         <p

@@ -98,7 +98,10 @@ export function ProjectRow({
                 而批量检查跳过谁，检查弹窗顶部会点名说清楚。
               */}
               <Link
-                to={`/projects/${p.id}`}
+                /* 当前这一行：链接指回清单——**再点一次就是反选**（见 `detailPath`）。
+                   名字是这一行最显眼的点击目标，它不跟着变的话，
+                   用户点名字关不掉、点空白处却关得掉，那才叫怪。 */
+                to={current ? '/' : `/projects/${p.id}`}
                 aria-current={current ? 'page' : undefined}
                 className="min-w-0 cursor-pointer truncate text-[14px] font-semibold text-ink hover:text-accent-ink"
               >
