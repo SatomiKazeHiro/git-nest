@@ -46,15 +46,17 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
   const [panelOpen, setPanelOpen] = useState(false)
 
   const debouncedQuery = useDebounce(filters.q, { wait: 200 })
-  const { data: projects, isPending, error } = useProjects({
-    category: filters.category,
-    tag: filters.tag,
-    q: debouncedQuery,
-    // 「我自己的」与分类 / 标签**叠加**，所以原样传下去
-    own: filters.own,
-    attention: filters.attention,
-    sort: filters.sort,
-  })
+  /*
+    **整个 `filters` 传下去**，只把 `q` 换成防抖后的那个。
+
+    它的形状与 `ListParams` 是同一个（store 里那份就是为这个查询准备的），所以
+    以后再加一个筛选 / 排序字段，这里不需要有人记得补一行。
+
+    以前这里是**逐字段手写**的，加 `dir` 时就没人记得补——症状是「箭头翻了、行没动」：
+    缓存键里没有 `dir`，于是方向一变**不重发请求**，而箭头是按 store 画的，
+    界面在宣称一个并没有生效的排序。逐字段清单就是这种漏的来源。
+  */
+  const { data: projects, isPending, error } = useProjects({ ...filters, q: debouncedQuery })
 
   const {
     data: statuses,

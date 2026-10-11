@@ -132,6 +132,26 @@ describe('ProjectTable · 表头可点', () => {
     expect(container.querySelector('th.col-checked')?.getAttribute('aria-sort')).toBe('none')
   })
 
+  it('换列时**旧列复位**：同一时刻只有一列在排', () => {
+    renderTable(NAME_ORDERED)
+    fireEvent.click(screen.getByRole('button', { name: /仓库/ }))
+    fireEvent.click(screen.getByRole('button', { name: /差异/ }))
+
+    // store 里只剩最新选的那一个键
+    expect(useUiStore.getState().filters.sort).toBe('behind')
+    expect(useUiStore.getState().filters.dir).toBe('desc')
+
+    // 旧列不再自称在排序：箭头没了、aria-sort 回到 none
+    const repoTh = screen.getByRole('button', { name: /仓库/ }).closest('th')
+    expect(repoTh?.getAttribute('aria-sort')).toBe('none')
+    expect(repoTh?.querySelector('svg')).toBeNull()
+
+    // 新列接上
+    const deltaTh = screen.getByRole('button', { name: /差异/ }).closest('th')
+    expect(deltaTh?.getAttribute('aria-sort')).toBe('descending')
+    expect(deltaTh?.querySelector('svg')).not.toBeNull()
+  })
+
   it('没有排序键的列不是按钮（点了没反应的控件比没有更糟）', () => {
     renderTable(NAME_ORDERED)
     expect(screen.queryByRole('button', { name: /状态/ })).toBeNull()
