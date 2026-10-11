@@ -17,7 +17,7 @@ import { useInvalidate } from '@/lib/invalidate'
 import { queryKeys } from '@/lib/queryKeys'
 
 /** 标签 + 用了它的项目数（设置页要显示「3 个项目」） */
- interface TagWithUsage extends Tag {
+export interface TagWithUsage extends Tag {
   projectCount: number
 }
 

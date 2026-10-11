@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { useCreateTag, useRemoveTag, useTags } from '@/features/tags/queries'
+import { useCreateTag, useRemoveTag, useTags, type TagWithUsage } from '@/features/tags/queries'
 import { Button, ErrorNote, Input } from '@/components/ui'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ApiError } from '@/lib/api'
 
 /** 标签管理：自由命名，删掉不影响项目本身。 */
@@ -11,6 +12,8 @@ export function TagSection() {
   const [name, setName] = useState('')
   const [color, setColor] = useState('')
   const [banner, setBanner] = useState<string | null>(null)
+  /** 等着确认删除的那一个。删标签会**悄悄改掉「哪些项目属于它」**，所以要先问一句 */
+  const [confirming, setConfirming] = useState<TagWithUsage | null>(null)
 
   const submit = () => {
     const trimmed = name.trim()
@@ -74,12 +77,7 @@ export function TagSection() {
                   <span className="font-mono text-[13px] text-ink">{t.name}</span>
                   <span className="font-mono text-[12px] text-ink-3">{t.projectCount} 个项目</span>
                   <button
-                    onClick={() =>
-                      remove.mutate(t.id, {
-                        // 静默失败 = 用户以为删掉了，下次刷新它又回来了
-                        onError: (e) => setBanner(e instanceof ApiError ? e.message : '删除失败'),
-                      })
-                    }
+                    onClick={() => setConfirming(t)}
                     className="ml-auto cursor-pointer text-[12px] text-ink-2 hover:text-signal-bad"
                   >
                     删除
@@ -116,6 +114,36 @@ export function TagSection() {
           </div>
         </div>
       </div>
+
+      {/*
+        删标签会**悄悄改掉「哪些项目属于它」**：那一行虽然写着「N 个项目」，
+        但归属没有撤销——重建同名标签不会把它找回来。所以拦一下。
+      */}
+      {confirming ? (
+        <ConfirmDialog
+          title={`删除标签「${confirming.name}」？`}
+          description={
+            <>
+              会从{' '}
+              <span className="font-mono text-[12px]">{confirming.projectCount}</span>{' '}
+              个项目上摘掉这个标签——项目本身和它们自己的记录都不动。重建同名标签不会
+              把这些归属找回来。
+            </>
+          }
+          confirmText="删除标签"
+          danger
+          loading={remove.isPending}
+          onConfirm={() =>
+            remove.mutate(confirming.id, {
+              // 静默失败 = 用户以为删掉了，下次刷新它又回来了
+              onError: (e) => setBanner(e instanceof ApiError ? e.message : '删除失败'),
+              // 不管成败都关掉：失败时让外面的横幅露出来，别被这一层盖住
+              onSettled: () => setConfirming(null),
+            })
+          }
+          onClose={() => setConfirming(null)}
+        />
+      ) : null}
     </>
   )
 }

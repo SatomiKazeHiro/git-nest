@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, Eraser, RefreshCw, Terminal } from 'lucide-react'
 import { Button, ErrorNote } from '@/components/ui'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { SettingRow } from './SettingRow'
 import { ApiError, api } from '@/lib/api'
 
@@ -48,6 +49,8 @@ export function CommandsSection() {
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
   const [banner, setBanner] = useState<string | null>(null)
+  /** 清空日志也要问一句：它丢的是记录（不是用户的数据，所以不涂红，但会丢东西） */
+  const [confirmingClear, setConfirmingClear] = useState(false)
   const { data, isPending, error } = useQuery({
     queryKey: commandKeys.all,
     queryFn: () => api.get<CommandsResponse>(`/commands?limit=${SHOW}`),
@@ -84,6 +87,20 @@ export function CommandsSection() {
 
   return (
     <section>
+      {confirmingClear ? (
+        <ConfirmDialog
+          title="清空命令日志？"
+          description="清掉的是这份记录本身（服务端内存里最近 1000 条，重启也会清）。它是排查工具，不是审计系统——清掉之后这段时间的痕迹就没了；正在跑的任务不受影响。"
+          confirmText="清空"
+          /* 丢的是记录，不是用户的数据：拦一下，但不涂红 */
+          danger={false}
+          loading={clear.isPending}
+          onConfirm={() =>
+            clear.mutate(undefined, { onSettled: () => setConfirmingClear(false) })
+          }
+          onClose={() => setConfirmingClear(false)}
+        />
+      ) : null}
       <SettingRow
         name="自动 fetch"
         desc="服务启动 30 秒后跑一轮，之后每 30 分钟一轮"
@@ -100,7 +117,7 @@ export function CommandsSection() {
             {open ? '收起命令日志' : '看命令日志'}
           </Button>
           {open ? (
-            <Button onClick={() => clear.mutate()} disabled={clear.isPending}>
+            <Button onClick={() => setConfirmingClear(true)} disabled={clear.isPending}>
               <Eraser size={14} aria-hidden />
               清空
             </Button>
