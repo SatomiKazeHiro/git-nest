@@ -1,5 +1,7 @@
 import { Outlet } from 'react-router'
+import { useUiStore } from '@/store/ui'
 import { FilterPanel } from './FilterPanel'
+import { FilterToggle } from './FilterToggle'
 import { ProjectsPage } from './ProjectsPage'
 
 /**
@@ -13,13 +15,21 @@ import { ProjectsPage } from './ProjectsPage'
  * 区别只在清单下面有没有详情。深链（书签、外部跳转、浏览器前进后退）照旧有效。
  */
 export function Workspace() {
+  const filterPanelOpen = useUiStore((s) => s.filterPanelOpen)
+
   return (
-    <div className="split">
+    /*
+      三列：过滤面板 / 收起开关的槽 / 清单区。收起时只是面板那一列归零
+      （`--w-filter: 0`），**槽不动**——开关得一直留在同一个位置，
+      否则收起来之后它自己跳走了，用户找不回展开的入口。
+    */
+    <div className={`split ${filterPanelOpen ? '' : 'split-filters-collapsed'}`}>
       {/*
         过滤面板在清单左边。**它属于清单页，不是导航**——这一列是清单页自己的
         控件（仓库状态 / 我自己的 / 分类 / 标签，点了只筛眼前这张表）。
       */}
       <FilterPanel />
+      <FilterToggle />
       {/*
         `detail` 是**内容**，摆放位置由清单决定：详情那一轨长在 `.list-scroll`
         里面（CSS 的两列），而那层网格是清单渲染的。**内容归路由，位置归布局

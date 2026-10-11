@@ -131,6 +131,22 @@ const disc = (cx: number, cy: number, r: number) => <circle cx={cx} cy={cy} r={r
   )
 }
 
+/* ── 「我自己的」 ────────────────────────────────────────────
+   它不是一个「状态」，但它在面板里和那五个并列，所以形状必须同一套
+   （实心圆底 + 白色内容），否则六个条目里有五个圆点、一个缺口，很显眼。
+   内容沿用旧的那枚小人（清单行里原来就有它，后来挪走了）。
+   ------------------------------------------------------------ */
+
+function MineIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      {disc(12, 12, 10)}
+      <circle cx="12" cy="9.8" r="3.1" {...mark} />
+      <path d="M6.6 18.6c0-2.9 2.4-4.6 5.4-4.6s5.4 1.7 5.4 4.6" {...mark} />
+    </Svg>
+  )
+}
+
 /* ── 注册表 ──────────────────────────────────────────────────
    **加图标只加这一条**，调用点（按名字用）不用动。
    类型从这张表推出来：拼错名字会在编译期就报出来，而不是界面上少一个图标。
@@ -142,6 +158,7 @@ const disc = (cx: number, cy: number, r: number) => <circle cx={cx} cy={cy} r={r
   synced: SyncedIcon,
   'not-recommended': NotRecommendedIcon,
   'pending-check': PendingCheckIcon,
+  mine: MineIcon,
 } as const
 
 export type IconName = keyof typeof ICONS
@@ -170,4 +187,8 @@ export const STATUS_ICON_TONE: Record<IconName, string> = {
   synced: 'text-[#158e8b]',
   'not-recommended': 'text-[#ec605b]',
   'pending-check': 'text-[#6d80a1]',
+  /* 「我自己的」**故意用中性灰**（主题的 ink-3），不跟着上面那套饱和色走：
+     它不是一种状态，而是一个布尔——涂成彩色会让人以为「个人」也是一种进度。
+     这也是这张表里唯一一个用 token 而不是写死色值的：它本来就不属于那套调色板。 */
+  mine: 'text-ink-3',
 }

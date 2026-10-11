@@ -1,6 +1,6 @@
 import { useMemo, type ComponentType, type ReactNode } from 'react'
 import { orderBy } from 'es-toolkit'
-import { LaptopMinimal, Shapes, Tag } from 'lucide-react'
+import { LaptopMinimal, Shapes, Tag, User } from 'lucide-react'
 import { categoryLabel, type Attention } from '@git-nest/core'
 import { UNCATEGORIZED, useUiStore } from '@/store/ui'
 import { Icon, STATUS_ICON_TONE, type IconName } from '@/components/icons'
@@ -135,8 +135,9 @@ export function FilterPanel() {
         是一个合理的查询。
       */}
       {ownCount > 0 ? (
-        <Group title="我自己的">
+        <Group title="我自己的" icon={User}>
           <Item
+            icon="mine"
             label="我自己的"
             count={ownCount}
             active={own === '1'}

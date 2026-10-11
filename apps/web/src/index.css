@@ -209,11 +209,93 @@
   它的宽度跟窗口无关；详情栏同理。所以行内不需要任何断点。
 */
 .split {
+  /* 过滤面板宽度。**一处定义**：栅格用它，浮起来的收起开关也用它的 `left`
+     ——收起时归 0，开关自己就贴到窗口左边，不需要第二条规则。 */
+  --w-filter: 10.5rem;
   display: grid;
-  /* **两列**：过滤面板 + 清单区。详情是清单区内部的第二轨（见 `.list-scroll`）。 */
-  grid-template-columns: var(--w-filter, 10.5rem) minmax(0, 1fr);
+  /*
+    **两列**：过滤面板 + 清单区（详情是清单区内部的第二轨，见 `.list-scroll`）。
+    收起开关**不占列**——它是一枚浮在表格左沿上的半胶囊（见 `.filter-toggle`）。
+    第一版给它留了 20px 的槽，结果两列变三列、中间空一条，很割裂。
+  */
+  grid-template-columns: var(--w-filter) minmax(0, 1fr);
+  /* 浮层的定位基准 */
+  position: relative;
   height: 100%;
   min-height: 0;
+}
+
+/*
+  ⚠️ 两个子项的列位置写死，不靠自动排布。
+
+  收起时过滤面板是 `display: none`，而 `display: none` 的栅格子项**完全不占位**
+  ——不钉住的话 `.pane-list` 会整体左移一格、落进面板那一列（第一版就是这样，
+  实测清单只剩 20px 宽）。位置写死之后，谁被拿掉都不影响别人；
+  而浮起来的开关根本不在栅格里，也就没有这个连带关系。
+*/
+.split > .filter-panel {
+  grid-column: 1;
+}
+.split > .pane-list {
+  grid-column: 2;
+}
+
+/*
+  收起过滤面板：面板那一列归零。
+
+  **用 `display: none` 而不是把宽度压到 0**——`.filter-panel` 自己有
+  `overflow: auto`，只压宽度的话内容还会往外画（贴着左边露出一条）；
+  而且 0 宽面板里那些控件仍然可聚焦，Tab 会跑进看不见的东西里。
+  `display: none` 一次解决这两件事。
+*/
+.split-filters-collapsed {
+  --w-filter: 0px;
+}
+.split-filters-collapsed .filter-panel {
+  display: none;
+}
+
+/*
+  收起开关：贴在过滤面板右缘的半胶囊，**浮在表格上、不占布局**。
+
+  代价写在明处：它会压住表格左沿约 20px（正好是 `.list-pane` 的 `px-4` 内边距
+  加 4px 内容）。这是有意的取舍——留槽可以不压内容，但会把两列变三列、中间空一条，
+  那更糟。它是 chrome 不是数据：底色用**不透明**的 bg（否则下面那一行会透出来），
+  颜色低调，指上去才明显。
+*/
+.filter-toggle {
+  position: absolute;
+  left: var(--w-filter);
+  top: 50%;
+  transform: translateY(-50%);
+  /* 表格里有粘性表头，浮层要压在它上面 */
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 2.75rem;
+  cursor: pointer;
+  color: var(--color-ink-3);
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-line);
+  border-left: 0;
+  border-radius: 0 999px 999px 0;
+}
+.filter-toggle:hover {
+  color: var(--color-ink);
+  background-color: var(--color-rail);
+}
+
+/* 有筛选时的小圆点：面板收起后，这是「表里不是全部」的唯一可见线索 */
+.filter-toggle-dot {
+  position: absolute;
+  top: 5px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background-color: var(--color-accent);
 }
 
 /* 过滤面板自己会滚——分类和标签多了以后只滚这一列，清单区不动 */

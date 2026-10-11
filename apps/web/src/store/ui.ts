@@ -67,6 +67,12 @@ interface UiState {
    */
   setSort: (s: ProjectSort | null, dir?: SortDir) => void
   clearFilters: () => void
+  /**
+   * 过滤面板展开着吗（默认展开）。收起它 = 把那一列宽度还给清单——
+   * 窄窗口下这一列是实打实的 168px，而清单那一列才是要看的。
+   */
+  filterPanelOpen: boolean
+  toggleFilterPanel: () => void
   openCreate: () => void
   openEdit: (id: number) => void
   closeForm: () => void
@@ -93,6 +99,7 @@ export const useUiStore = create<UiState>((set) => ({
   formOpen: false,
   settingsOpen: false,
   scanOpen: false,
+  filterPanelOpen: true,
 
   setQuery: (q) => set((s) => ({ filters: { ...s.filters, q } })),
   setCategory: (category) =>
@@ -110,6 +117,7 @@ export const useUiStore = create<UiState>((set) => ({
       filters: { ...s.filters, sort, dir: sort === null ? null : (dir ?? DEFAULT_SORT_DIR[sort]) },
     })),
   clearFilters: () => set({ filters: emptyFilters }),
+  toggleFilterPanel: () => set((s) => ({ filterPanelOpen: !s.filterPanelOpen })),
 
   openCreate: () => set({ formOpen: true, editingId: null }),
   openEdit: (editingId) => set({ formOpen: true, editingId }),
