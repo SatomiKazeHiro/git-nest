@@ -154,7 +154,14 @@ describe('ProjectTable · 表头可点', () => {
 
   it('没有排序键的列不是按钮（点了没反应的控件比没有更糟）', () => {
     renderTable(NAME_ORDERED)
-    expect(screen.queryByRole('button', { name: /状态/ })).toBeNull()
     expect(screen.queryByRole('button', { name: /当前分支/ })).toBeNull()
+  })
+
+  it('状态列可排：第一次点用它的默认方向（行动优先 = 升序）', () => {
+    renderTable(NAME_ORDERED)
+    fireEvent.click(screen.getByRole('button', { name: /^状态/ }))
+
+    expect(useUiStore.getState().filters.sort).toBe('attention')
+    expect(useUiStore.getState().filters.dir).toBe('asc')
   })
 })

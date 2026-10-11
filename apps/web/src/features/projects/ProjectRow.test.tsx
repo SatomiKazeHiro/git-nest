@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
@@ -92,7 +92,7 @@ function renderRow(s?: RepoStatus, overrides: Partial<ProjectListItem> = {}) {
   )
 }
 
-describe('ProjectRow · 「同步状态」列不许说没依据的话', () => {
+describe('ProjectRow · 差异列不许说没依据的话', () => {
   it('状态还没读回来：不给「一致」，也不给编出来的「↓0 ↑0」，只给「—」', () => {
     const { container } = renderRow()
     const text = container.textContent ?? ''
@@ -130,11 +130,12 @@ describe('ProjectRow · 「同步状态」列不许说没依据的话', () => {
     expect(text).toContain('—')
   })
 
-  it('读到了、真落后 3 个：正常显示「远程领先」与 ↓3', () => {
+  it('读到了、真落后 3 个：正常显示 ↓3', () => {
     const { container } = renderRow(status({ behind: 3 }))
     const text = container.textContent ?? ''
 
-    expect(text).toContain('远程领先')
+    // 「远程领先」那个词原本住在「同步状态」那一列，那一列按设计文档收掉了；
+    // 数字还在（而且它才是真正查到的东西）
     expect(text).toContain('↓3')
   })
 })

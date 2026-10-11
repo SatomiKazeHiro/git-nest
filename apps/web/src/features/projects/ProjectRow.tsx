@@ -1,9 +1,9 @@
-﻿import { Link } from 'react-router'
+import { Link } from 'react-router'
 import { Pencil, Trash2 } from 'lucide-react'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
 import { formatRelative } from '@/lib/format'
 import { useUiStore } from '@/store/ui'
-import { AttentionBadge, Diff, SyncBadge, type Comparability } from '@/features/status/badges'
+import { AttentionBadge, Diff, type Comparability } from '@/features/status/badges'
 import { ProjectLogo } from './ProjectLogo'
 import { ProjectTypeBadge } from './ProjectTypeBadge'
 import folderUrl from '@/assets/folder.svg'
@@ -129,23 +129,18 @@ export function ProjectRow({
         />
       </td>
 
-      {/* 同步状态：全中性灰，刻意比左边那列低调——它是上下文，不是行动项。
-          没有可比对象时它给「—」或「没有上游」，**不给「一致」**（说明见 SyncBadge）。 */}
-      <td className="col-sync">
-        <SyncBadge
-          ahead={status?.ahead ?? null}
-          behind={status?.behind ?? null}
-          upstreamGone={status?.upstreamGone ?? false}
-          hasCheck={p.attention !== 'unchecked'}
-          comparable={comparabilityOf(status)}
-        />
-      </td>
+      {/*
+        差异：两个方向都给。↓ 绿是「远程有新东西」，与状态列的「可更新」对得上。
 
-      {/* 差异：两个方向都给。↓ 绿是「远程有新东西」，与状态列的「可更新」对得上 */}
+        **「没有依据」的几种说法也在这里**（正在读 / 读不出来 / 上游被删 / 没配上游）
+        ——它们原来住在「同步状态」那一列，那一列按设计文档收掉了
+        （5 列：仓库 / 分支 / 状态 / 差异 / 上次检查）。少一列不等于少一句话。
+      */}
       <td className="col-delta text-right">
         <Diff
           ahead={status?.ahead ?? null}
           behind={status?.behind ?? null}
+          upstreamGone={status?.upstreamGone ?? false}
           hasCheck={p.attention !== 'unchecked'}
           comparable={comparabilityOf(status)}
         />

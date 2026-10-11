@@ -150,6 +150,7 @@ export function ListHeader() {
       >
         <option value="">默认（按分类）</option>
         <option value="name">按名称</option>
+        <option value="attention">按状态</option>
         <option value="checked">按上次检查</option>
         <option value="behind">按落后数</option>
       </Sel>

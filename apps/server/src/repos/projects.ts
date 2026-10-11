@@ -149,6 +149,28 @@ export function listProjects(db: DB, opts: ListProjectsOptions = {}): ProjectLis
       (opts.dir ?? DEFAULT_SORT_DIR[key]) === 'asc' ? 'ASC' : 'DESC'
 
     switch (opts.sort) {
+      case 'attention': {
+        /*
+          **行动优先**：能动手的排最前，没事的排最后。
+
+          1. 可更新 —— 唯一「现在就该动手」的一类
+          2. 不推荐 —— 作者改写过历史 / 换了仓库，要人看一眼才知道怎么办
+          3. 需要确认 —— 分叉，得人决定
+          4. 待检查 —— 还没问过远程，该去问一次
+          5. 已同步 —— 没事，垫底
+
+          次序只写在这一处（就是这几个数字），要调就调它们。
+          同一个序号里按名称排：它们会**并列**（一堆「已同步」），不给定序的话
+          SQLite 每次给的顺序都可能不同，滚动时行会自己换位置。
+        */
+        const rank = `CASE (${ATTENTION_SQL})
+          WHEN 'ready' THEN 0 WHEN 'blocked' THEN 1 WHEN 'decide' THEN 2
+          WHEN 'unchecked' THEN 3 ELSE 4 END`
+        // 并列时也按名称，**方向跟着主键**：否则降序时前半段翻了、并列那一段没翻，
+        // 看着像没排干净
+        const by = dirOf('attention')
+        return `${rank} ${by}, p.name COLLATE NOCASE ${by}`
+      }
       case 'checked':
         // 没查过的排最后：它们没有「上次检查」这个值可排
         return `CASE WHEN c.id IS NULL THEN 1 ELSE 0 END, c.checked_at ${dirOf('checked')}`

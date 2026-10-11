@@ -141,12 +141,16 @@ function ColumnHeader() {
     <thead className="tr-tint column-header sticky top-0 z-[5]">
       <tr className="border-b border-line text-[11px] text-ink-3">
         <SortableTh label="仓库" sortKey="name" hint="按名称排序" className="col-repo" />
-        {/* 这三列没有排序键，所以是纯文字：**点了没反应的控件比没有更糟**。
-            状态那一列的「行动分类」是服务端 SQL 算出来的，不是库里的一列。 */}
+        {/* 分支与操作没有排序键，所以是纯文字：**点了没反应的控件比没有更糟**。 */}
         <th className="col-branch">当前分支</th>
-        <th className="col-attention">状态</th>
-        <th className="col-sync">同步状态</th>
-        {/* 「差异」这一列画的是 ↑领先 / ↓落后两个数，而排序键只有落后数 */}
+        {/* 状态可排：次序是「行动优先」（能动手的在前、已同步垫底），见服务端 */}
+        <SortableTh
+          label="状态"
+          sortKey="attention"
+          hint="按状态排序（能动手的在前）"
+          className="col-attention"
+        />
+        {/* 差异画的是 ↑领先 / ↓落后两个数，排序键只有落后数 */}
         <SortableTh
           label="差异"
           sortKey="behind"

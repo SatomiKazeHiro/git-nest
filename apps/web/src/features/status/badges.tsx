@@ -123,50 +123,6 @@ export function AttentionBadge({
 export type Comparability = 'reading' | 'unreadable' | 'no-upstream' | 'ready'
 
 /**
- * 「跟远程差多少」。**全用中性灰**：它是上下文，不是行动项——
- * 该动不动看左边那列的彩色药丸。
- */
-export function SyncBadge({
-  ahead,
-  behind,
-  upstreamGone,
-  hasCheck,
-  comparable,
-}: {
-  ahead: number | null
-  behind: number | null
-  upstreamGone: boolean
-  /** 有没有「合格检查」——没有的话所有数字都不可信，只能说「未知」 */
-  hasCheck: boolean
-  /** 见 `Comparability`。**必填**：不靠 `ahead === null` 反推，那是同一个坑 */
-  comparable: Comparability
-}) {
-  const a = ahead ?? 0
-  const b = behind ?? 0
-  const text =
-    comparable === 'reading' || comparable === 'unreadable'
-      ? '—'
-      : !hasCheck
-        ? '未知'
-        : upstreamGone
-          ? '上游已关闭'
-          : comparable === 'no-upstream'
-            ? '没有上游'
-            : a > 0 && b > 0
-              ? '已分叉'
-              : b > 0
-                ? '远程领先'
-                : a > 0
-                  ? '本地领先'
-                  : '一致'
-  return (
-    <span className="inline-flex items-center whitespace-nowrap rounded-full bg-flat-bg px-2 py-[3px] text-[11.5px] text-flat">
-      {text}
-    </span>
-  )
-}
-
-/**
  * 「差异」列：↓ 远程领先 / ↑ 本地领先，两个方向都给。
  *
  * 叫 `Diff` 而不是复用上面那个 `Delta({n, dir})`——那个是「只显示一个方向、
@@ -176,20 +132,39 @@ export function SyncBadge({
 export function Diff({
   ahead,
   behind,
+  upstreamGone = false,
   hasCheck,
   comparable,
 }: {
   ahead: number | null
   behind: number | null
+  /** 上游被远程删掉了。它和「没配上游」是两件事，说法不同 */
+  upstreamGone?: boolean
   /** 没有合格检查时**不给数字**——`↓0 ↑0` 是编出来的，不是查到的 */
   hasCheck: boolean
   /** 同上：只有 `ready` 才拿得到可信的数字 */
   comparable: Comparability
 }) {
-  // 没有依据就不给数字。`↓0 ↑0` 是编出来的，不是查到的——而「没读到」「读不出来」
-  // 「没有上游」都算没有依据（它们都让那两个数字是 null）。
+  /*
+    没有依据时**说清是哪一种没有依据**，不是一律一个「—」。
+
+    这三种的下一步动作完全不同：正在读 → 等；读不出来 → 去看目录；上游被删了 →
+    去远端重建或换上游；没配上游 → 去配一个。所以说法要分开。
+
+    这段说法原来住在 `SyncBadge`（「同步状态」那一列）。那一列按设计文档
+    （5 列：仓库 / 分支 / 状态 / 差异 / 上次检查）收掉之后，**这些状态一条没丢**，
+    只是并到了差异这一格——少一列不等于少一句话。
+  */
   if (comparable !== 'ready' || !hasCheck) {
-    return <span className="text-[12px] text-ink-3">—</span>
+    const reason =
+      comparable === 'reading' || comparable === 'unreadable'
+        ? '—'
+        : !hasCheck
+          ? '未知'
+          : upstreamGone
+            ? '上游已关闭'
+            : '没有上游'
+    return <span className="text-[12px] text-ink-3">{reason}</span>
   }
   const a = ahead ?? 0
   const b = behind ?? 0

@@ -194,4 +194,31 @@ describe('排序', () => {
     expect(listProjects(db, { sort: 'name' }).map((p) => p.name)).toEqual(['aaa', 'bbb', 'ccc'])
     expect(listProjects(db, { sort: 'behind' }).map((p) => p.name)).toEqual(['aaa', 'bbb', 'ccc'])
   })
+
+  it('按状态：**行动优先**（可更新 → 不推荐 → 需要确认 → 待检查 → 已同步）', () => {
+    // 上面那三个都是 canPull → 「可更新」
+    const blocked = addProject('zzz-blocked')
+    addCheck(blocked, 'behind', 1, { verdict: 'rewritten', canPull: false }, '2026-10-06T00:00:00.000Z')
+    const decide = addProject('zzz-decide')
+    addCheck(decide, 'diverged', 1, { verdict: 'diverged', canPull: false }, '2026-10-06T00:00:00.000Z')
+    addProject('zzz-unchecked') // 没有检查记录 → 待检查
+    const synced = addProject('zzz-synced')
+    addCheck(synced, 'up_to_date', 0, { verdict: 'safe', canPull: false }, '2026-10-06T00:00:00.000Z')
+
+    const ascending = listProjects(db, { sort: 'attention' }).map((p) => p.name)
+    expect(ascending).toEqual([
+      'aaa',
+      'bbb',
+      'ccc', // 三个并列（都可更新）→ 按名称
+      'zzz-blocked',
+      'zzz-decide',
+      'zzz-unchecked',
+      'zzz-synced',
+    ])
+
+    // 降序 = 整条翻过来（并列那一段也跟着翻，否则看着像没排干净）
+    expect(listProjects(db, { sort: 'attention', dir: 'desc' }).map((p) => p.name)).toEqual(
+      [...ascending].reverse(),
+    )
+  })
 })

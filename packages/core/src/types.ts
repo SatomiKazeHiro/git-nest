@@ -280,8 +280,8 @@ export const ATTENTION_VALUES = ['unchecked', 'blocked', 'decide', 'ready', 'syn
  */
 export type Attention = (typeof ATTENTION_VALUES)[number]
 
-/** 列表排序。默认 `name`。 */
-export type ProjectSort = 'name' | 'checked' | 'behind'
+/** 列表排序。默认 `name`。顺序与设计文档 6.1 列的一致：名称 / 状态 / 上次检查 / 差异。 */
+export type ProjectSort = 'name' | 'attention' | 'checked' | 'behind'
 
 /** 排序方向。`dir` 不传时用下面那张默认表里的方向。 */
 export type SortDir = 'asc' | 'desc'
@@ -293,9 +293,13 @@ export type SortDir = 'asc' | 'desc'
  * 不能因为加了方向就换了顺序），前端点表头时也要用它（`按名称` 先升序、
  * `按上次检查` / `按落后数` 先降序——「最近查过的在前」「落后最多的在前」
  * 才是这两个键想问的问题）。
+ *
+ * `attention` 是升序：它的「值」是一个**行动优先的序号**（见服务端 `orderBy`），
+ * 序号小的在前就是「该动手的排前面」。
  */
 export const DEFAULT_SORT_DIR: Record<ProjectSort, SortDir> = {
   name: 'asc',
+  attention: 'asc',
   checked: 'desc',
   behind: 'desc',
 }
