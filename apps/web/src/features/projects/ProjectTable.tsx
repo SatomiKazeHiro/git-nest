@@ -202,6 +202,8 @@ function SortableTh({
   const active = sort === sortKey
   const current = dir ?? DEFAULT_SORT_DIR[sortKey]
   const ascending = current === 'asc'
+  /** 当前方向是不是**这一列的默认方向**？它决定第二次点之后还剩哪一步 */
+  const atDefault = current === DEFAULT_SORT_DIR[sortKey]
 
   return (
     <th
@@ -210,9 +212,25 @@ function SortableTh({
     >
       <button
         type="button"
-        /* 已经是这一列 → 翻方向；不是 → 换成它并用它的默认方向（`dir` 不传） */
-        onClick={() => setSort(sortKey, active ? (ascending ? 'desc' : 'asc') : undefined)}
-        title={active ? `${hint}：当前${ascending ? '升序' : '降序'}，点一下改${ascending ? '降序' : '升序'}` : hint}
+        /*
+          **三态循环**，不是两态：初始 →（点）这一列的默认方向 →（点）反向 →
+          （点）**复位**（把排序整个清掉，回到默认序）。
+
+          少了第三态，用户就只能绕到下拉里点「默认（按分类）」——表头点两下之后就
+          再也回不到初始了，而「按名称看一眼、再按状态看一眼、再回来」是很常见的来回。
+        */
+        onClick={() => {
+          if (!active) return setSort(sortKey)
+          if (atDefault) return setSort(sortKey, ascending ? 'desc' : 'asc')
+          setSort(null)
+        }}
+        title={
+          !active
+            ? hint
+            : atDefault
+              ? `${hint}：当前${ascending ? '升序' : '降序'}，点一下改${ascending ? '降序' : '升序'}`
+              : `${hint}：当前${ascending ? '升序' : '降序'}，点一下取消排序`
+        }
         className={`flex w-full cursor-pointer items-center gap-1 hover:text-ink ${
           align === 'right' ? 'justify-end' : ''
         }`}

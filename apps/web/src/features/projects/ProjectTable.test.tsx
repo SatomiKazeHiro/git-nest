@@ -114,6 +114,39 @@ describe('ProjectTable · 表头可点', () => {
     expect(useUiStore.getState().filters.dir).toBe('desc')
   })
 
+  it('**三次点击是一个循环**：默认方向 → 反向 → 复位（回到初始）', () => {
+    renderTable(NAME_ORDERED)
+    const header = screen.getByRole('button', { name: /仓库/ })
+
+    fireEvent.click(header)
+    expect(useUiStore.getState().filters).toMatchObject({ sort: 'name', dir: 'asc' })
+
+    fireEvent.click(header)
+    expect(useUiStore.getState().filters).toMatchObject({ sort: 'name', dir: 'desc' })
+
+    // 复位：**连排序键一起清掉**——只清方向的话「没排序」和「按某个键排」就分不开了
+    fireEvent.click(header)
+    expect(useUiStore.getState().filters.sort).toBeNull()
+    expect(useUiStore.getState().filters.dir).toBeNull()
+
+    // 复位之后表头也不再自称在排
+    expect(header.closest('th')?.getAttribute('aria-sort')).toBe('none')
+  })
+
+  it('默认方向是**降序**的列走同一个三步：降序 → 升序 → 复位', () => {
+    renderTable(NAME_ORDERED)
+    const header = screen.getByRole('button', { name: /差异/ })
+
+    fireEvent.click(header)
+    expect(useUiStore.getState().filters).toMatchObject({ sort: 'behind', dir: 'desc' })
+
+    fireEvent.click(header)
+    expect(useUiStore.getState().filters).toMatchObject({ sort: 'behind', dir: 'asc' })
+
+    fireEvent.click(header)
+    expect(useUiStore.getState().filters.sort).toBeNull()
+  })
+
   it('点另一列：换成那一列，并回到**它自己的**默认方向（落后数是降序）', () => {
     useUiStore.getState().setSort('name')
     renderTable(NAME_ORDERED)
