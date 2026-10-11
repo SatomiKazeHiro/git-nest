@@ -1,11 +1,13 @@
 import type { DB } from '../db/index.ts'
 import {
+  DEFAULT_SORT_DIR,
   REMOTE_CHECK_STATUSES,
   VERDICT_LABEL,
   isRemoteCheckStatus,
   recommendationFrom,
   type Attention,
   type ProjectSort,
+  type SortDir,
   type Project,
   type ProjectDetail,
   type ProjectListItem,
@@ -92,6 +94,8 @@ const toProject = (r: ProjectRow): Project => ({
   attention?: Attention[]
   /** 列表排序。默认按 分类 → sort_order → 名称 */
   sort?: ProjectSort
+  /** 排序方向；不传用 `DEFAULT_SORT_DIR` 里该键的默认方向（与加这个参数之前一致） */
+  dir?: SortDir
 }
 
 export function listProjects(db: DB, opts: ListProjectsOptions = {}): ProjectListItem[] {
@@ -136,17 +140,25 @@ export function listProjects(db: DB, opts: ListProjectsOptions = {}): ProjectLis
   }
 
   const orderBy = (() => {
+    /*
+      方向只翻**值那一列**。`没查过的排最后` 那条 CASE **不跟着翻**：它表达的是
+      「这个项目没有可排的值」，不是一个小/大的值——升序时把它翻到最前面，等于
+      用「没数据」压住了真正落后最多的仓库。
+    */
+    const dirOf = (key: ProjectSort): 'ASC' | 'DESC' =>
+      (opts.dir ?? DEFAULT_SORT_DIR[key]) === 'asc' ? 'ASC' : 'DESC'
+
     switch (opts.sort) {
       case 'checked':
         // 没查过的排最后：它们没有「上次检查」这个值可排
-        return 'CASE WHEN c.id IS NULL THEN 1 ELSE 0 END, c.checked_at DESC'
+        return `CASE WHEN c.id IS NULL THEN 1 ELSE 0 END, c.checked_at ${dirOf('checked')}`
       case 'behind':
-        return 'CASE WHEN c.id IS NULL THEN 1 ELSE 0 END, c.behind_count DESC'
+        return `CASE WHEN c.id IS NULL THEN 1 ELSE 0 END, c.behind_count ${dirOf('behind')}`
       case 'name':
         // 纯名称序。**不能并进 default** —— default 是「先按分类分组，同类再按
         // sort_order」；用户既然在排序下拉里点了「按名称」，要的就是名称序，
         // 不是分类分组序（第一次写错了，是这条测试抓出来的）。
-        return 'p.name COLLATE NOCASE'
+        return `p.name COLLATE NOCASE ${dirOf('name')}`
       default:
         return `CASE WHEN p.category = '' THEN 1 ELSE 0 END,  -- 无分类的排最后
                 p.category COLLATE NOCASE, p.sort_order, p.name COLLATE NOCASE`

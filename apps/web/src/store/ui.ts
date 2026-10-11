@@ -1,4 +1,4 @@
-import type { Attention, ProjectSort } from '@git-nest/core'
+import { DEFAULT_SORT_DIR, type Attention, type ProjectSort, type SortDir } from '@git-nest/core'
 import { create } from 'zustand'
 
 /** 未归类的项目在界面上归到这个桶 */
@@ -24,6 +24,11 @@ interface Filters {
   attention: Attention | null
   /** 列表排序；null = 用服务端默认（分类分组 → 名称） */
   sort: ProjectSort | null
+  /**
+   * 排序方向。**只在 `sort` 有值时才有意义**，`sort` 一清它也跟着清
+   * ——留一个孤儿方向只会让下一次点表头猜错方向。
+   */
+  dir: SortDir | null
 }
 
 /**
@@ -54,7 +59,11 @@ interface UiState {
   setAttention: (a: Attention | null) => void
   /** 「全部仓库」只清这一个维度——分类 / 标签 / 我自己的都不动 */
   clearAttention: () => void
-  setSort: (s: ProjectSort | null) => void
+  /**
+   * 设排序。`dir` 不传就用**这个键的默认方向**（名称升序、时间/落后降序）——
+   * 于是「下拉里选一项」和「第一次点某个表头」得到的是同一个顺序。
+   */
+  setSort: (s: ProjectSort | null, dir?: SortDir) => void
   clearFilters: () => void
   openCreate: () => void
   openEdit: (id: number) => void
@@ -63,7 +72,15 @@ interface UiState {
   closeSettings: () => void
 }
 
-const emptyFilters: Filters = { q: '', category: null, tag: null, own: null, attention: null, sort: null }
+const emptyFilters: Filters = {
+  q: '',
+  category: null,
+  tag: null,
+  own: null,
+  attention: null,
+  sort: null,
+  dir: null,
+}
 
 export const useUiStore = create<UiState>((set) => ({
   filters: emptyFilters,
@@ -82,7 +99,10 @@ export const useUiStore = create<UiState>((set) => ({
   setOwnOnly: (v) => set((s) => ({ filters: { ...s.filters, own: v ? '1' : null } })),
   setAttention: (attention) => set((s) => ({ filters: { ...s.filters, attention } })),
   clearAttention: () => set((s) => ({ filters: { ...s.filters, attention: null } })),
-  setSort: (sort) => set((s) => ({ filters: { ...s.filters, sort } })),
+  setSort: (sort, dir) =>
+    set((s) => ({
+      filters: { ...s.filters, sort, dir: sort === null ? null : (dir ?? DEFAULT_SORT_DIR[sort]) },
+    })),
   clearFilters: () => set({ filters: emptyFilters }),
 
   openCreate: () => set({ formOpen: true, editingId: null }),

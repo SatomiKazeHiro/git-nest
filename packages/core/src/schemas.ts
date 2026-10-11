@@ -72,6 +72,11 @@ export const listProjectsQuerySchema = z.object({
     }),
   /** 列表排序。默认 name。 */
   sort: z.enum(['name', 'checked', 'behind']).optional(),
+  /**
+   * 排序方向。**不传时按 `DEFAULT_SORT_DIR` 里那个键的默认方向**——所以老的
+   * 链接 / 老调用不会因为多了这个参数就换了顺序。
+   */
+  dir: z.enum(['asc', 'desc']).optional(),
 })
 
 export const createTagSchema = z.object({

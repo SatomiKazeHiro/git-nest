@@ -1,6 +1,13 @@
 import { useMemo } from 'react'
 import { groupBy, orderBy } from 'es-toolkit'
-import { categoryLabel, type ProjectListItem, type RepoStatus } from '@git-nest/core'
+import { ArrowDown, ArrowUp } from 'lucide-react'
+import {
+  DEFAULT_SORT_DIR,
+  categoryLabel,
+  type ProjectListItem,
+  type ProjectSort,
+  type RepoStatus,
+} from '@git-nest/core'
 import { Button, EmptyState } from '@/components/ui'
 import { hasFilter, UNCATEGORIZED, useUiStore } from '@/store/ui'
 import { ProjectRow } from './ProjectRow'
@@ -36,13 +43,21 @@ export function ProjectTable({
   onOpen: (id: number) => void
   onRemove: (project: ProjectListItem) => void
 }) {
+  const sort = useUiStore((s) => s.filters.sort)
+
   /**
-   * 行按分类排序——**但分类只是排序依据，不是表里的结构**。
+   * 行怎么排。
    *
-   * 表里没有分区行：分类是侧栏的事（点一下筛那一类）。
-   * 这里保留分组只是因为「同类连在一起」好读，同类之间按名称排。
+   * **只有「默认」排序才按分类重新分组。** 其它排序是服务端给的**全局序**
+   * （`sort=name` 那支特意是纯名称序，服务端还有一条测试钉着），这里再按分类
+   * 切一遍会把它打散：按名称就变成「先分类、再名称」，跨类上和「默认」长得
+   * 一模一样——下拉说的和实际排出来的不一样，正是要避免的那类问题。
+   *
+   * 分类只是排序依据、不是表里的结构：表里没有分区行（分类是侧栏的事），
+   * 默认序里保留它只是因为「同类连在一起」好读。
    */
   const groups = useMemo(() => {
+    if (sort) return [{ items: projects ?? [] }]
     const byCategory = groupBy(projects ?? [], (p) => p.category || UNCATEGORIZED)
     return orderBy(
       Object.entries(byCategory),
@@ -50,7 +65,7 @@ export function ProjectTable({
       [([name]) => (name === UNCATEGORIZED ? 1 : 0), ([name]) => categoryLabel(name)],
       ['asc', 'asc'],
     ).map(([, items]) => ({ items }))
-  }, [projects])
+  }, [projects, sort])
 
   if (isPending) {
     return <p className="py-10 font-mono text-[13px] text-ink-3">正在读清单…</p>
@@ -125,14 +140,84 @@ function ColumnHeader() {
   return (
     <thead className="tr-tint column-header sticky top-0 z-[5]">
       <tr className="border-b border-line text-[11px] text-ink-3">
-        <th className="col-repo">仓库</th>
+        <SortableTh label="仓库" sortKey="name" hint="按名称排序" className="col-repo" />
+        {/* 这三列没有排序键，所以是纯文字：**点了没反应的控件比没有更糟**。
+            状态那一列的「行动分类」是服务端 SQL 算出来的，不是库里的一列。 */}
         <th className="col-branch">当前分支</th>
         <th className="col-attention">状态</th>
         <th className="col-sync">同步状态</th>
-        <th className="col-delta text-right">差异</th>
-        <th className="col-checked text-right">上次检查</th>
+        {/* 「差异」这一列画的是 ↑领先 / ↓落后两个数，而排序键只有落后数 */}
+        <SortableTh
+          label="差异"
+          sortKey="behind"
+          hint="按落后数排序"
+          className="col-delta"
+          align="right"
+        />
+        <SortableTh
+          label="上次检查"
+          sortKey="checked"
+          hint="按上次检查时间排序"
+          className="col-checked"
+          align="right"
+        />
         <th className="col-actions" />
       </tr>
     </thead>
+  )
+}
+
+/**
+ * 可排序的表头：点一下按这一列排，再点翻方向。
+ *
+ * 三个排序键各有**自己的默认方向**（名称升序、时间与落后数降序，见
+ * `DEFAULT_SORT_DIR`）：第一次点得到的就是原来那个下拉选出来的顺序，
+ * 所以「点表头」不是另一套语义，只是同一条路更近的入口。
+ *
+ * `aria-sort` 也一起给：读屏要能说出「这一列正按升序排」，不能只靠一个箭头。
+ * 箭头占位的 `w-3` 是固定的，所以出现/消失时标签不会左右跳。
+ */
+function SortableTh({
+  label,
+  sortKey,
+  hint,
+  className = '',
+  align = 'left',
+}: {
+  label: string
+  sortKey: ProjectSort
+  /** tooltip 里说清这一列排的是什么（「差异」排的是落后数，不是两个数的和） */
+  hint: string
+  className?: string
+  align?: 'left' | 'right'
+}) {
+  const sort = useUiStore((s) => s.filters.sort)
+  const dir = useUiStore((s) => s.filters.dir)
+  const setSort = useUiStore((s) => s.setSort)
+
+  const active = sort === sortKey
+  const current = dir ?? DEFAULT_SORT_DIR[sortKey]
+  const ascending = current === 'asc'
+
+  return (
+    <th
+      className={className}
+      aria-sort={active ? (ascending ? 'ascending' : 'descending') : 'none'}
+    >
+      <button
+        type="button"
+        /* 已经是这一列 → 翻方向；不是 → 换成它并用它的默认方向（`dir` 不传） */
+        onClick={() => setSort(sortKey, active ? (ascending ? 'desc' : 'asc') : undefined)}
+        title={active ? `${hint}：当前${ascending ? '升序' : '降序'}，点一下改${ascending ? '降序' : '升序'}` : hint}
+        className={`flex w-full cursor-pointer items-center gap-1 hover:text-ink ${
+          align === 'right' ? 'justify-end' : ''
+        }`}
+      >
+        {label}
+        <span className="w-3 shrink-0" aria-hidden>
+          {active ? ascending ? <ArrowUp size={11} /> : <ArrowDown size={11} /> : null}
+        </span>
+      </button>
+    </th>
   )
 }

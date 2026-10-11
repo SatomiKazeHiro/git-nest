@@ -34,6 +34,8 @@ function toQuery(params: ListParams) {
   if (params.own) search.set('own', params.own)
   if (params.attention) search.set('attention', params.attention)
   if (params.sort) search.set('sort', params.sort)
+  // 方向只在有排序键时才有意义；单独发一个 dir 服务端也会忽略（它走 default 那支）
+  if (params.sort && params.dir) search.set('dir', params.dir)
   const qs = search.toString()
   return qs ? `?${qs}` : ''
 }

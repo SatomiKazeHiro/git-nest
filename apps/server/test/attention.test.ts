@@ -162,4 +162,36 @@ describe('排序', () => {
     const names = listProjects(db, { sort: 'checked' }).map((p) => p.name)
     expect(names[names.length - 1]).toBe('zzz')
   })
+
+  it('方向可以翻：名称降序、落后数升序、上次检查升序', () => {
+    expect(listProjects(db, { sort: 'name', dir: 'desc' }).map((p) => p.name)).toEqual([
+      'ccc',
+      'bbb',
+      'aaa',
+    ])
+    expect(listProjects(db, { sort: 'behind', dir: 'asc' }).map((p) => p.name)).toEqual([
+      'ccc',
+      'bbb',
+      'aaa',
+    ])
+    // 升序时「上次检查」= 最久没查的在前
+    expect(listProjects(db, { sort: 'checked', dir: 'asc' }).map((p) => p.name)).toEqual([
+      'bbb',
+      'ccc',
+      'aaa',
+    ])
+  })
+
+  it('**翻方向不动「没查过的排最后」那条**：它没有值，不是一个很小的值', () => {
+    addProject('zzz')
+    for (const dir of ['asc', 'desc'] as const) {
+      const names = listProjects(db, { sort: 'behind', dir }).map((p) => p.name)
+      expect(names[names.length - 1], dir).toBe('zzz')
+    }
+  })
+
+  it('不传 dir 时与加这个参数之前完全一样（老链接不会换顺序）', () => {
+    expect(listProjects(db, { sort: 'name' }).map((p) => p.name)).toEqual(['aaa', 'bbb', 'ccc'])
+    expect(listProjects(db, { sort: 'behind' }).map((p) => p.name)).toEqual(['aaa', 'bbb', 'ccc'])
+  })
 })

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 传输层类型：server 与 web 共用。
  *
  * 约定：对外一律用 camelCase；本地绝对路径（path）只出现在 server 内部与本机响应里，
@@ -282,6 +282,23 @@ export type Attention = (typeof ATTENTION_VALUES)[number]
 
 /** 列表排序。默认 `name`。 */
 export type ProjectSort = 'name' | 'checked' | 'behind'
+
+/** 排序方向。`dir` 不传时用下面那张默认表里的方向。 */
+export type SortDir = 'asc' | 'desc'
+
+/**
+ * 每个排序键**第一次点**的方向：与历史上那个下拉选出来的顺序完全一致。
+ *
+ * 它是共用的而不是各端各写一份：服务端在 `dir` 缺省时要用它（老链接、老调用
+ * 不能因为加了方向就换了顺序），前端点表头时也要用它（`按名称` 先升序、
+ * `按上次检查` / `按落后数` 先降序——「最近查过的在前」「落后最多的在前」
+ * 才是这两个键想问的问题）。
+ */
+export const DEFAULT_SORT_DIR: Record<ProjectSort, SortDir> = {
+  name: 'asc',
+  checked: 'desc',
+  behind: 'desc',
+}
 
 /** 列表页的一行：项目 + tag + 最近一次检查摘要。 */
 export interface ProjectListItem extends Project {

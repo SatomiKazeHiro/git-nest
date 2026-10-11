@@ -19,7 +19,7 @@
  * 这不是风格偏好：`lib` 一旦 import 任何 feature，整张依赖图就出现反向边，
  * 那正是这一轮要拆掉的东西。
  */
-import type { Attention, ProjectSort } from '@git-nest/core'
+import type { Attention, ProjectSort, SortDir } from '@git-nest/core'
 
 /**
  * 列表查询的参数。
@@ -41,6 +41,8 @@ export interface ListParams {
   attention?: Attention | null
   /** 排序；null = 服务端默认（分类分组 → 名称） */
   sort?: ProjectSort | null
+  /** 排序方向；null/不传 = 该键的默认方向（见 `DEFAULT_SORT_DIR`） */
+  dir?: SortDir | null
 }
 
 export const queryKeys = {
