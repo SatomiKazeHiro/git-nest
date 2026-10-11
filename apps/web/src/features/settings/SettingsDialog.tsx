@@ -2,7 +2,6 @@ import { Dialog } from '@/components/Dialog'
 import { useUiStore } from '@/store/ui'
 import { CommandsSection } from './CommandsSection'
 import { GitSection } from './GitSection'
-import { ScanSection } from './ScanSection'
 import { SettingGroup } from './SettingRow'
 import { TagSection } from './TagSection'
 
@@ -34,12 +33,11 @@ export function SettingsDialog() {
       size="wide"
       onClose={closeSettings}
     >
-      <div className="settings-body">
+      <div className="dialog-rows">
         <SettingGroup
           title="往清单里加东西"
-          note="只写本机的清单，不联网、不读仓库内容。扫出来的东西还要你挑一遍才会进清单。"
+          note="只写本机的清单，不联网、不读仓库内容。「扫描目录」在它自己的弹窗里——工具条上那一枚按钮直接开它。"
         >
-          <ScanSection />
           <TagSection />
         </SettingGroup>
 

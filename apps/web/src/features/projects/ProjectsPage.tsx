@@ -41,7 +41,7 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
   // 没选中项目就没有详情
   const showDetail = currentId !== null
   const filters = useUiStore((s) => s.filters)
-  const openSettings = useUiStore((s) => s.openSettings)
+  const openScan = useUiStore((s) => s.openScan)
   const [pendingRemoval, setPendingRemoval] = useState<ProjectListItem | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
 
@@ -78,7 +78,7 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
       <Toolbar
         total={projects?.length ?? 0}
         onCheckUpdates={() => setPanelOpen(true)}
-        onScan={openSettings}
+        onScan={openScan}
       />
 
       {/*

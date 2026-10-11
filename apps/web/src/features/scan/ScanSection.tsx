@@ -3,8 +3,14 @@ import { FolderSearch, Loader, Trash2, X } from 'lucide-react'
 import { ApiError } from '@/lib/api'
 import { Button, ErrorNote, Input } from '@/components/ui'
 import { Dialog } from '@/components/Dialog'
-import { SettingRow } from './SettingRow'
-import { useSaveSettings, useSettings } from './queries'
+import { SettingRow } from '@/features/settings/SettingRow'
+/*
+  「常用目录」(`scanDirs`) 是**扫描自己的配置**，所以扫描模块直接读写设置接口。
+  跨 feature 引用在这个仓库里是既有做法（`UpdatePanel` 读设置、`ProjectRow` 用
+  `status/badges`、`TagSection` 用 `tags/queries`），规矩是：弹窗由组合根接，
+  feature 之间可以共用 query 与小组件。
+*/
+import { useSaveSettings, useSettings } from '@/features/settings/queries'
 import { useRemoveProject } from '@/features/projects/queries'
 import { ScanResults } from './ScanResults'
 import { useScan, type ScanResponse, type ScannedRepoWithProject } from './scanQueries'

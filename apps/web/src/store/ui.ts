@@ -52,6 +52,8 @@ interface UiState {
   formOpen: boolean
   /** 设置弹窗开着吗（设置只有这一个界面，旧路由已删） */
   settingsOpen: boolean
+  /** 扫描目录弹窗开着吗。它原来是设置里的一段，现在是独立的一个 */
+  scanOpen: boolean
   setQuery: (q: string) => void
   setCategory: (c: string | null) => void
   setTag: (t: string | null) => void
@@ -70,6 +72,9 @@ interface UiState {
   closeForm: () => void
   openSettings: () => void
   closeSettings: () => void
+  /** 扫描目录弹窗。它原来住在设置里，现在是独立的一个（工具条那枚按钮直接开它） */
+  openScan: () => void
+  closeScan: () => void
 }
 
 const emptyFilters: Filters = {
@@ -87,6 +92,7 @@ export const useUiStore = create<UiState>((set) => ({
   editingId: null,
   formOpen: false,
   settingsOpen: false,
+  scanOpen: false,
 
   setQuery: (q) => set((s) => ({ filters: { ...s.filters, q } })),
   setCategory: (category) =>
@@ -110,4 +116,6 @@ export const useUiStore = create<UiState>((set) => ({
   closeForm: () => set({ formOpen: false, editingId: null }),
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
+  openScan: () => set({ scanOpen: true }),
+  closeScan: () => set({ scanOpen: false }),
 }))

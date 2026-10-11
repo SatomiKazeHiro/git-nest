@@ -1,4 +1,4 @@
-﻿import { Route, Routes } from 'react-router'
+import { Route, Routes } from 'react-router'
 import { AppShell } from '@/layouts/AppShell'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Workspace } from '@/features/projects/Workspace'
@@ -6,6 +6,7 @@ import { ProjectDetailPage } from '@/pages/ProjectDetailPage'
 import { PreviewPage } from '@/pages/PreviewPage'
 import { EmptyState } from '@/components/ui'
 import { ProjectFormDialog } from '@/features/projects/ProjectFormDialog'
+import { ScanDialog } from '@/features/scan/ScanDialog'
 import { SettingsDialog } from '@/features/settings/SettingsDialog'
 
 export function App() {
@@ -56,8 +57,9 @@ export function App() {
           </Routes>
         </ErrorBoundary>
       </AppShell>
-      {/* 两个「整个应用只有一份」的弹窗。 */}
+      {/* 三个「整个应用只有一份」的弹窗。 */}
       <ProjectFormDialog />
+      <ScanDialog />
       <SettingsDialog />
     </>
   )

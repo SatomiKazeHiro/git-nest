@@ -7,7 +7,7 @@
  * - `['status']`：`features/projects/queries.ts` 与 `features/status/queries.ts`
  *   各写了一份根，两边必须一致才不会静默失效；
  * - `['settings']`：`features/settings/queries.ts`（两处）与
- *   `features/settings/ScanSection.tsx` 各写了一份字面量。
+ *   `features/scan/ScanSection.tsx` 各写了一份字面量（后者当时还在设置里）。
  *
  * 同一个名字两处定义，改一处另一处不会报错，只会**默默地不再失效**。
  * 本仓库已经有过一次同类事故（`useInvalidate` 里把详情前缀写成
