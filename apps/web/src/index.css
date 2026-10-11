@@ -103,24 +103,31 @@
     而这个界面同时有五个滚动区（左栏、清单、详情、弹窗内容、README 里的宽表格），
     差异会一起出现在眼前。
 
-    两条路都得写，因为**没有一条覆盖所有浏览器**：
-    - `scrollbar-width` / `scrollbar-color`：标准属性（Firefox、Chromium 121+）。
-      它们**可继承**，所以挂在 `:root` 上就够，不必逐个容器写。
-    - `::-webkit-scrollbar*`：WebKit 系（Safari、旧 Chromium）只认这组。
-      这组**不继承**，所以必须写成 `*::-webkit-scrollbar`。
-    Chromium 121+ 设了标准属性之后会忽略那组伪元素——两边不冲突，各取所需。
+    **只用 `::-webkit-scrollbar` 这一条路，不写标准属性——这是有意的取舍：**
+
+    Chromium 121+ 一旦看到 `scrollbar-width` / `scrollbar-color`，就会**忽略**下面
+    那组伪元素，改用它自己的 `thin`：粗细由它定（比这里画得粗），
+    你只能选 thin/auto 两档。于是「把滑块画细一点」这件事在 Chromium 上根本做不到。
+    去掉标准属性之后，宽度就完全由 `--sb-size` 说了算。
+
+    代价：**Firefox 会回落到它自己的原生滚动条**（也是细的、半透明，并且跟随
+    `color-scheme: light`，不刺眼，只是颜色不跟着主题走）。CSS 里没有可靠的办法
+    只对 Firefox 生效——`::-webkit-scrollbar` 在 Firefox 里能被解析成空操作，
+    `@supports selector()` 骗不过它；而 `@-moz-document` 早已从网页样式表里移除。
+    所以这条只能二选一：**以 Chromium 为准**（这是主要使用环境）。
 
     颜色全走主题变量：以后改主题（或加深色）滚动条自己跟着变，不用回来改这里。
     轨道用**透明**而不是某个底色：那几个滚动区的底色并不相同（rail / bg / panel），
     透明才能让各自的底色透出来。
   */
   :root {
+    /* 滚动条**总宽度**。滑块比它细一圈：两边各留 --sb-inset，所以滑块是
+       size − 2×inset。想更细就调这两个数（6px/1.5px 那种也行，就是不太好点）。 */
+    --sb-size: 8px;
+    --sb-inset: 2px;
     /* 静止时淡、指上去深一档：滚动条是「需要时才该被看见」的东西 */
     --sb-thumb: color-mix(in srgb, var(--color-ink-3) 38%, transparent);
     --sb-thumb-hover: color-mix(in srgb, var(--color-ink-3) 62%, transparent);
-    --sb-size: 10px;
-    scrollbar-width: thin;
-    scrollbar-color: var(--sb-thumb) transparent;
   }
 
   *::-webkit-scrollbar {
@@ -133,7 +140,7 @@
   *::-webkit-scrollbar-thumb {
     background-color: var(--sb-thumb);
     /* 透明边框 + content-box 裁切：滑块比轨道细一圈，四周留出呼吸的缝 */
-    border: 3px solid transparent;
+    border: var(--sb-inset) solid transparent;
     border-radius: 999px;
     background-clip: content-box;
   }
