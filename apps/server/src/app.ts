@@ -6,7 +6,7 @@ import { config } from './config.ts'
 import { openDatabase, type DB } from './db/index.ts'
 import { HttpError, toErrorBody } from './lib/errors.ts'
 import { bindSettings, useScheduler } from './lib/git.ts'
-import { projectRoutes, tagRoutes } from './routes/index.ts'
+import { categoryRoutes, projectRoutes, tagRoutes } from './routes/index.ts'
 import { gitRoutes } from './routes/git.ts'
 import { logoRoutes } from './routes/logo.ts'
 import { updateRoutes } from './routes/updates.ts'
@@ -73,6 +73,7 @@ export function buildApp(options: AppOptions = {}) {
 
   app.register(projectRoutes(db), { prefix: '/api' })
   app.register(tagRoutes(db), { prefix: '/api' })
+  app.register(categoryRoutes(db), { prefix: '/api' })
   app.register(gitRoutes(db), { prefix: '/api' })
   app.register(logoRoutes(db), { prefix: '/api' })
   app.register(updateRoutes(db), { prefix: '/api' })

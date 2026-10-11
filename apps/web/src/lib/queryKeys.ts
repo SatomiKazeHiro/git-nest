@@ -52,6 +52,11 @@ export const queryKeys = {
   projectAll: ['project'] as const,
   tags: ['tags'] as const,
   /**
+   * 分类。**与标签同一个道理**：它是一份配置名单，左栏 / 表单 / 详情页三处共用，
+   * 键写一份才不会「设置里删了分类，左栏还留着」。
+   */
+  categories: ['categories'] as const,
+  /**
    * 状态那一族的**根**。批量与单条都在它下面，失效一次就够。
    *
    * 它以前是 `queryKeys.status`，与 `features/status/queries.ts` 里的

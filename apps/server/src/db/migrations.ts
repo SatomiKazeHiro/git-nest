@@ -1,3 +1,5 @@
+import { BUILTIN_CATEGORIES } from '@git-nest/core'
+
 /**
  * Schema。**开发期就这一份，不写历史迁移步骤。**
  *
@@ -90,6 +92,39 @@ export const migrations = [
         stamp      TEXT NOT NULL,
         picked_at  TEXT NOT NULL
       );
+    `,
+  },
+  {
+    id: '004_categories',
+    /*
+      分类表。**加一张新表就追加一条**（改已有表的结构仍然是改 001 + 删库）。
+
+      这里最关键的一点：种子的 key 与 `projects.category` 里**已经存着的值完全一样**
+      （`knowledge-base` / `backups` / `experiments` / `tools`），所以这张表不涉及任何
+      数据迁移——它只是给那些值补上「显示名 + 图标 + 是不是内置」。
+
+      种子从 `BUILTIN_CATEGORIES` 生成而不是手写一遍：那份常量同时是前端的兜底来源，
+      两处各写一份必然漂开（这个仓库已经吃过一次「同一个名字两处定义」的亏）。
+
+      **故意没有指向 projects 的外键**：未分类在库里是**空串**，它不是这张表的一行，
+      加了外键那种项目就写不进去。存在性校验因此落在应用层
+      （`repos/categories.ts` 的 `isAssignableCategory`）。
+    */
+    sql: `
+      CREATE TABLE categories (
+        key        TEXT PRIMARY KEY,           -- 唯一标识；projects.category 存的就是它
+        label      TEXT NOT NULL,              -- 显示名，用户分类可改
+        icon       TEXT,                       -- 可选图标名
+        builtin    INTEGER NOT NULL DEFAULT 0, -- 内置项不可改名、不可删
+        sort_order INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE INDEX idx_categories_sort ON categories(sort_order);
+
+      INSERT INTO categories (key, label, icon, builtin, sort_order) VALUES
+        ${BUILTIN_CATEGORIES.map(
+          (c) => `('${c.key}', '${c.label}', '${c.icon}', 1, ${c.sortOrder})`,
+        ).join(',\n        ')};
     `,
   },
 ] as const

@@ -3,12 +3,13 @@ import { groupBy, orderBy } from 'es-toolkit'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 import {
   DEFAULT_SORT_DIR,
-  categoryLabel,
   type ProjectListItem,
   type ProjectSort,
   type RepoStatus,
 } from '@git-nest/core'
 import { Button, EmptyState } from '@/components/ui'
+import { categoryLabelOf } from '@/features/categories/label'
+import { useCategories } from '@/features/categories/queries'
 import { hasFilter, UNCATEGORIZED, useUiStore } from '@/store/ui'
 import { ProjectRow } from './ProjectRow'
 
@@ -56,16 +57,19 @@ export function ProjectTable({
    * 分类只是排序依据、不是表里的结构：表里没有分区行（分类是侧栏的事），
    * 默认序里保留它只是因为「同类连在一起」好读。
    */
+  // 分类的显示名从配置里来（用户自己加的分类，静态表里没有）；接口没回来时
+  // 它退回内置四个，所以下面按显示名排序这件事不会因为读不到名单而乱掉
+  const allCategories = useCategories()
   const groups = useMemo(() => {
     if (sort) return [{ items: projects ?? [] }]
     const byCategory = groupBy(projects ?? [], (p) => p.category || UNCATEGORIZED)
     return orderBy(
       Object.entries(byCategory),
       // 与左栏同一套：按显示名排，而不是按存进库的英文
-      [([name]) => (name === UNCATEGORIZED ? 1 : 0), ([name]) => categoryLabel(name)],
+      [([name]) => (name === UNCATEGORIZED ? 1 : 0), ([name]) => categoryLabelOf(allCategories, name)],
       ['asc', 'asc'],
     ).map(([, items]) => ({ items }))
-  }, [projects, sort])
+  }, [projects, sort, allCategories])
 
   if (isPending) {
     return <p className="py-10 font-mono text-[13px] text-ink-3">正在读清单…</p>

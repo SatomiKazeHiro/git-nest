@@ -2,11 +2,13 @@ import type { FastifyPluginAsync } from 'fastify'
 import type { ZodType } from 'zod'
 import { detectProjectType } from '@git-nest/core/git'
 import {
+  createCategorySchema,
   createProjectSchema,
   createTagSchema,
   idParamSchema,
   listProjectsQuerySchema,
   setProjectTagsSchema,
+  updateCategorySchema,
   updateProjectSchema,
   type CreateTagInput,
   type ProjectDetail,
@@ -24,6 +26,14 @@ import {
   updateProject,
 } from '../repos/projects.ts'
 import { createTag, listTags, setProjectTags, tagUsageCount, deleteTag } from '../repos/tags.ts'
+import {
+  categoryByKey,
+  createCategory,
+  deleteCategory,
+  isAssignableCategory,
+  listCategories,
+  updateCategory,
+} from '../repos/categories.ts'
 import { scanLogos, scanProjectLogo } from '../lib/logo-scan.ts'
 
 type InferOutput<S> = S extends ZodType<infer O, unknown> ? O : never
@@ -82,6 +92,13 @@ export const projectRoutes = (db: DB): FastifyPluginAsync => {
       if (pathExists(db, abs)) {
         throw conflict('这个路径已经在清单里了')
       }
+      /*
+        分类的存在性在这里判，不在 schema 里：schema 是浏览器安全的那一份、拿不到库，
+        而分类现在是**用户可以自己加**的表里的一行。空串（未分类）永远合法。
+      */
+      if (!isAssignableCategory(db, input.category)) {
+        throw badRequest(`没有这个分类：${input.category}`)
+      }
 
       const project = await createFromInput(db, input, abs)
       return reply.code(201).send({ project })
@@ -100,6 +117,10 @@ export const projectRoutes = (db: DB): FastifyPluginAsync => {
         if (!dirExists(abs)) throw badRequest(`目录不存在：${abs}`)
         if (pathExists(db, abs, projectId)) throw conflict('这个路径已经在清单里了')
         patch.path = abs
+      }
+
+      if (patch.category !== undefined && !isAssignableCategory(db, patch.category)) {
+        throw badRequest(`没有这个分类：${patch.category}`)
       }
 
       if (!updateProject(db, projectId, patch)) throw notFound('项目')
@@ -148,6 +169,46 @@ export const tagRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
     const { id } = req.params as { id: string }
     if (!deleteTag(db, idParamSchema.parse(id))) throw notFound('标签')
     return { ok: true }
+  })
+}
+
+/**
+ * 分类。**风格跟着标签那一组走**（本仓库的资源接口都在这个文件里，
+ * 只有按域拆出去的 `routes/updates.ts` 那几个例外）。
+ *
+ * 内置项（`builtin`）不能改名、不能删：它们的 key 写在每个项目的
+ * `projects.category` 里，是软件自己的四个桶，不是用户的数据。
+ */
+export const categoryRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
+  fastify.get('/categories', async () => ({ categories: listCategories(db) }))
+
+  fastify.post('/categories', async (req, reply) => {
+    const input = parse(createCategorySchema, req.body)
+    return reply.code(201).send({ category: createCategory(db, input) })
+  })
+
+  fastify.patch('/categories/:key', async (req) => {
+    const { key } = req.params as { key: string }
+    const existing = categoryByKey(db, key)
+    if (!existing) throw notFound('分类')
+    if (existing.builtin) throw conflict('内置分类不能改名或改图标')
+
+    const patch = parse(updateCategorySchema, req.body)
+    if (!updateCategory(db, key, patch)) throw notFound('分类')
+    return { category: categoryByKey(db, key) }
+  })
+
+  /**
+   * 删掉一个分类。**引用它的项目退回未分类**（不是跟着一起删）。
+   * 响应里的 `moved` 是给确认框用的：删之前界面得先知道会影响几个项目。
+   */
+  fastify.delete('/categories/:key', async (req) => {
+    const { key } = req.params as { key: string }
+    const existing = categoryByKey(db, key)
+    if (!existing) throw notFound('分类')
+    if (existing.builtin) throw conflict('内置分类不能删除')
+
+    return deleteCategory(db, key)
   })
 }
 

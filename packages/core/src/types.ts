@@ -23,54 +23,73 @@ export type {
 } from './git/types.ts'
 
 /**
- * 项目分类：**枚举**。
+ * 内置分类。**它是迁移的种子与前端兜底的同一来源。**
  *
- * 原来是自由文本 + 五个建议值（`personal` / `knowledge-base` / `backups` /
- * `experiments` / `tools`）。改成枚举的理由：
+ * 分类现在是**一份可配置的名单**（服务端的 `categories` 表），不再是编译期的枚举；
+ * 这里只留「内置四个」。四条事实，缺一条这个设计就不成立：
  *
- * 1. **`personal` 已经不该是分类。** 「是不是我自己的」现在是 `projects.is_own`
- *    那个勾选框。分类里再留一个 personal，是把同一件事记在一个**没有任何行为**
- *    的地方——而且以前填了它**真的**会被批量检查跳过，现在不会了。凭记忆填的人
- *    会看到分类里明明写着 personal，却没拿到期待的行为：那正是我们花了几轮
- *    拆掉的静默失效。
- * 2. 自由文本会出 `backup` / `backups`、`试验` / `experiments` 这类近似重复，
- *    分组时看着像多了一个组。
- * 3. 枚举里的每一项都有确定的中文名，`categoryLabel()` 从「部分覆盖」变成全覆盖。
+ * 1. **key 是稳定的，而且就是库里已经存着的那些值**——`projects.category` 里写的
+ *    就是 `knowledge-base` / `backups` / `experiments` / `tools`。所以「分类变成
+ *    可配置」这件事**不涉及任何数据迁移**：新表只是给这些值补上「显示名 + 图标 +
+ *    是不是内置」。key 一旦写进项目就不改（用户改的是 `label`）。
+ * 2. **`label` 只是显示名**：筛选、分组、排序全读 key，只有界面读 label。
+ * 3. **内置项不可改名、不可删**（服务端拒绝）：它们不是用户的数据，是这个软件自带
+ *    的四个桶——`projects.category` 里那一串值没有别的地方可以解释。
+ * 4. 为什么不从接口读：迁移要用它写种子，而前端在列表还没回来（或接口失败）时要用
+ *    它兜底，两处都不能等一次网络往返。
  *
- * **加一个分类就是改这一个常量**（前后端共用），这是有意的：现在不留「将来
- * 可能要自定义」的口子，等真的需要时再拆。
+ * ## 为什么这样仍然封着当初「自由文本会造出 backup/backups」那条顾虑
+ *
+ * 当初把分类从自由文本改成枚举，理由之一是自由文本会出现 `backup` / `backups`、
+ * `试验` / `experiments` 这类近似重复，分组时看着像凭空多了一组。现在分类又能自己
+ * 加了，但那个洞仍然封着：
+ *
+ * - 用户给的是**显示名**，`key` 由服务端从名称生成且保证唯一（`AI 项目` → `ai`，
+ *   撞了就 `ai-2`，中文取不出 slug 就是 `cat-1`）——不会出现两个拼写相近的 key；
+ * - 填分类是**从名单里挑**，不是打字——手误产生的近似重复没有了。
+ *
+ * 剩下的只有「故意起两个同名分类」，那是用户的决定，不是这个设计漏掉的。
  */
-export const CATEGORIES = ['knowledge-base', 'backups', 'experiments', 'tools'] as const
+export const BUILTIN_CATEGORIES = [
+  { key: 'knowledge-base', label: '知识库', icon: 'book-open', sortOrder: 0 },
+  { key: 'backups', label: '备份', icon: 'archive', sortOrder: 1 },
+  // 「试验」不是「实验」（用户确认过）
+  { key: 'experiments', label: '试验', icon: 'flask-conical', sortOrder: 2 },
+  { key: 'tools', label: '工具', icon: 'wrench', sortOrder: 3 },
+] as const
 
 /**
- * 能存进数据库的全部取值。**空串就是「未分类」**——它必须在里面：
- * 大部分项目一开始都没有分类（扫描导入的一律留空）。
- */
-export const CATEGORY_VALUES = ['', ...CATEGORIES] as const
-
-/**
- * 分类的**显示名**。键是存进数据库的字面值，值是界面上给人看的中文。
+ * 一个分类（接口形状）。
  *
- * **只翻显示，不翻数据。** 存进库的永远是 `backups` / `experiments` 这些英文，
- * 筛选、分组、排序全读原始值。
- *
- * 枚举之后这张表是**全覆盖**的：不在 `CATEGORY_VALUES` 里的值进不了库，
- * 所以「查不到就原样显示」这条退路只是防脏数据，不是常规路径。
+ * `builtin` 由**服务端**说了算：内置项不能改名、不能删。`projectCount` 只在列表
+ * 接口里带上——设置页要显示「N 个项目」，删之前那句「会从 N 个项目上摘掉」就是它。
  */
-export const CATEGORY_LABELS: Record<string, string> = {
-  '': '未分类',
-  'knowledge-base': '知识库',
-  backups: '备份',
-  experiments: '试验',
-  tools: '工具',
+export interface Category {
+  key: string
+  label: string
+  icon: string | null
+  builtin: boolean
+  projectCount: number
 }
 
 /**
- * 界面上显示的分类名。库里没有的值原样返回——那说明有脏数据，
- * 换成「未知分类」之类的说法只会让人以为自己填错了。
+ * 内置分类的**接口形状**（`projectCount` 恒为 0）。
+ *
+ * 前端在列表还没回来、或者接口失败时用它兜底。三个地方都不能拿空数组顶：
+ * 左栏那一段会整段消失、表单里一个选项都没有、详情页会把 `ai` 这种 key 原样显示
+ * 出来——三个都像「坏了」。而内置四个任何时候都成立：它们是软件自带的。
+ *
+ * 引用数填 0 而不是留空：调用点要的是同一个形状，真假由调用点自己知道
+ * （需要真实引用数的地方用原始查询，见 `features/categories/queries.ts`）。
  */
-export function categoryLabel(value: string): string {
-  return CATEGORY_LABELS[value] ?? value
+export function builtinCategoryList(): Category[] {
+  return BUILTIN_CATEGORIES.map((c) => ({
+    key: c.key,
+    label: c.label,
+    icon: c.icon,
+    builtin: true,
+    projectCount: 0,
+  }))
 }
 
 export interface Tag {

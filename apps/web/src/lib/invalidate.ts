@@ -26,6 +26,7 @@ export function useInvalidate() {
     void qc.invalidateQueries({ queryKey: queryKeys.projects({}) })
     void qc.invalidateQueries({ queryKey: queryKeys.projectAll })
     void qc.invalidateQueries({ queryKey: queryKeys.tags })
+    void qc.invalidateQueries({ queryKey: queryKeys.categories })
     void qc.invalidateQueries({ queryKey: queryKeys.statusRoot })
     void qc.invalidateQueries({ queryKey: queryKeys.settings })
   }

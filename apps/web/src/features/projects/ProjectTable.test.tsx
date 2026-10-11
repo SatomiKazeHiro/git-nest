@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
-import type { ProjectListItem } from '@git-nest/core'
+import { builtinCategoryList, type ProjectListItem } from '@git-nest/core'
+import { server } from '@/test/mocks/server'
 import { useUiStore } from '@/store/ui'
 import { ProjectTable } from './ProjectTable'
 
@@ -54,17 +57,24 @@ const UNSORTED = [
 ]
 
 function renderTable(rows: ProjectListItem[]) {
+  // 表格要读分类名单（按**显示名**分组排序），所以得有 query client；
+  // 名单本身走 `test/mocks/server.ts` 的默认 handler（内置四个）
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 60_000, gcTime: 0 } },
+  })
   return render(
-    <MemoryRouter>
-      <ProjectTable
-        projects={rows}
-        statuses={undefined}
-        currentId={null}
-        isPending={false}
-        onOpen={() => {}}
-        onRemove={() => {}}
-      />
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <ProjectTable
+          projects={rows}
+          statuses={undefined}
+          currentId={null}
+          isPending={false}
+          onOpen={() => {}}
+          onRemove={() => {}}
+        />
+      </MemoryRouter>
+    </QueryClientProvider>,
   )
 }
 
@@ -196,5 +206,40 @@ describe('ProjectTable · 表头可点', () => {
 
     expect(useUiStore.getState().filters.sort).toBe('attention')
     expect(useUiStore.getState().filters.dir).toBe('asc')
+  })
+})
+
+/**
+ * 默认序里「同类连在一起」是按**显示名**排的（和左栏同一套）。
+ *
+ * 分类变成可配置的之后，显示名不再写在 core 的静态表里，而是配置里读出来的——
+ * 所以夹具必须让「按 key 排」与「按显示名排」**给出不同的顺序**，否则这条用例
+ * 没有鉴别力：`zebra` 这个 key 排在 `tools` 后面，而它的显示名「AI 项目」排在
+ * 「工具」前面。
+ */
+describe('ProjectTable · 默认序按分类的显示名分组', () => {
+  it('用户自建的分类按它的 label 排，不按 key', async () => {
+    server.use(
+      http.get('/api/categories', () =>
+        HttpResponse.json({
+          categories: [
+            ...builtinCategoryList(),
+            { key: 'zebra', label: 'AI 项目', icon: null, builtin: false, projectCount: 1 },
+          ],
+        }),
+      ),
+    )
+
+    // 服务端给的序是 tools 在前；按显示名重排之后，「AI 项目」那一组要排到「工具」前面。
+    // **表里没有分区行**（分类只是排序依据，见组件的注释），所以这里等的是**行序**，
+    // 不是等某段文字出现。
+    const { container } = renderTable([
+      project(1, 'tools-one', 'tools'),
+      project(2, 'zebra-one', 'zebra'),
+    ])
+
+    await waitFor(() => {
+      expect(renderedNames(container)).toEqual(['zebra-one', 'tools-one'])
+    })
   })
 })

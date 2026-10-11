@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { ATTENTION_VALUES, CATEGORY_VALUES, type Attention } from './types.ts'
+import { ATTENTION_VALUES, type Attention } from './types.ts'
 
 const trimmed = z.string().trim()
 
@@ -20,9 +20,13 @@ export const createProjectSchema = z.object({
   path: trimmed.min(1, '本地路径不能为空').max(400, '路径过长'),
   // 「这是我自己写的项目」：批量检查默认跳过。默认值 false（别人的项目才是主体）
   isOwn: z.boolean().default(false),
-  // 枚举，不是自由文本。加一个分类改 `types.ts` 的 CATEGORIES 一处。
-  // 空串（未分类）在枚举里——扫描导入的一律留空，那是最常见的取值。
-  category: z.enum(CATEGORY_VALUES).default(''),
+  /*
+    分类。**这里只校验形状，不校验存在性**——分类从编译期枚举变成了
+    `categories` 表里的一行（用户可以自己加），而 schema 是浏览器安全的那一份，
+    拿不到库。存在性由服务端在写入口判（`isAssignableCategory`，见 routes/index.ts）。
+    空串（未分类）继续合法：扫描导入的一律留空，那是最常见的取值。
+  */
+  category: trimmed.max(60).default(''),
   remoteUrl: trimmed.max(500).nullish().transform((v) => v || null),
   // 「记录」是详情页那个文本框，添加项目时还写不到，所以默认空串
   record: trimmed.max(20_000).default(''),
@@ -34,7 +38,7 @@ export const updateProjectSchema = z
     name: trimmed.min(1, '名称不能为空').max(120).optional(),
     // 仓库被移动 / 改名后需要重新指路，所以允许改 path
     path: trimmed.min(1, '本地路径不能为空').max(400).optional(),
-    category: z.enum(CATEGORY_VALUES).optional(),
+    category: trimmed.max(60).optional(),
     isOwn: z.boolean().optional(),
     // .optional() 必须在 transform **外面**：transform 挂在外层时，zod 会对
     // 「根本没提交的键」也执行它，把 undefined 变成 null 并把键物化进输出，
@@ -97,4 +101,18 @@ export const setProjectTagsSchema = z.object({
 
 export const idParamSchema = z.coerce.number().int().positive()
 
-/** 分类的合法取值不做限制，只给前端做建议用。 */
+/**
+ * 分类的**显示名与图标**。key 不在这里——它由服务端生成（`repos/categories.ts`），
+ * 调用方的职责只是给一个名字。图标这轮只存字符串、界面只展示不选，所以只限长度。
+ */
+export const createCategorySchema = z.object({
+  label: trimmed.min(1, '分类名不能为空').max(30, '分类名过长'),
+  icon: trimmed.max(40).nullish().transform((v) => v || null),
+})
+
+export const updateCategorySchema = z
+  .object({
+    label: trimmed.min(1, '分类名不能为空').max(30, '分类名过长').optional(),
+    icon: trimmed.max(40).nullish().transform((v) => v || null).optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: '没有要修改的字段' })

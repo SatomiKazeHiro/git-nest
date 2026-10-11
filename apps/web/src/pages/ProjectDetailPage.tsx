@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { AlertTriangle, Pencil, RefreshCw, X } from 'lucide-react'
-import { categoryLabel, type ProjectDetail, type RepoStatus } from '@git-nest/core'
+import { type ProjectDetail, type RepoStatus } from '@git-nest/core'
+import { categoryLabelOf } from '@/features/categories/label'
+import { useCategories } from '@/features/categories/queries'
 import { TabBar } from '@/components/TabBar'
 import { Button, ErrorNote } from '@/components/ui'
 import { formatRelative } from '@/lib/format'
@@ -30,6 +32,8 @@ export function ProjectDetailPage() {
   const projectId = Number(id)
   const openEdit = useUiStore((s) => s.openEdit)
   const navigate = useNavigate()
+  // 分类名从配置里读（用户自己加的那些，静态表里没有）
+  const categories = useCategories()
   const [updating, setUpdating] = useState(false)
   /*
     详情栏的两页。**默认落在概览**——打开一个项目最常见的需求是看它现在什么状态，
@@ -145,6 +149,7 @@ export function ProjectDetailPage() {
       <div role="tabpanel" id="panel-overview" aria-labelledby="tab-overview" tabIndex={0} hidden={tab !== 'overview'}>
         <OverviewPanel
           project={project}
+          categoryName={project.category ? categoryLabelOf(categories, project.category) : '未分类'}
           status={status}
           refresh={() => refresh.mutate()}
           isRefreshing={refresh.isPending}
@@ -224,11 +229,18 @@ function MissingNotice() {
  */
 function OverviewPanel({
   project,
+  categoryName,
   status,
   refresh,
   isRefreshing,
 }: {
   project: ProjectDetail
+  /**
+   * 分类的**显示名**已经翻好了再传进来（`未分类` 也在里面）。
+   * 不在这里自己查：这一页的所有值都是「搬进来的」（见上面的说明），
+   * 而分类名要从配置里读——那是 `ProjectDetailPage` 的事。
+   */
+  categoryName: string
   status: RepoStatus | undefined
   refresh: () => void
   isRefreshing: boolean
@@ -263,7 +275,7 @@ function OverviewPanel({
           </>
         ) : null}
         <span className="text-[11px] text-ink-3">分类</span>
-        <Chip>{project.category ? categoryLabel(project.category) : '未分类'}</Chip>
+        <Chip>{categoryName}</Chip>
         {project.tags.length > 0 ? (
           <>
             <span className="ml-1 text-[11px] text-ink-3">标签</span>

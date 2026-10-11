@@ -1,7 +1,9 @@
 import { useMemo, type ComponentType, type ReactNode } from 'react'
 import { orderBy } from 'es-toolkit'
 import { LaptopMinimal, Shapes, Tag, User } from 'lucide-react'
-import { categoryLabel, type Attention } from '@git-nest/core'
+import { type Attention } from '@git-nest/core'
+import { categoryLabelOf } from '@/features/categories/label'
+import { useCategories } from '@/features/categories/queries'
 import { UNCATEGORIZED, useUiStore } from '@/store/ui'
 import { Icon, STATUS_ICON_TONE, type IconName } from '@/components/icons'
 import { useProjects } from './queries'
@@ -25,6 +27,9 @@ export function FilterPanel() {
     而那个数看着仍然像是在报告全量的情况。
   */
   const { data: projects } = useProjects({ category: null, tag: null, q: '' })
+  // 分类名单从配置里来（内置四个 + 用户自己加的）；接口没回来时它退回内置四个，
+  // 所以下面那两处用它的地方不会闪空
+  const allCategories = useCategories()
   const category = useUiStore((s) => s.filters.category)
   const tag = useUiStore((s) => s.filters.tag)
   const own = useUiStore((s) => s.filters.own)
@@ -60,7 +65,7 @@ export function FilterPanel() {
       // 顺序对读者毫无道理（会看到 备份 / 试验 / 知识库 这种交错）。
       categories: orderBy(
         [...cats.entries()],
-        [([name]) => (name === UNCATEGORIZED ? 1 : 0), ([name]) => categoryLabel(name)],
+        [([name]) => (name === UNCATEGORIZED ? 1 : 0), ([name]) => categoryLabelOf(allCategories, name)],
         ['asc', 'asc'],
       ),
       tags: orderBy([...tagCounts.entries()], [([name]) => name.toLowerCase()], ['asc']),
@@ -151,7 +156,7 @@ export function FilterPanel() {
         {categories.map(([name, n]) => (
           <Item
             key={name}
-            label={categoryLabel(name)}
+            label={categoryLabelOf(allCategories, name)}
             count={n}
             active={category === name}
             /* 「未分类」**点得动**：它不是分类，是「没有分类」这个事实，

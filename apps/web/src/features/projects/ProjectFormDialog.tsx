@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Plus, X } from 'lucide-react'
-import { CATEGORIES, categoryLabel, createProjectSchema } from '@git-nest/core'
+import { createProjectSchema } from '@git-nest/core'
+import { useCategories } from '@/features/categories/queries'
 import { ApiError } from '@/lib/api'
 import { Button, ErrorNote, Field, Input, Textarea } from '@/components/ui'
 import { Dialog } from '@/components/Dialog'
@@ -53,6 +54,8 @@ export function ProjectFormDialog() {
   const [tagNames, setTagNames] = useState<string[]>([])
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [banner, setBanner] = useState<string | null>(null)
+  // 可选的分类：内置四个 + 用户自己加的（接口没回来时退回内置四个）
+  const categories = useCategories()
 
   /*
     表单只在**打开的那一刻**灌一次。
@@ -297,21 +300,21 @@ export function ProjectFormDialog() {
             <p className="mt-1 text-[12px] text-signal-bad">{errors['category']}</p>
           ) : null}
           <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {CATEGORIES.map((value) => (
+            {categories.map((c) => (
               <button
-                key={value}
+                key={c.key}
                 type="button"
-                aria-pressed={form.category === value}
+                aria-pressed={form.category === c.key}
                 onClick={() =>
-                  setForm((f) => ({ ...f, category: f.category === value ? '' : value }))
+                  setForm((f) => ({ ...f, category: f.category === c.key ? '' : c.key }))
                 }
                 className={`cursor-pointer rounded-[3px] border px-2 py-1 text-[12px] ${
-                  form.category === value
+                  form.category === c.key
                     ? 'border-accent bg-accent-wash text-accent'
                     : 'border-line bg-panel text-ink-2 hover:border-ink-3 hover:text-ink'
                 }`}
               >
-                {categoryLabel(value)}
+                {c.label}
               </button>
             ))}
           </div>
