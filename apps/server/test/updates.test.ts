@@ -125,7 +125,19 @@ describe('POST /api/updates/check', () => {
       .get(id) as { status: string; behind_count: number; detail: string }
     expect(row.status).toBe('behind')
     expect(row.behind_count).toBe(1)
-    expect(JSON.parse(row.detail).incoming).toBe(1)
+
+    /*
+      只断言**有人读**的东西。`detail` 里现在只剩三个键：`verdict` / `canPull`
+      （清单页的 attention 与服务端「别拉」兜底闸都要它们）与 `upstreamSha`
+      （下次检查判「作者改写历史」的基线）。
+      原来这里还断言了 `incoming`——那是提交数，`behind_count` 这一列已经有了，
+      写进 JSON 也没人读，所以那个字段删掉了：这条断言跟着改成「它确实不在了」，
+      免得哪天有人顺手又把它加回来。
+    */
+    const detail = JSON.parse(row.detail) as Record<string, unknown>
+    expect(detail.verdict).toBe('safe')
+    expect(detail.canPull).toBe(true)
+    expect(detail.incoming).toBeUndefined()
 
     // 列表页要能看到「最后检查时间」
     const list = await app.inject({ method: 'GET', url: '/api/projects' })

@@ -2,11 +2,19 @@ import type { DB } from '../db/index.ts'
 import type { UpdateReport } from '@git-nest/core/git'
 import { REMOTE_CHECK_STATUSES, type UpdateVerdict } from '@git-nest/core'
 
-/** `update_checks.detail` 的形状（JSON 列，故意不建表：只是给下一次检查留的备忘）。 */
- interface UpdateCheckDetail {
-  incoming: number
-  outgoing: number
-  tags: string[]
+/**
+ * `update_checks.detail` 的形状（JSON 列，故意不建表：只是给下一次检查留的备忘）。
+ *
+ * **只放「下次真的会用」的东西。** 原来还有 `incoming` / `outgoing` / `tags`
+ * （提交数、这次看到的标签）——写进去之后**没有任何地方读**：两个数字在
+ * `ahead_count` / `behind_count` 那两列里已经有了，标签只在注释里以
+ * 「供以后趋势分析用」的名义躺着。
+ *
+ * 一个没人读的字段不是「以后可能有用」，它是**读的人必须逐个排除的噪声**：
+ * 判断某个字段能不能删，得先把整个 server 搜一遍。将来真要做趋势分析再加回来——
+ * 这张表是派生的（原话：删了重建没有代价），加字段不需要迁移。
+ */
+export interface UpdateCheckDetail {
   /** 这次算出的「推不推荐更新」的结论 */
   verdict?: UpdateVerdict
   /**
@@ -24,9 +32,6 @@ import { REMOTE_CHECK_STATUSES, type UpdateVerdict } from '@git-nest/core'
 /** 把一次检查/更新的结果记进历史，供「最后检查时间」「推荐更新」与后续趋势分析用。 */
 export function recordUpdateCheck(db: DB, projectId: number, report: UpdateReport): void {
   const detail: UpdateCheckDetail = {
-    incoming: report.incoming.length,
-    outgoing: report.outgoing.length,
-    tags: report.tags,
     ...(report.recommendation
       ? { verdict: report.recommendation.verdict, canPull: report.recommendation.canPull }
       : {}),

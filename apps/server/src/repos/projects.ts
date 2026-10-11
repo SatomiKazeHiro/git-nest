@@ -2,6 +2,7 @@ import type { DB } from '../db/index.ts'
 import {
   DEFAULT_SORT_DIR,
   REMOTE_CHECK_STATUSES,
+  ATTENTION_RANK,
   VERDICT_LABEL,
   isRemoteCheckStatus,
   recommendationFrom,
@@ -163,9 +164,16 @@ export function listProjects(db: DB, opts: ListProjectsOptions = {}): ProjectLis
           同一个序号里按名称排：它们会**并列**（一堆「已同步」），不给定序的话
           SQLite 每次给的顺序都可能不同，滚动时行会自己换位置。
         */
-        const rank = `CASE (${ATTENTION_SQL})
-          WHEN 'ready' THEN 0 WHEN 'blocked' THEN 1 WHEN 'decide' THEN 2
-          WHEN 'unchecked' THEN 3 ELSE 4 END`
+        /*
+          **次序由 core 的 `ATTENTION_RANK` 生成**，不再在这里手写一遍：
+          这条 SQL 里出现的短码只剩判定那一次（`ATTENTION_SQL`），排序跟着它走。
+
+          没有 `ELSE`：`ATTENTION_RANK` 恰好覆盖所有取值，而 `attention-rank.test.ts`
+          钉着「一个不多、一个不少」——真漏了，那条测试会红，而不是这里静默把它排到最后。
+        */
+        const rank = `CASE (${ATTENTION_SQL}) ${ATTENTION_RANK.map(
+          (a, i) => `WHEN '${a}' THEN ${i}`,
+        ).join(' ')} END`
         // 并列时也按名称，**方向跟着主键**：否则降序时前半段翻了、并列那一段没翻，
         // 看着像没排干净
         const by = dirOf('attention')

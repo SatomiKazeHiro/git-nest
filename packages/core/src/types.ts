@@ -280,6 +280,32 @@ export const ATTENTION_VALUES = ['unchecked', 'blocked', 'decide', 'ready', 'syn
  */
 export type Attention = (typeof ATTENTION_VALUES)[number]
 
+/**
+ * 每个 attention 值**是什么意思**。判据本身在服务端那条 SQL 里（`ATTENTION_SQL`，
+ * 由 `update_checks.detail` 的 `verdict` / `canPull` 算出来），但「它们分别代表什么」
+ * 得写在**取值旁边**：读 core 的人只看到上面那串短码，猜不出 `blocked` 和 `decide`
+ * 差在哪，于是必须跑去读一条 SQL 字符串才知道。
+ *
+ * - `ready`     确实有东西可拉（`canPull`）——唯一「现在就该动手」的一类
+ * - `blocked`   作者改写过历史 / 换了仓库（`rewritten` / `unrelated`），要人看一眼才知道怎么办
+ * - `decide`    分叉（`diverged`），得人决定
+ * - `unchecked` 还没问过远程（没有合格检查，或旧记录缺字段——**不猜**）
+ * - `synced`    问过了，没事（`safe` 且没有可拉的）
+ *
+ * **它同时是列表「按状态」排序的次序**：能动手的在前，没事的垫底（升序）。
+ *
+ * 这个次序原来只写在服务端那条 SQL 的 `CASE … THEN 0…4` 里——于是「加一个值」
+ * 要改两处，漏一处不报错（SQL 里没有编译期检查）。现在次序住在这里、SQL 由它生成
+ * （见 `repos/projects.ts`），`attention-rank.test.ts` 钉着「取值与次序一一对应」。
+ */
+export const ATTENTION_RANK: readonly Attention[] = [
+  'ready',
+  'blocked',
+  'decide',
+  'unchecked',
+  'synced',
+]
+
 /** 列表排序。默认 `name`。顺序与设计文档 6.1 列的一致：名称 / 状态 / 上次检查 / 差异。 */
 export type ProjectSort = 'name' | 'attention' | 'checked' | 'behind'
 
