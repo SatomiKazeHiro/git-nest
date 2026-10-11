@@ -8,7 +8,7 @@ import { useUiStore } from '@/store/ui'
 import { useProjects } from './queries'
 import { useStatuses } from '@/features/status/queries'
 import { UpdatePanel } from '@/features/updates/UpdatePanel'
-import { ListHeader, Toolbar } from './ListToolbar'
+import { Toolbar } from './ListToolbar'
 import { ProjectTable } from './ProjectTable'
 import { RemoveDialog } from './RemoveDialog'
 
@@ -80,8 +80,6 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
         onCheckUpdates={() => setPanelOpen(true)}
         onScan={openSettings}
       />
-
-      <ListHeader />
 
       {/*
         清单区：**清单表 + 详情并排**，选中项目时右边那一轨才长出来。
