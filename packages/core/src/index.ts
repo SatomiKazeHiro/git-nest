@@ -1,5 +1,6 @@
 export * from './types.ts'
 export * from './category-label.ts'
+export * from './category-icons.ts'
 export * from './schemas.ts'
 export * from './limits.ts'
 export * from './project-types.ts'

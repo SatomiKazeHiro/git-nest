@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isCategoryIconKey } from './category-icons.ts'
 import { ATTENTION_VALUES, type Attention } from './types.ts'
 
 const trimmed = z.string().trim()
@@ -103,16 +104,28 @@ export const idParamSchema = z.coerce.number().int().positive()
 
 /**
  * 分类的**显示名与图标**。key 不在这里——它由服务端生成（`repos/categories.ts`），
- * 调用方的职责只是给一个名字。图标这轮只存字符串、界面只展示不选，所以只限长度。
+ * 调用方的职责只是给一个名字与可选的图标。
+ *
+ * 图标必须是 `CATEGORY_ICON_KEYS` 里的一个，或者清空（它是可选的）。校验放在
+ * schema 里而不是路由里：约束只有一处，两端口径一致；而白名单之外的名字会让 web 端
+ * 找不到组件——那正是「设置里选得到、左栏却画不出来」这类静默不一致的来源。
  */
+const categoryIconSchema = trimmed
+  .max(40)
+  .nullish()
+  .transform((v) => v || null)
+  .refine((v) => v === null || isCategoryIconKey(v), { message: '没有这个图标' })
+
 export const createCategorySchema = z.object({
   label: trimmed.min(1, '分类名不能为空').max(30, '分类名过长'),
-  icon: trimmed.max(40).nullish().transform((v) => v || null),
+  icon: categoryIconSchema,
 })
 
 export const updateCategorySchema = z
   .object({
     label: trimmed.min(1, '分类名不能为空').max(30, '分类名过长').optional(),
-    icon: trimmed.max(40).nullish().transform((v) => v || null).optional(),
+    // `.optional()` 必须在 transform **外面**（理由见 `updateProjectSchema.remoteUrl`
+    // 那段注释：transform 挂在外层时，zod 会对「根本没提交的键」也执行它）
+    icon: categoryIconSchema.optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: '没有要修改的字段' })
