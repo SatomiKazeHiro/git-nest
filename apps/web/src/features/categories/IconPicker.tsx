@@ -18,11 +18,16 @@ import { Input } from '@/components/ui'
  * 算，`fixed` 定位；**下面放不下时向上翻**——向上时用 `bottom` 锚定，
  * 这样不必知道浮层实际多高（搜索结果少的时候它是矮的）。
  *
- * ## 滚动/缩放：**关掉**，不重算
- * 两条路都能走，这里选"关掉"。理由：滚动时锚点在连续移动，重算得跟着 rAF 节流、
- * 每次滚动都读写布局；而**这个控件的寿命只有几秒**（选一个图标就走），关掉更便宜、
- * 也不可能漂移。缩放同理。滚动监听挂在**捕获阶段**（`true`），这样设置弹窗内部那个
- * 可滚动容器的滚动也能收到——否则它滚了、浮层还杵在原地，那才是真的错得离谱。
+ * ## 滚动/缩放：**重新定位**，绝不关闭
+ * 上一版这里选的是"关掉"，理由是"重算要跟 rAF 节流、每次滚动读写布局，而这个控件
+ * 寿命只有几秒，关掉更便宜"——**那个取舍是错的，成本算在了错的一侧**：一帧读一次
+ * `getBoundingClientRect()` 微不足道，而"滚一下就消失"的代价是用户得重新点开、重新找。
+ *
+ * 更糟的是监听挂在**捕获阶段**（为了让设置弹窗内部那个可滚动容器的滚动也能收到），
+ * 于是**浮层自己网格里的滚动也被收到**——用户正滚着找图标，浮层把自己关掉了。
+ * 现在：`event.target` 落在浮层（或触发控件）里就**整个忽略**（不是"不许关"，而是
+ * **根本不需要动**：锚点没变）；外部滚动只重算坐标，一帧最多一次（rAF 节流）。
+ * 关闭仍然只有四条：Escape、点外面、点中某一项、再点触发控件。
  *
  * ## 无障碍
  * 触发控件 `aria-expanded` + `aria-controls`；浮层 `role="dialog"` +
@@ -56,9 +61,10 @@ export function IconPicker({
   useEffect(() => {
     if (!open) return
 
-    const rect = triggerRef.current?.getBoundingClientRect()
-    if (rect) {
-      const PANEL_H = 264 // 搜索行 + 12rem 网格 + 「不选图标」行，估的
+    const PANEL_H = 264 // 搜索行 + 12rem 网格 + 「不选图标」行，估的（只用来决定往上还是往下）
+    const reposition = () => {
+      const rect = triggerRef.current?.getBoundingClientRect()
+      if (!rect) return
       const width = Math.min(340, window.innerWidth - 16)
       const below = window.innerHeight - rect.bottom
       const up = below < PANEL_H + 8 && rect.top > below
@@ -67,6 +73,7 @@ export function IconPicker({
         up ? { bottom: window.innerHeight - rect.top + 8, left } : { top: rect.bottom + 8, left },
       )
     }
+    reposition()
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
@@ -79,17 +86,41 @@ export function IconPicker({
       if (panelRef.current?.contains(target) || triggerRef.current?.contains(target)) return
       close(false)
     }
-    const onMove = () => close(false)
+
+    /*
+      一帧最多重算一次。触发控件被滚出可视区时不需要特殊处理：浮层是**锚定**在它的
+      rect 上的，跟着一起离开视口；滚回来时下一帧就会算回正确位置。
+    */
+    let frame = 0
+    const schedule = () => {
+      if (frame) return
+      frame = requestAnimationFrame(() => {
+        frame = 0
+        reposition()
+      })
+    }
+    const onScroll = (e: Event) => {
+      /*
+        **浮层内部（或触发控件）的滚动整个忽略**：锚点没动，什么都不用做。
+        这条就是那个 bug 的正面修法——不是"不许关"，而是"根本不需要动"。
+      */
+      const target = e.target as Node | null
+      if (target && (panelRef.current?.contains(target) || triggerRef.current?.contains(target))) {
+        return
+      }
+      schedule()
+    }
 
     document.addEventListener('keydown', onKey, true)
     document.addEventListener('mousedown', onDown, true)
-    window.addEventListener('scroll', onMove, true)
-    window.addEventListener('resize', onMove)
+    document.addEventListener('scroll', onScroll, true)
+    window.addEventListener('resize', schedule)
     return () => {
       document.removeEventListener('keydown', onKey, true)
       document.removeEventListener('mousedown', onDown, true)
-      window.removeEventListener('scroll', onMove, true)
-      window.removeEventListener('resize', onMove)
+      document.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('resize', schedule)
+      if (frame) cancelAnimationFrame(frame)
     }
   }, [open])
 

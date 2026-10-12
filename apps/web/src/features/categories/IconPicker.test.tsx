@@ -97,6 +97,40 @@ describe('IconPicker · 浮层', () => {
     expect(onChange).toHaveBeenCalledWith(null)
   })
 
+  it('**在浮层自己的网格里滚动：浮层还在**（滚着找图标时它不会把自己关掉）', () => {
+    renderPicker()
+    fireEvent.click(trigger())
+
+    /*
+      从浮层**内部**派发 scroll——这正是用户报的那个 bug：滚动监听挂在 document 的
+      捕获阶段（为了让设置弹窗内容区的滚动也能收到），于是浮层自己网格里的滚动也被
+      收到，用户正滚着找图标，浮层被自己关掉了。
+      `scroll` 不冒泡，但**捕获阶段照样会经过祖先**，所以这里派的正是当时那一个事件。
+      位置在 jsdom 里测不了（rect 全 0），所以这条只钉"还在"。
+    */
+    fireEvent.scroll(iconIn('打开的书'))
+
+    expect(screen.queryByRole('dialog')).toBeTruthy()
+  })
+
+  it('**浮层外面滚动（设置弹窗内容区）：浮层还在**（重算位置，不关闭）', () => {
+    renderPicker()
+    fireEvent.click(trigger())
+
+    fireEvent.scroll(document.body)
+
+    expect(screen.queryByRole('dialog')).toBeTruthy()
+  })
+
+  it('窗口 resize：浮层还在', () => {
+    renderPicker()
+    fireEvent.click(trigger())
+
+    fireEvent(window, new Event('resize'))
+
+    expect(screen.queryByRole('dialog')).toBeTruthy()
+  })
+
   it('Escape 关闭', () => {
     renderPicker()
     fireEvent.click(trigger())
