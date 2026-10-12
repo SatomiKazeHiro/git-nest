@@ -1,6 +1,6 @@
 import { useMemo, type ComponentType, type ReactNode } from 'react'
 import { orderBy } from 'es-toolkit'
-import { LaptopMinimal, Shapes, Tag, User } from 'lucide-react'
+import { LaptopMinimal, Shapes, Tag } from 'lucide-react'
 import { type Attention } from '@git-nest/core'
 import { categoryLabelOf } from '@/features/categories/label'
 import { useCategories } from '@/features/categories/queries'
@@ -15,7 +15,8 @@ import { useProjects } from './queries'
  * （点了没反应，用户只会觉得这个应用卡了）。`Workspace` 就是清单页的布局路由，
  * 所以「只在清单页」这件事是结构保证的，不需要在这里判断当前路由。
  *
- * 四段：**仓库状态 / 我自己的 / 分类 / 标签**。前两个是「布尔」维度，
+ * 四段：**仓库状态 / 分类 / 标签**，外加最上面一枚「我自己的」开关（它只有一个
+ * 选项，单独成段是多余的，见下面那段注释）。「仓库状态」与「我自己的」是两枚布尔，
  * 后两个是「按名字分组」——混在一段里的话读者分不清它们是同一类东西。
  *
  * 面板自己会滚：分类和标签多了以后只滚这一列，清单区不动。
@@ -96,6 +97,28 @@ export function FilterPanel() {
         「需要确认」（verdict=diverged）不单列一项：它是少数情况，
         混进「不推荐」那一档会让后者失去「作者改写了历史」那层警告的分量。
       */}
+      {/*
+        「我自己的」**不再单独成段**：它只有一个选项，而「一段只有一个选项」那种排版
+        是多余的（四段里三段是一串选项、一段孤零零一个）。它现在在面板最上面，用
+        **一条底部分隔线**和下面几段分开——形状说明它是「开关」，不是「仓库状态」的
+        第一项。
+
+        它和分类 / 标签仍然不是一层的东西（那边是「按名字分组」，这里是「一个真布尔」），
+        而且它**与其它维度叠加**——「我的 tools」是一个合理的查询，所以它不去替分类
+        那一段的选中态，只自己亮/灭。
+      */}
+      {ownCount > 0 ? (
+        <div className="border-b border-line-soft pb-3">
+          <Item
+            icon="mine"
+            label="我自己的"
+            count={ownCount}
+            active={own === '1'}
+            onClick={() => setOwnOnly(own !== '1')}
+          />
+        </div>
+      ) : null}
+
       <Group title="仓库状态" icon={LaptopMinimal}>
         <Item
           icon="all-repositories"
@@ -133,23 +156,6 @@ export function FilterPanel() {
           onClick={() => setAttention(attention === 'unchecked' ? null : 'unchecked')}
         />
       </Group>
-
-      {/*
-        「我自己的」独立成一段：它和分类 / 标签不是一层的东西（那边是「按名字
-        分组」，这里是「一个真布尔」），而且它**与其它维度叠加**——「我的 tools」
-        是一个合理的查询。
-      */}
-      {ownCount > 0 ? (
-        <Group title="我自己的" icon={User}>
-          <Item
-            icon="mine"
-            label="我自己的"
-            count={ownCount}
-            active={own === '1'}
-            onClick={() => setOwnOnly(own !== '1')}
-          />
-        </Group>
-      ) : null}
 
       <Group title="分类" icon={Shapes}>
         {categories.length === 0 ? <Hint>还没有项目</Hint> : null}

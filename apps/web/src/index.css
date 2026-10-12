@@ -266,6 +266,43 @@
   background-color: var(--color-accent);
 }
 
+/*
+  **首列钉住**：横向滚动时「仓库」那一格永远看得见。
+
+  横向滚动发生在 `.list-pane`（`overflow: auto`）上，所以这里 `left: 0` 就够了
+  （不滚动时 `left: 0` 就是原地，没有副作用）。
+
+  三件必须自己处理的事，都不是可选的：
+
+  1. **不透明背景**。钉住的格子会盖在滚过去的列上面，背景必须**自己给**——
+     行底色不在 `td` 上（`row-current` 在 `td` 上、`hover` 在 `tr.row-link` 上），
+     所以这里逐种状态补一遍。少了这条，滚过去的文字会从它下面透出来。
+     默认行用内容底色；hover 与 `row-current` 都跟同一支 `accent-wash`——
+     前者靠下面那条 `tr.row-link:hover > td:first-child`，后者由
+     `.list-table tr.row-current > td` 已经覆盖（它的选择器更具体，赢过这里）。
+  2. **右缘一条 1px 分隔**：钉住之后它和滚过去的列之间要有视觉断口。
+     常驻（没有横向滚动时也看得见）——要"只在滚动时出现"就得加 JS，不值。
+  3. **表头那一格要压在数据行之上**：表头本身是纵向钉住的（`thead` 上的
+     `sticky top-0`），它的首格于是同时参与两个轴，`z-index` 必须比数据行的
+     钉住格高，否则数据行会从表头下面穿过去。
+*/
+.list-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background-color: var(--color-bg);
+  /* 常驻的右缘分隔（用阴影而不是 border：border 会占宽、把列宽挤歪） */
+  box-shadow: 1px 0 0 var(--color-line);
+}
+.list-table tr.row-link:hover > td:first-child {
+  background-color: var(--color-accent-wash);
+}
+.list-table th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+}
+
 /* 过滤面板自己会滚——分类和标签多了以后只滚这一列，清单区不动 */
 .filter-panel {
   min-height: 0;

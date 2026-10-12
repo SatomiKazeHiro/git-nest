@@ -38,8 +38,18 @@ export function isPull(r: TaskItem['result']): r is PullResult {
   return Boolean(r && 'outcome' in r)
 }
 
-export function startCheck(ids?: number[]) {
-  return api.post<TaskSnapshot>('/updates/check', ids ? { ids } : {})
+/**
+ * 开一轮检查。
+ *
+ * `includeOwn` 是**调用方的显式意图**，不传就让服务端按设置决定：批量面板不传
+ * （照旧读设置里那个「自己的项目也参与检查」），详情页对单个项目点「检查」时传
+ * true——那一个项目是用户点名要查的，不该被批量默认挡掉。
+ */
+export function startCheck(ids?: number[], includeOwn?: boolean) {
+  return api.post<TaskSnapshot>('/updates/check', {
+    ...(ids ? { ids } : {}),
+    ...(includeOwn === undefined ? {} : { includeOwn }),
+  })
 }
 
 export function startApply(ids: number[]) {
@@ -258,7 +268,7 @@ export function useUpdateTask(onFinished?: () => void, options: UpdateTaskOption
     busy,
     error,
     connected,
-    startCheck: (ids?: number[]) => run(() => startCheck(ids)),
+    startCheck: (ids?: number[], includeOwn?: boolean) => run(() => startCheck(ids, includeOwn)),
     startApply: (ids: number[]) => run(() => startApply(ids)),
     reset: () => {
       close()

@@ -55,6 +55,7 @@ export interface CheckTarget {
 export function UpdatePanel({
   targets,
   onClose,
+  includeOwn: includeOwnOverride,
 }: {
   /**
    * 要检查的项目，**按调用方给的顺序**——服务端也按这个顺序返回，
@@ -62,6 +63,16 @@ export function UpdatePanel({
    */
   targets: CheckTarget[]
   onClose: () => void
+  /**
+   * **调用方显式表态**：这一轮要不要连「我自己的」一起查。
+   *
+   * 不传 = 照旧读设置里那个默认（批量面板就是这样）。详情页对单个项目点「检查」
+   * 时传 true——用户点名要查这一个，不该被批量默认挡掉。
+   *
+   * 它同时决定**预告**（下面 `willCheck` / `skipped`）与**请求**，两处共用一个值：
+   * 否则会出现「预告说跳过、实际却查了」——这个软件一路在防的就是那类假话。
+   */
+  includeOwn?: boolean
 }) {
   const invalidate = useInvalidate()
   const { task, busy, error, connected, startCheck, startApply, reset } = useUpdateTask(() => {
@@ -79,9 +90,18 @@ export function UpdatePanel({
     **设置读回来之前不下判断**：否则会先画一遍「全都要查」的列表、再把几行抽掉。
     这个请求读的是本机数据库，通常几毫秒就回来，等它比看那次闪烁划算。
   */
-  const includeOwn = settings?.includeOwn ?? false
-  const willCheck = settingsPending ? [] : targets.filter((t) => includeOwn || !t.isOwn)
-  const skipped = settingsPending ? [] : targets.filter((t) => !includeOwn && t.isOwn)
+  /*
+    这一轮会检查谁：**先看调用方有没有显式表态，再读设置**。规则与服务端同一条
+    （判据是 `is_own` 这个布尔，不是分类）：没打开时，你自己写的项目整批不参与。
+
+    **设置读回来之前不下判断**：否则会先画一遍「全都要查」的列表、再把几行抽掉。
+    这个请求读的是本机数据库，通常几毫秒就回来，等它比看那次闪烁划算。
+    （调用方显式表态时不必等设置——那时设置根本不参与。）
+  */
+  const includeOwn = includeOwnOverride ?? settings?.includeOwn ?? false
+  const waitingForSettings = includeOwnOverride === undefined && settingsPending
+  const willCheck = waitingForSettings ? [] : targets.filter((t) => includeOwn || !t.isOwn)
+  const skipped = waitingForSettings ? [] : targets.filter((t) => !includeOwn && t.isOwn)
   /*
     请求里发**全部**目标 id：服务端会按同一条规则再滤一遍，并把它跳过了谁回给我们
     ——那是它的事，不该由前端替它决定（前端也滤一遍只是为了让**开跑之前**那张列表
@@ -160,7 +180,7 @@ export function UpdatePanel({
       next.delete(projectId)
       return next
     })
-    void startCheck([projectId])
+    void startCheck([projectId], includeOwn)
   }
 
   const startCheckNow = () => {
@@ -172,7 +192,7 @@ export function UpdatePanel({
     setConfirming(false)
     reset()
     setPicked(new Set())
-    void startCheck(ids.length > 0 ? ids : undefined)
+    void startCheck(ids.length > 0 ? ids : undefined, includeOwn)
   }
 
   return (

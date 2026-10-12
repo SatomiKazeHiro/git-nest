@@ -227,12 +227,17 @@ describe('POST /api/updates/check', () => {
     expect(results).toContain('behind')
   })
 
-  it('不给 ids 就检查全部非自己写的项目', async () => {
-    const task = await waitForTask((await startCheck()).json().id)
-    expect(task.status).toBe('done')
-    expect(task.items.length).toBeGreaterThan(0)
-    expect(task.items.every((i: { state: string }) => i.state === 'done')).toBe(true)
-  })
+  /*
+    「不给 ids 就检查全部非自己写的项目」**已经搬到 `updates-batch-all.test.ts`**。
+
+    它要的是「库里只有它自己那两个项目」，而这一个文件里的库是**共用**的（前面用例
+    攒下的项目全在里面）；在这一个文件里临时另建一个 app 走不通——`buildApp()` 有
+    全局副作用：它调用 `lib/git.ts` 的 `bindSettings(db)`，把 git 层读设置的那份引用
+    重绑到新库上，新库一关，本文件后面所有走 git 的用例（`addProject` → `getRemoteUrl`）
+    就全 500 了。上一版正是这么把 6 条 apply 用例弄红的。
+    搬成独立文件之后每个文件有自己的模块注册表，互不影响。
+  */
+
 
   it('id 超过上限直接拒绝', async () => {
     // 上限集中在 core 的 limits.ts（前端读同一个常量，超了会提前拦下并说清原因）。

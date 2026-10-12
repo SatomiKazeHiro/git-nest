@@ -178,6 +178,8 @@ export function ProjectDetailPage() {
       {updating ? (
         <UpdatePanel
           targets={[{ id: project.id, name: project.name, isOwn: project.isOwn }]}
+          /* 用户点名要查这一个：显式带上「我自己的」，不被批量默认挡掉 */
+          includeOwn
           onClose={() => setUpdating(false)}
         />
       ) : null}

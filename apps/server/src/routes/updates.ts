@@ -45,6 +45,15 @@ const SSE_HEARTBEAT_MS = 25_000
 
 const idsSchema = z.object({
   ids: z.array(z.number().int().positive()).max(MAX_BATCH).optional(),
+  /**
+   * **显式覆盖**设置里那条「自己的项目也参与检查」。
+   *
+   * 为什么需要它、而不是拿「带没带 ids」当判据：**批量那次请求也是带 ids 的**
+   * （前端把全部目标塞进 `ids`，见 `UpdatePanel` 的注释），所以「带了 ids 就不套用
+   * 批量默认」会顺手把批量的「跳过自己的」一起废掉。要不要跳过只有调用方知道：
+   * 详情页对单个项目点检查是用户显式点名（传 true），批量面板照旧读设置（不传）。
+   */
+  includeOwn: z.boolean().optional(),
 })
 
 const applySchema = z.object({
@@ -60,7 +69,8 @@ export const updateRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
   fastify.post('/updates/check', async (req, reply) => {
     const body = idsSchema.parse(req.body ?? {})
     const settings = readSettings(db)
-    const targets = pickTargets(db, body.ids, settings.includeOwn)
+    // 显式覆盖优先；没传就照旧读设置——批量面板不传，所以它仍然按设置跳过自己的项目
+    const targets = pickTargets(db, body.ids, body.includeOwn ?? settings.includeOwn)
 
     const skipped = describeSkipped(db, body.ids, targets.map((t) => t.id))
     if (targets.length === 0) {
