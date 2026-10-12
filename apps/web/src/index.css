@@ -309,11 +309,25 @@
   断点会拿「表格 + 详情」的宽度去算，于是表格已经挤到收列了、断点却还没触发。
 */
 .list-scroll {
+  /*
+    详情那一轨的宽度：**有上限的比例**，不是写死的 480px。
+
+    45% 要到 1067px 才够 30rem，所以**宽窗口下它就是 480px，行为与从前完全一样**；
+    窗口窄下去时它按比例让位，清单那一轨因此不会被挤成一条缝：
+
+      1024px 窗口 → 详情 460 / 清单 460（原来清单只有 376）
+       800px 窗口 → 详情 360 / 清单 388（原来清单只有 152）
+
+    这是**止损**，不是终局：极窄窗口下详情自己会被压到 300px 以下（README 会挤）。
+    终局方案（窄到阈值以下时详情浮在清单上、无遮罩、绝对定位）备案在
+    `docs/DETAIL-OVERLAY.md`，连阈值算术与要人眼验的像素清单一起。
+  */
+  --w-detail: min(30rem, 45%);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
 }
 .list-scroll-has-detail {
-  grid-template-columns: minmax(0, 1fr) var(--w-detail, 30rem);
+  grid-template-columns: minmax(0, 1fr) var(--w-detail);
 }
 
 /** 清单那一轨：表头、状态读不出来那条提示、空状态、表格，全在这里 */
