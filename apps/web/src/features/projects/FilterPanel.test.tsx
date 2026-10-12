@@ -72,3 +72,55 @@ describe('FilterPanel · 分类那一行', () => {
     expect(screen.queryByText('zebra')).toBeNull()
   })
 })
+
+/**
+ * 分类那一行的**图标**。
+ *
+ * 用户的原始疑问是「设置里有图标、左栏却没有」——根因是那个 `Item` 从来没收到图标。
+ * 这里钉住它的两种结局：认得出就画（一个 svg），认不出就**什么都不画**
+ * （不塞占位图，那会让人以为这个分类本来就有个图标）。
+ *
+ * 只断言 svg 的有无、不断言是哪一个组件：那是 `icons.tsx` 那张表的事，
+ * 换了图标不该让左栏的用例跟着红。
+ */
+describe('FilterPanel · 分类项的图标', () => {
+  const withIcon = (icon: string | null) => {
+    server.use(
+      http.get('/api/categories', () =>
+        HttpResponse.json({
+          categories: [
+            ...builtinCategoryList(),
+            { key: 'zebra', label: 'AI 项目', icon, builtin: false, projectCount: 1 },
+          ],
+        }),
+      ),
+      http.get('/api/projects', () =>
+        HttpResponse.json({ projects: [project('zebra')], total: 1 }),
+      ),
+    )
+  }
+
+  it('认得出图标：那一项里画出来', async () => {
+    withIcon('brain')
+    renderPanel()
+
+    const row = await screen.findByRole('button', { name: /AI 项目/ })
+    expect(row.querySelector('svg')).not.toBeNull()
+  })
+
+  it('**未知 key 不渲染任何东西**（名单外的名字不塞占位图）', async () => {
+    withIcon('not-a-real-icon')
+    renderPanel()
+
+    const row = await screen.findByRole('button', { name: /AI 项目/ })
+    expect(row.querySelector('svg')).toBeNull()
+  })
+
+  it('没设图标同样什么都不画', async () => {
+    withIcon(null)
+    renderPanel()
+
+    const row = await screen.findByRole('button', { name: /AI 项目/ })
+    expect(row.querySelector('svg')).toBeNull()
+  })
+})

@@ -3,6 +3,7 @@ import { Archive, BookOpen, FlaskConical, Wrench } from 'lucide-react'
 import type { Category } from '@git-nest/core'
 import { Button, ErrorNote, Input } from '@/components/ui'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { IconPicker } from '@/features/categories/IconPicker'
 import { ApiError } from '@/lib/api'
 import {
   useCategoriesQuery,
@@ -36,8 +37,12 @@ export function CategorySection() {
 
   const [name, setName] = useState('')
   const [banner, setBanner] = useState<string | null>(null)
-  const [renaming, setRenaming] = useState<{ key: string; label: string } | null>(null)
+  const [renaming, setRenaming] = useState<{ key: string; label: string; icon: string | null } | null>(
+    null,
+  )
   const [removing, setRemoving] = useState<Category | null>(null)
+  /** 新增表单里选中的图标（可空：图标是可选的）。 */
+  const [newIcon, setNewIcon] = useState<string | null>(null)
 
   const categories = data ?? []
   const report = (e: unknown, fallback: string) =>
@@ -47,10 +52,11 @@ export function CategorySection() {
     const trimmed = name.trim()
     if (!trimmed) return
     create.mutate(
-      { label: trimmed },
+      { label: trimmed, icon: newIcon },
       {
         onSuccess: () => {
           setName('')
+          setNewIcon(null)
           setBanner(null)
         },
         onError: (e) => report(e, '建分类失败'),
@@ -63,7 +69,7 @@ export function CategorySection() {
     const trimmed = renaming.label.trim()
     if (!trimmed) return
     update.mutate(
-      { key: renaming.key, label: trimmed },
+      { key: renaming.key, label: trimmed, icon: renaming.icon },
       {
         // 失败**不关掉输入框**：用户刚敲的名字还在，可以改一改再试
         onSuccess: () => {
@@ -108,7 +114,7 @@ export function CategorySection() {
                 return (
                   <li
                     key={c.key}
-                    className="flex items-center gap-2 border-b border-line-soft py-1.5 last:border-b-0"
+                    className="flex flex-wrap items-center gap-2 border-b border-line-soft py-1.5 last:border-b-0"
                   >
                     {Icon ? <Icon size={14} className="shrink-0 text-ink-3" /> : null}
 
@@ -116,7 +122,9 @@ export function CategorySection() {
                       <>
                         <Input
                           value={renaming.label}
-                          onChange={(e) => setRenaming({ key: c.key, label: e.target.value })}
+                          onChange={(e) =>
+                            setRenaming({ key: c.key, label: e.target.value, icon: renaming.icon })
+                          }
                           onKeyDown={(e) => e.key === 'Enter' && saveRename()}
                           aria-label="分类的新名称"
                           className="!w-40"
@@ -125,6 +133,19 @@ export function CategorySection() {
                           保存
                         </Button>
                         <Button onClick={() => setRenaming(null)}>取消</Button>
+                        {/*
+                          改名时也能换图标。**包一层 `w-full`**：这一行是 flex 行
+                          （`li` 上有 `flex-wrap`），不包的话 12rem 的网格会把整行往
+                          横向撑爆，而不是乖乖换到下一行。
+                        */}
+                        <div className="w-full">
+                          <IconPicker
+                            value={renaming.icon}
+                            onChange={(icon) =>
+                              setRenaming({ key: c.key, label: renaming.label, icon })
+                            }
+                          />
+                        </div>
                       </>
                     ) : (
                       <>
@@ -140,7 +161,7 @@ export function CategorySection() {
                         {c.builtin ? null : (
                           <span className="ml-auto flex items-center gap-2">
                             <button
-                              onClick={() => setRenaming({ key: c.key, label: c.label })}
+                              onClick={() => setRenaming({ key: c.key, label: c.label, icon: c.icon })}
                               className="cursor-pointer text-[12px] text-ink-2 hover:text-ink"
                             >
                               改名
@@ -178,6 +199,10 @@ export function CategorySection() {
             >
               新建分类
             </Button>
+          </div>
+          {/* 图标是可选的（也可以「不设图标」清掉），所以它排在名字下面一行 */}
+          <div className="mt-2">
+            <IconPicker value={newIcon} onChange={setNewIcon} />
           </div>
           <p className="mt-1.5 text-[12px] text-ink-3">
             名称随便起（「AI 项目」这种也行）；标识由服务端生成，不会重复。

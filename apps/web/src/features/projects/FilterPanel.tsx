@@ -2,6 +2,7 @@ import { useMemo, type ComponentType, type ReactNode } from 'react'
 import { orderBy } from 'es-toolkit'
 import { LaptopMinimal, Shapes, Tag } from 'lucide-react'
 import { type Attention } from '@git-nest/core'
+import { categoryIcon } from '@/features/categories/icons'
 import { categoryLabelOf } from '@/features/categories/label'
 import { useCategories } from '@/features/categories/queries'
 import { UNCATEGORIZED, useUiStore } from '@/store/ui'
@@ -159,12 +160,24 @@ export function FilterPanel() {
 
       <Group title="分类" icon={Shapes}>
         {categories.length === 0 ? <Hint>还没有项目</Hint> : null}
-        {categories.map(([name, n]) => (
-          <Item
-            key={name}
-            label={categoryLabelOf(allCategories, name)}
-            count={n}
-            active={category === name}
+        {categories.map(([name, n]) => {
+          /*
+            **从分类记录里取它自己的 `icon`**，不是拿 `name` 当图标名。
+            `name` 是分类的 key（`knowledge-base`），而 `categoryIcon()` 认的是图标名
+            （`book-open`）——两者不是一回事。直接喂 `name` 会每一行都取到 undefined，
+            于是左栏永远什么都不画：看着接上了，其实和没接一样（这正是用户问的
+            「设置里有图标、左栏却没有」）。
+            「未分类」那一组没有对应记录 → `?.icon` 是 undefined → 什么都不画。
+            图标跟着这一行的颜色走（`currentColor`）；认不出来同样不塞占位图。
+          */
+          const CategoryIcon = categoryIcon(allCategories.find((c) => c.key === name)?.icon)
+          return (
+            <Item
+              key={name}
+              label={categoryLabelOf(allCategories, name)}
+              count={n}
+              active={category === name}
+              lucide={CategoryIcon ? <CategoryIcon size={15} className="shrink-0" aria-hidden /> : undefined}
             /* 「未分类」**点得动**：它不是分类，是「没有分类」这个事实，
                但「只看没分类的」是个真实的查询。以前这里是 onClick=undefined
                的死控件（点它没反应，用户只会觉得应用卡了）。
@@ -174,7 +187,8 @@ export function FilterPanel() {
                死控件：看着能点，点了等于没筛。 */
             onClick={() => setCategory(name === UNCATEGORIZED ? '' : name)}
           />
-        ))}
+          )
+        })}
       </Group>
 
       <Group title="标签" icon={Tag}>
@@ -222,6 +236,7 @@ function Item({
   active,
   onClick,
   icon,
+  lucide,
 }: {
   label: string
   count: number
@@ -232,6 +247,12 @@ function Item({
    * 这样注册表里加一个图标，调用点一行都不用改。
    */
   icon?: IconName
+  /**
+   * 另一套图标：**分类**用 lucide 组件（按名字分组，跟着这一行的颜色走）。
+   * 它和上面那套自带状态色的实心圆底图标（状态桶）**刻意不同源**——状态图标要按
+   * 状态配色，两者的差别是设计，不是笔误。"统一"它们反而是错的。
+   */
+  lucide?: ReactNode
 }) {
   return (
     <button
@@ -254,7 +275,9 @@ function Item({
       */}
       {icon ? (
         <Icon name={icon} size={16} className={`shrink-0 ${STATUS_ICON_TONE[icon]}`} />
-      ) : null}
+      ) : (
+        lucide
+      )}
       <span className="min-w-0 flex-1 truncate">{label}</span>
       <span className="font-mono text-[11px] text-ink-3">{count}</span>
     </button>
