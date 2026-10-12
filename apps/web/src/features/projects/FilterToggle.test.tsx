@@ -44,4 +44,18 @@ describe('过滤面板的收起开关', () => {
 
     expect(screen.getByRole('button').getAttribute('title')).not.toContain('有筛选')
   })
+
+  it('角标：有筛选时按钮上有一枚圆点，没有筛选时没有', () => {
+    /*
+      两个方向都要钉住：只测「有」的话，一个永远画着圆点的实现也能过。
+      位置（在搜索框左边、不压表格）jsdom 看不到——那是眼睛的事。
+    */
+    const without = render(<FilterToggle />)
+    expect(without.container.querySelector('.filter-toggle-dot')).toBeNull()
+    without.unmount()
+
+    useUiStore.setState((s) => ({ filters: { ...s.filters, q: 'abc' } }))
+    const withFilter = render(<FilterToggle />)
+    expect(withFilter.container.querySelector('.filter-toggle-dot')).toBeTruthy()
+  })
 })

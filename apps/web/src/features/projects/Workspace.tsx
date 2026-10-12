@@ -1,7 +1,6 @@
 import { Outlet } from 'react-router'
 import { useUiStore } from '@/store/ui'
 import { FilterPanel } from './FilterPanel'
-import { FilterToggle } from './FilterToggle'
 import { ProjectsPage } from './ProjectsPage'
 
 /**
@@ -19,9 +18,10 @@ export function Workspace() {
 
   return (
     /*
-      三列：过滤面板 / 收起开关的槽 / 清单区。收起时只是面板那一列归零
-      （`--w-filter: 0`），**槽不动**——开关得一直留在同一个位置，
-      否则收起来之后它自己跳走了，用户找不回展开的入口。
+      **两列**：过滤面板 + 清单区。收起时只是面板那一列归零（`--w-filter: 0`）。
+      收起开关不在这里——它已经挪进工具条（`FilterToggle`），所以这个栅格里就
+      两个子项，位置靠 `index.css` 里写死的 `grid-column` 钉住（`display: none`
+      的栅格子项不占位，不钉住的话清单会被挤到面板那一列去）。
     */
     <div className={`split ${filterPanelOpen ? '' : 'split-filters-collapsed'}`}>
       {/*
@@ -29,7 +29,6 @@ export function Workspace() {
         控件（仓库状态 / 我自己的 / 分类 / 标签，点了只筛眼前这张表）。
       */}
       <FilterPanel />
-      <FilterToggle />
       {/*
         `detail` 是**内容**，摆放位置由清单决定：详情那一轨长在 `.list-scroll`
         里面（CSS 的两列），而那层网格是清单渲染的。**内容归路由，位置归布局

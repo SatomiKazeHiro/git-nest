@@ -1,6 +1,7 @@
 import { Eraser, FolderSearch, Plus, RefreshCw, Settings } from 'lucide-react'
 import { Button, Input } from '@/components/ui'
 import { hasFilter, useUiStore } from '@/store/ui'
+import { FilterToggle } from './FilterToggle'
 
 /**
  * 清单页的控件行：搜索 / 计数 / 四个动作。
@@ -35,6 +36,12 @@ export function Toolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-line bg-paper px-4 py-2">
+      {/*
+        收起/展开过滤面板。**放在搜索框左边第一个**：它是这一行里唯一"改变布局"
+        的控件（其余都是动作），贴在最左边与它折叠的那一列相邻，位置对得上。
+        它自己不订阅任何东西——状态在 `FilterToggle` 里，这里只负责摆进去。
+      */}
+      <FilterToggle />
       {/* 搜索框是这一行里唯一允许被压缩的东西，别的都不行：
           按钮一旦被压到文字竖排（「扫/描」两行），就成了整屏最难看的那个点。
           给它一个下限，窄下去时先丢的是搜索框的宽度。 */}

@@ -1,38 +1,44 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { Button } from '@/components/ui'
 import { hasFilter, useUiStore } from '@/store/ui'
 
 /**
- * 过滤面板的收起开关：面板右缘外的一枚**半胶囊**。
+ * 过滤面板的收起开关：**工具条里的一枚图标按钮**（搜索框左边第一个）。
  *
- * 它长在留出来的那条 20px 槽里（见 `index.css` 的 `.split`），**不浮在表格上**：
- * 表格左边缘就是「仓库」那一列（logo + 名字），浮上去必然在某些滚动位置压住它。
- * 这个软件一路的取舍都是不为了好看去压内容。
+ * 它原来是一枚浮在表格左沿的半胶囊——那个位置压着表格约 20px（logo 的左沿），
+ * 而且为了不压内容还得给它留一条槽，两列于是变成三列、中间空一条。挪进工具条之后
+ * 那两样代价一起没了：工具条本来就是 chrome 的地盘。
  *
- * 收起之后**它自己还在**——否则面板关上了就再也打不开。方向由 chevron 与
- * `aria-expanded` 一起表达：chevron 指的方向 = 点下去面板会往哪边走。
+ * **只换了位置与形状，状态逻辑与无障碍语义一个字没改**：`aria-expanded`、
+ * 可访问名字仍是「收起过滤面板 / 展开过滤面板」（图标按钮靠 `sr-only` 给名字）、
+ * `title` 里那句「（当前有筛选）」也留着。
+ *
+ * 收起之后它自己还在（在工具条里，谁也动不了它）——否则抽屉关了就再也打不开。
+ * 图标用 `PanelLeftClose` / `PanelLeftOpen` 这一对：**收起时显示"能展开"的那个方向**。
  */
 export function FilterToggle() {
   const open = useUiStore((s) => s.filterPanelOpen)
   const toggle = useUiStore((s) => s.toggleFilterPanel)
   /*
-    面板一收起，那几段高亮就全看不见了，这枚圆点是「表里现在不是全部」的
-    唯一可见线索。展开着的时候不需要它——高亮本身就在眼前。
+    有筛选时的那枚小圆点。以前它只在面板收起后才有意义（那几段高亮全看不见了），
+    现在它常驻在按钮角上——**一眼就知道"表里不是全部"**，不必先收起面板才发现。
   */
   const filtered = useUiStore((s) => hasFilter(s.filters))
 
   const label = open ? '收起过滤面板' : '展开过滤面板'
   return (
-    <button
-      type="button"
+    <Button
       onClick={toggle}
       aria-expanded={open}
       title={filtered ? `${label}（当前有筛选）` : label}
-      className="filter-toggle"
+      /* relative：那枚角标要绝对定位在它右上角 */
+      className="relative shrink-0"
     >
-      {open ? <ChevronLeft size={13} aria-hidden /> : <ChevronRight size={13} aria-hidden />}
-      {filtered ? <span className="filter-toggle-dot" aria-hidden /> : null}
+      {/* 图标是「点下去会发生什么」：收起时给的是"能展开"那个方向 */}
+      {open ? <PanelLeftClose size={14} aria-hidden /> : <PanelLeftOpen size={14} aria-hidden />}
       {/* 只放图标，所以名字写在这里（`title` 只是补充，不作名字） */}
       <span className="sr-only">{label}</span>
-    </button>
+      {filtered ? <span className="filter-toggle-dot" aria-hidden /> : null}
+    </Button>
   )
 }

@@ -215,8 +215,8 @@
   display: grid;
   /*
     **两列**：过滤面板 + 清单区（详情是清单区内部的第二轨，见 `.list-scroll`）。
-    收起开关**不占列**——它是一枚浮在表格左沿上的半胶囊（见 `.filter-toggle`）。
-    第一版给它留了 20px 的槽，结果两列变三列、中间空一条，很割裂。
+    收起开关**不在这里**——它已经挪进工具条（见 `FilterToggle`），所以这两列
+    干干净净，谁也不压谁。
   */
   grid-template-columns: var(--w-filter) minmax(0, 1fr);
   /* 浮层的定位基准 */
@@ -255,42 +255,10 @@
   display: none;
 }
 
-/*
-  收起开关：贴在过滤面板右缘的半胶囊，**浮在表格上、不占布局**。
-
-  代价写在明处：它会压住表格左沿约 20px（正好是 `.list-pane` 的 `px-4` 内边距
-  加 4px 内容）。这是有意的取舍——留槽可以不压内容，但会把两列变三列、中间空一条，
-  那更糟。它是 chrome 不是数据：底色用**不透明**的 bg（否则下面那一行会透出来），
-  颜色低调，指上去才明显。
-*/
-.filter-toggle {
-  position: absolute;
-  left: var(--w-filter);
-  top: 50%;
-  transform: translateY(-50%);
-  /* 表格里有粘性表头，浮层要压在它上面 */
-  z-index: 5;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.25rem;
-  height: 2.75rem;
-  cursor: pointer;
-  color: var(--color-ink-3);
-  background-color: var(--color-bg);
-  border: 1px solid var(--color-line);
-  border-left: 0;
-  border-radius: 0 999px 999px 0;
-}
-.filter-toggle:hover {
-  color: var(--color-ink);
-  background-color: var(--color-rail);
-}
-
-/* 有筛选时的小圆点：面板收起后，这是「表里不是全部」的唯一可见线索 */
+/* 有筛选时的小圆点。挂在工具条那枚开关的右上角（按钮自己是 relative）。 */
 .filter-toggle-dot {
   position: absolute;
-  top: 5px;
+  top: 3px;
   right: 3px;
   width: 5px;
   height: 5px;
