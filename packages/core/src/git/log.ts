@@ -1,4 +1,6 @@
-import { probe, runGit, toGitError, type RunOptions } from './runner.ts'
+import { probe, toGitError, type RunOptions } from './runner.ts'
+import { fetchWithFallback, type FetchExecutor, type RemoteTransport } from './fetch.ts'
+import { readRemoteUrl } from './status.ts'
 import { defaultScheduler, type Scheduler } from './scheduler.ts'
 import { applyVerdict } from './inspect/recommend.ts'
 import { readHasCommonAncestor, readIsAncestor } from './inspect/via-cli.ts'
@@ -47,6 +49,23 @@ export interface LogOptions extends Partial<RunOptions> {
    * 由调用方从 `update_checks` 历史里读出来传进来——core 不知道数据库。
    */
   lastUpstreamSha?: string | null
+  /**
+   * 上次走通的传输方式（由 server 从 `project_transports` 读出来传进来）。
+   * core 不认识数据库，所以「记住哪个项目走哪条路」只能由调用方提供；
+   * 这里只用它决定**先试哪条路**（见 `fetch.ts` 的 `fetchWithFallback`）。
+   */
+  preferredTransport?: RemoteTransport | null
+  /**
+   * 这次 fetch 真的跑通了哪条传输方式。只在这一刻回调一次；
+   * 没有远程 / fetch 全失败时不会调。给 server 落库用（core 不认识数据库）。
+   */
+  onFetchResolved?: (transport: RemoteTransport) => void
+  /**
+   * 换掉「真的去跑 fetch」那一层（测试接缝）。见 `fetch.ts` 的 `FetchExecutor`：
+   * 「哪条路先试、试了几次」是逻辑，可以注入；「命令怎么拼、refs 有没有前进」
+   * 必须用真 git 验——那一条不能用假执行器代替，否则是自己验自己。
+   */
+  fetchExecutor?: FetchExecutor
   /**
    * 任务**真正开始**（拿到并发许可）时回调一次。
    *
@@ -160,6 +179,13 @@ export async function analyzeUpdates(path: string, options: LogOptions = {}): Pr
     const hasOrigin = remote.stdout.split('\n').some((l) => l.trim() === 'origin')
     if (!hasOrigin) return emptyReport('no_remote')
 
+    /*
+      origin 地址：换传输方式要有「另一条路」才能换，而另一条路是从这个地址推出来的。
+      读不出来（`remote get-url` 失败、地址为空）不当作「没有远程」——上面刚刚确认
+      过 origin 在，这里只是拿不到它的地址；那就退回按远程名 fetch，语义与改造前一致。
+    */
+    const remoteUrl = await readRemoteUrl(path, { timeoutMs: options.timeoutMs })
+
     const localTagsBefore = new Set(await listTags(cwd))
 
     /**
@@ -175,11 +201,23 @@ export async function analyzeUpdates(path: string, options: LogOptions = {}): Pr
      */
     const baselineSha = options.lastUpstreamSha ?? (await readUpstreamSha(cwd))
 
-    // 只动 refs/remotes/*，不碰工作区
-    const fetch = await runGit(['fetch', '--prune', 'origin'], cwd)
-    if (fetch.code !== 0) {
-      const error = toGitError(fetch, 'fetch 失败')
-      return { ...emptyReport('error'), error }
+    // 只动 refs/remotes/*，不碰工作区。
+    //
+    // 这一段的位置是**语义**的一部分：基线（`@{u}`）必须在这之前读出来，
+    // 因为 fetch 会就地把它更新成新历史，之后就问不出「原来是什么」了。
+    // 换传输方式的逻辑收在 `fetch.ts`：取不到地址时退回 `origin` 这个名字，
+    // 照样带 `--prune` 与显式 refspec（见那里的 `FETCH_REFSPEC`）。
+    const fetched = await fetchWithFallback({
+      dir: path,
+      url: remoteUrl ?? 'origin',
+      preferred: options.preferredTransport ?? null,
+      ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+      label: cwd.label ?? 'check',
+      ...(options.onFetchResolved ? { onResolved: options.onFetchResolved } : {}),
+      ...(options.fetchExecutor ? { execute: options.fetchExecutor } : {}),
+    })
+    if (!fetched.ok) {
+      return { ...emptyReport('error'), error: fetched.error ?? { kind: 'unknown', message: 'fetch 失败' } }
     }
 
     // 领先/落后：一条 `rev-list` 就够，而且它**自己**就能回答「有没有上游」——

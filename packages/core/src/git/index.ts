@@ -28,6 +28,22 @@ export {
 } from './runner.ts'
 export { classifyError } from './errors.ts'
 export {
+  deriveAlternativeRemote,
+  fetchRemote,
+  fetchWithFallback,
+  fallbackTimeoutMs,
+  withOtherRouteHint,
+  composeFetchFailure,
+  FETCH_REFSPEC,
+  type FetchAttempt,
+  type FetchExecutor,
+  type FetchRemoteOptions,
+  type FetchRemoteResult,
+  type FetchWithFallbackOptions,
+  type FetchWithFallbackResult,
+  type RemoteTransport,
+} from './fetch.ts'
+export {
   getRepoStatus,
   getRepoStatuses,
   getRemoteUrl,

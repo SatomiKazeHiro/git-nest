@@ -9,6 +9,8 @@ import {
   readRemoteUrl,
   readRepoFacts,
   scanDirectory,
+  type FetchExecutor,
+  type RemoteTransport,
   type RepoFacts,
   type RepoStatus,
   type ScanResult,
@@ -16,6 +18,7 @@ import {
 import type { DB } from '../db/index.ts'
 import { readSettings } from './settings.ts'
 import { lastUpstreamSha } from '../repos/updates.ts'
+import { preferredTransport, rememberTransport } from '../repos/transports.ts'
 
 export { analyzeUpdates, getLog, getRepoStatus, pullRepo, readReadme }
 export { README_MAX_BYTES, README_FULL_MAX_BYTES } from '@git-nest/core'
@@ -173,18 +176,76 @@ function unreadableStatus(path: string): RepoStatus {
  * `onStart` 在**真正拿到并发许可、开始跑**的那一刻回调：批量检查一次把几百个仓库
  * 交出去，界面上不该在那一刻就把几百行标成「检查中」。
  */
-export function analyze(
+export async function analyze(
   path: string,
-  options: { lastUpstreamSha?: string | null; label?: string; onStart?: () => void } = {},
+  options: {
+    lastUpstreamSha?: string | null
+    label?: string
+    onStart?: () => void
+    /**
+     * 清单里这个项目的 id。给了它才会按项目换传输方式并记住结论
+     * （core 不认识数据库，`project_transports` 的读写只在这一层）。
+     * 扫描预览那类「还不是项目」的调用方不传，行为与改造前一致。
+     */
+    projectId?: number
+    /**
+     * 换掉「真的去跑 fetch」那一层（测试接缝，见 core 的 `FetchExecutor`）。
+     * 只在测试里用：让「读结论 → 先试那条 → 把走通的记回去」这条链
+     * 不依赖真实网络也能验。生产路径不传，一律跑真 git。
+     */
+    fetchExecutor?: FetchExecutor
+  } = {},
 ) {
   const { gitTimeoutMs } = current()
-  return analyzeUpdates(path, {
+  const transports = transportSession(options.projectId)
+
+  const report = await analyzeUpdates(path, {
     timeoutMs: gitTimeoutMs,
     scheduler,
     lastUpstreamSha: options.lastUpstreamSha ?? null,
+    preferredTransport: transports.preferred,
     label: options.label ?? 'check',
     ...(options.onStart ? { onStart: options.onStart } : {}),
+    // 本次真的跑通了哪条路：core 只负责上报，落库在这一层
+    onFetchResolved: transports.resolved,
+    ...(options.fetchExecutor ? { fetchExecutor: options.fetchExecutor } : {}),
   })
+
+  transports.remember()
+  return report
+}
+
+/**
+ * 一次「取远程事实」的传输方式会话：开工前读上次走通的那条，收工时把这次走通的记下来。
+ *
+ * 为什么收成一个小对象、且**由回调落库**：`analyzeUpdates` / `pullRepo` 都可能
+ * 失败或提前返回（没有远程、没有上游、工作区脏…），那些路径都不该留下结论；
+ * 而「真的 fetch 成功了」这件事只有 core 知道。让 core 在成功那一刻回调一次，
+ * 落库就只发生在**确实走通了**的时候，也不必为取那个返回值去改两个函数的返回形状。
+ *
+ * 没有 `projectId`（或还没 bindSettings）时给的是**空会话**：不读也不写，
+ * core 按地址本身的形式先试——和改造前完全一样。
+ */
+function transportSession(projectId?: number): {
+  preferred: RemoteTransport | null
+  resolved: (transport: RemoteTransport) => void
+  remember: () => void
+} {
+  if (projectId === undefined || !db) {
+    return { preferred: null, resolved: () => {}, remember: () => {} }
+  }
+  // db 是模块级可变量，收窄不进这个闭包；真值在调用时已经由上面那次判断保证过
+  const database = db
+  let resolved: RemoteTransport | null = null
+  return {
+    preferred: preferredTransport(database, projectId),
+    resolved: (transport) => {
+      resolved = transport
+    },
+    remember: () => {
+      if (resolved) rememberTransport(database, projectId, resolved)
+    },
+  }
 }
 
 /**
@@ -194,10 +255,28 @@ export function analyze(
  * 读的是**上次检查的结论**，而「检查」到「点更新」之间作者可能刚好 force push
  * ——那正是「本地看不出被改写、git 自己会安静快进」的场景。基线必须在 fetch 之前读，
  * 所以这一步得由 pull 自己（先 fetch、再比、最后才动工作区）做。
+ *
+ * `projectId` 只为传输方式：基线闸那一次 fetch 也取远程事实，同样该按项目换路；
+ * 记结论的口径与 `analyze` 一致（同一个 `transportSession`）。
  */
-export function pull(path: string, lastUpstreamSha: string | null = null) {
+export async function pull(
+  path: string,
+  lastUpstreamSha: string | null = null,
+  projectId?: number,
+) {
   const { gitTimeoutMs } = current()
-  return pullRepo(path, { timeoutMs: gitTimeoutMs, scheduler, lastUpstreamSha })
+  const transports = transportSession(projectId)
+
+  const result = await pullRepo(path, {
+    timeoutMs: gitTimeoutMs,
+    scheduler,
+    lastUpstreamSha,
+    preferredTransport: transports.preferred,
+    onFetchResolved: transports.resolved,
+  })
+
+  transports.remember()
+  return result
 }
 
 /**

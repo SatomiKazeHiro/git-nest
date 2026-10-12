@@ -31,6 +31,15 @@ export type GitErrorKind =
   | 'network'
   | 'locked'
   | 'unknown'
+  /**
+   * 「取远程事实」这条路本身失败了。
+   *
+   * 为什么不并进 `network`：`fetch.ts` 要回答的是「**哪条路**通」，
+   * 而 `locked`（index.lock 残留）、`path_too_long`、`not_a_repo` 这些
+   * 与传输方式毫无关系；把它们当成网络问题，就会为了一个跟网络无关的原因
+   * 白跑第二次 fetch。
+   */
+  | 'fetch_failed'
 
 export interface GitError {
   kind: GitErrorKind

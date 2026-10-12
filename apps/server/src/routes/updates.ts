@@ -212,6 +212,8 @@ async function runCheck(db: DB, task: Task, targets: Target[]) {
         const report = await analyze(target.path, {
           lastUpstreamSha: lastUpstreamSha(db, target.id),
           onStart: () => markRunning(task, target.id),
+          // 按项目换传输方式：上次走通的那条先试，这次走通的记下来
+          projectId: target.id,
         })
         reports.push(report)
         recordUpdateCheck(db, target.id, report)
@@ -275,7 +277,10 @@ async function runApply(db: DB, task: Task, targets: Target[]) {
       // 之间作者可能刚好 force push——那种情况本地 HEAD 仍是新历史的祖先，
       // `pull --ff-only` 会安静快进。基线交给 pull：它先 fetch（只动 refs/remotes/*）、
       // 比对、确认没被改写才动工作区。
-      const result = await pull(target.path, lastUpstreamSha(db, target.id))
+      //
+      // 第三个参数是项目 id：基线闸那次 fetch 也要按项目换传输方式，
+      // 走通的那条同样要记住（与「检查」共用一处口径，见 lib/git.ts）。
+      const result = await pull(target.path, lastUpstreamSha(db, target.id), target.id)
       recordUpdateCheck(db, target.id, {
         status: result.status,
         ahead: null,

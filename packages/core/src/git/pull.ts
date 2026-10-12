@@ -1,4 +1,6 @@
 import { probe, runGit, toGitError, type RunOptions } from './runner.ts'
+import { fetchWithFallback, type FetchExecutor, type RemoteTransport } from './fetch.ts'
+import { readRemoteUrl } from './status.ts'
 import { defaultScheduler, type Scheduler } from './scheduler.ts'
 import { readWorktree } from './inspect/via-cli.ts'
 import { VERDICT_REASON } from '../types.ts'
@@ -28,6 +30,21 @@ export interface PullOptions extends Partial<RunOptions> {
    * B 分支，答案必然是「不是祖先」，就成了假警报（详见 `detectRewrittenHistory`）。
    */
   lastUpstreamSha?: string | null
+  /**
+   * 上次走通的传输方式（server 从 `project_transports` 读出来）。给「基线闸」那次
+   * fetch 用：它也要取远程事实，所以同样该按项目自动换路（见 `fetch.ts`）。
+   */
+  preferredTransport?: RemoteTransport | null
+  /**
+   * 基线闸那次 fetch 真的跑通了哪条路（见 `fetch.ts` 的 `onResolved`）。
+   * 注意：它不代表 `pull --ff-only` 那一次也走通了同一条——那一次不经过我们。
+   */
+  onFetchResolved?: (transport: RemoteTransport) => void
+  /**
+   * 换掉「真的去跑 fetch」那一层（测试接缝）。见 `fetch.ts` 的 `FetchExecutor`：
+   * 只作用于基线闸那次 fetch；`pull --ff-only` 那一次不经过我们。
+   */
+  fetchExecutor?: FetchExecutor
 }
 
 const SKIP = (reason: string, status: UpdateStatus): PullResult => ({
@@ -60,7 +77,13 @@ export async function pullRepo(path: string, options: PullOptions = {}): Promise
     // 「作者改写过历史」这道闸：fetch 之前先记下本机的上游，fetch 之后拿它比。
     // 顺序不能反——pull 内部的 fetch 会把 @{u} 就地更新成新历史，那时再比就永远「还在」了
     //（读基线必须在 fetch 之前）。
-    const rewritten = await detectRewrittenHistory(cwd, options.lastUpstreamSha ?? null)
+    const rewritten = await detectRewrittenHistory(
+      cwd,
+      options.lastUpstreamSha ?? null,
+      options.preferredTransport ?? null,
+      options.onFetchResolved,
+      options.fetchExecutor,
+    )
     if (rewritten) return SKIP(rewritten, 'diverged')
 
     // 不在这里用 ahead/behind 提前判「没东西可拉」：那个数字来自上次 fetch，是旧的。
@@ -124,7 +147,8 @@ async function countPulled(cwd: RunOptions): Promise<number> {
  * B 分支，答案必然是「不是祖先」，那就是假警报，而假警报比「判不出来」坏得多。
  *
  * 三步，每一步失败都退回「不下结论」（返回 null，让 pull 照常去跑并报真实原因）：
- * 1. `fetch --prune origin` —— 只更新 `refs/remotes/*`，不碰工作区。
+ * 1. `fetch --prune <origin 地址> "+refs/heads/*:refs/remotes/origin/*"` —— 只更新
+ *    `refs/remotes/*`，不碰工作区。走 `fetch.ts`（显式 refspec + 可按项目换传输方式）；
  *    失败（断网 / 认证 / 没有 origin）时不拦：那不是「作者改写了历史」，
  *    真正的失败原因交给 pull 自己报更准。
  * 2. `merge-base --is-ancestor <基线> @{u}` —— 退出码 0 = 还在（正常快进），
@@ -134,13 +158,26 @@ async function countPulled(cwd: RunOptions): Promise<number> {
 async function detectRewrittenHistory(
   cwd: RunOptions,
   explicitBaseline: string | null,
+  preferredTransport: RemoteTransport | null,
+  onFetchResolved: ((transport: RemoteTransport) => void) | undefined,
+  fetchExecutor: FetchExecutor | undefined,
 ): Promise<string | null> {
   const upstream = await probe(['rev-parse', '--verify', '-q', '@{u}'], cwd)
   const local = upstream.ok ? upstream.stdout.trim() : ''
   const baseline = local.length > 0 ? local : explicitBaseline
   if (!baseline) return null
 
-  const fetch = await probe(['fetch', '--prune', 'origin'], cwd)
+  // 地址读不出来就退回远程名 —— 与改造前 `fetch --prune origin` 完全等价
+  const remoteUrl = await readRemoteUrl(cwd.cwd, { timeoutMs: cwd.timeoutMs })
+  const fetch = await fetchWithFallback({
+    dir: cwd.cwd,
+    url: remoteUrl ?? 'origin',
+    preferred: preferredTransport,
+    ...(cwd.timeoutMs === undefined ? {} : { timeoutMs: cwd.timeoutMs }),
+    label: 'pull',
+    ...(onFetchResolved ? { onResolved: onFetchResolved } : {}),
+    ...(fetchExecutor ? { execute: fetchExecutor } : {}),
+  })
   if (!fetch.ok) return null
 
   const ancestor = await probe(['merge-base', '--is-ancestor', baseline, '@{u}'], cwd)

@@ -147,4 +147,30 @@ export const migrations = [
       CREATE UNIQUE INDEX idx_categories_label_unique ON categories(lower(trim(label)));
     `,
   },
+  {
+    id: '006_project_transports',
+    /*
+      「这个项目走哪条传输方式走通过」——**一条结论，不是事实来源**。
+      事实（origin 地址）永远从仓库自己读，这张表只记「上次哪条路通了」。
+
+      为什么需要它：某个项目的 origin 是 HTTPS，`git fetch` 报连接被重置/443 连不上，
+      而同一分钟别的 SSH 项目 fetch 成功。没有这张表，每次检查/自动 fetch 都要先把
+      那条注定失败的 21 秒超时**再踩一遍**，才知道该换路；记住之后，换过去的
+      那条路就是首选（见 core 的 `fetchWithFallback` 与 `FETCH_TIMEOUT` 那段注释）。
+
+      **只记结论、不做任何 URL 改写**：不 `remote set-url`、不碰 `.git/config`。
+      用户改了 remote（换仓库、换主机）时，core 会发现「记住的那条路与当前地址
+      对不上」而退回规范顺序，不需要迁移或清理。
+
+      transport 只有 'https' / 'ssh' 两种取值；没有记录 = 还没成功走过任何一条。
+      外键级联：项目删了，这条结论跟着走。
+    */
+    sql: `
+      CREATE TABLE project_transports (
+        project_id INTEGER PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+        transport  TEXT NOT NULL,   -- 'https' | 'ssh'
+        updated_at TEXT NOT NULL
+      );
+    `,
+  },
 ] as const

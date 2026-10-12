@@ -100,10 +100,12 @@ async function doAutoFetch(db: DB): Promise<AutoFetchSummary> {
   await Promise.all(
     targets.map(async (row) => {
       try {
-        // label 进命令日志——用户要能看出这些进程是谁起的
+        // label 进命令日志——用户要能看出这些进程是谁起的。
+        // `projectId` 让「取远程事实」按项目换传输方式（并把走通的那条记住）
         const report = await analyze(row.path, {
           lastUpstreamSha: lastUpstreamSha(db, row.id),
           label: 'auto-fetch',
+          projectId: row.id,
         })
         recordUpdateCheck(db, row.id, report)
         if (report.error) summary.failed += 1
