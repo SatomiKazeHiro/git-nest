@@ -121,6 +121,24 @@ async function waitForStream() {
   return FakeEventSource.instances[FakeEventSource.instances.length - 1]!
 }
 
+/**
+ * 某一行当前的全部文字。
+ *
+ * 状态词不能直接 `getByText('检查中…')`：底部那个按钮上可能是同一个词，
+ * 「行里说了什么」和「按钮上说了什么」是两件事，得分开断言。
+ */
+function rowText(name: string): string {
+  return screen.getByText(name).closest('li')?.textContent ?? ''
+}
+
+/** 一行里那句状态词所在的那个 `<span>`（名字右边那一格），用来比对两种状态的视觉 */
+function stateSpan(name: string, text: string): HTMLElement {
+  const row = screen.getByText(name).closest('li')
+  const found = [...(row?.querySelectorAll('span') ?? [])].find((s) => s.textContent === text)
+  expect(found, `「${name}」那一行里应该有一句「${text}」`).toBeTruthy()
+  return found as HTMLElement
+}
+
 describe('勾选更新流程', () => {
   it('报告是一个弹窗，不再是插进页面流里的一块区域', () => {
     renderPanel()
@@ -476,5 +494,103 @@ describe('判决必须在弹窗里看得见，而且决定能不能勾', () => {
     // 还有一句单独的警告，点名是哪个仓库（埋在 20 行里就没人看见了）
     const warning = screen.getByText(/判定为「别拉」，不能勾选/)
     expect(warning.textContent).toContain('force-pushed')
+  })
+})
+
+/**
+ * 用户报的两件事，都在同一行字上：
+ *
+ * ① 「更新的时候，每一行还在说检查中」——那句词原来**写死**成「检查中…」，
+ *    可用户点的是「更新选中的 N 个」，做的事是 ff-only 更新。
+ *    这一轮到底是检查还是更新，服务端任务快照里本来就分得清（`kind`），
+ *    所以断言的是「词跟着 `kind` 走」，而不是「多了一个本地开关」。
+ * ② 「排队的时候整行是空的，看着像卡死」——检查受并发限流会排队，
+ *    更新更是严格串行，`pending` 原来什么都不画。
+ */
+describe('每一行那句状态词要说实话', () => {
+  /** 一路走到「可以点更新」：检查跑完、报告落在行里、勾上能快进的那一个 */
+  async function readyToApply() {
+    server.use(
+      http.post('/api/updates/check', () => HttpResponse.json(lastCheckTask, { status: 202 })),
+      http.post('/api/updates/apply', () => HttpResponse.json(applyTask, { status: 202 })),
+    )
+    renderPanel(TARGETS.slice(0, 2))
+
+    await click(/开始检查/)
+    const checkStream = await waitForStream()
+    checkStream.emit({
+      type: 'item',
+      done: 1,
+      item: { projectId: 1, name: 'behind-one', state: 'done', result: report('behind', 2) },
+    })
+    checkStream.emit({
+      type: 'item',
+      done: 2,
+      item: { projectId: 2, name: 'up-to-date', state: 'done', result: report('up_to_date', 0) },
+    })
+    checkStream.emit({
+      type: 'finished',
+      total: 2,
+      summary: { behind: 1, upToDate: 1, ahead: 0, diverged: 0, skipped: 0, failed: 0 },
+    })
+    checkStream.emit({ type: 'closed' })
+    await waitFor(() => expect(screen.getByText(/检查完：/)).toBeTruthy())
+
+    fireEvent.click(screen.getByLabelText('选择 behind-one'))
+    await waitFor(() =>
+      expect((useButton(/更新选中的/) as HTMLButtonElement).disabled).toBe(false),
+    )
+  }
+
+  it('更新跑起来时，行里说「更新中…」，不是「检查中…」', async () => {
+    await readyToApply()
+
+    await click(/更新选中的/)
+    const applyStream = await waitForStream()
+    expect(applyStream.url).toContain('/api/updates/task-apply/events')
+
+    // 服务端把这个项目标成 running（`/updates/apply` 的快照 kind 就是 apply）
+    applyStream.emit({ type: 'item', item: { projectId: 1, name: 'behind-one', state: 'running' } })
+
+    await waitFor(() => expect(rowText('behind-one')).toContain('更新中…'))
+    expect(rowText('behind-one')).not.toContain('检查中…')
+    // 底部那个主动作按钮此刻也是禁用的，同样不能说自己在检查
+    expect(screen.getAllByRole('button', { name: /更新中…/ })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: /检查中…/ })).toBeNull()
+  })
+
+  it('检查跑起来时，行里仍然是「检查中…」', async () => {
+    server.use(
+      http.post('/api/updates/check', () => HttpResponse.json(lastCheckTask, { status: 202 })),
+    )
+    renderPanel(TARGETS.slice(0, 2))
+
+    await click(/开始检查/)
+    const stream = await waitForStream()
+    stream.emit({ type: 'item', item: { projectId: 1, name: 'behind-one', state: 'running' } })
+
+    await waitFor(() => expect(rowText('behind-one')).toContain('检查中…'))
+    expect(rowText('behind-one')).not.toContain('更新中…')
+  })
+
+  it('还没轮到的行说「排队中」，不是一片空白', async () => {
+    server.use(
+      http.post('/api/updates/check', () => HttpResponse.json(lastCheckTask, { status: 202 })),
+    )
+    renderPanel(TARGETS.slice(0, 2))
+
+    await click(/开始检查/)
+    const stream = await waitForStream()
+
+    // 任务快照一到，三行都从「待检查」变成任务项：还没轮到的那行原来什么都不画
+    await waitFor(() => expect(rowText('behind-one')).toContain('排队中'))
+    expect(rowText('up-to-date')).toContain('排队中')
+
+    // 视觉沿用 running 那一档（次级灰 + 等宽），两个词来回换时行不会跳
+    stream.emit({ type: 'item', item: { projectId: 1, name: 'behind-one', state: 'running' } })
+    await waitFor(() => expect(rowText('behind-one')).toContain('检查中…'))
+    expect(stateSpan('up-to-date', '排队中').className).toBe(
+      stateSpan('behind-one', '检查中…').className,
+    )
   })
 })

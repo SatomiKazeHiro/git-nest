@@ -32,6 +32,21 @@ function isDontPull(r: UpdateRecommendation | null): r is UpdateRecommendation {
 }
 
 /**
+ * 「这一轮正在做哪件事」用哪个词：检查 → 「检查中…」，更新 → 「更新中…」。
+ *
+ * 判据取**服务端任务快照自带的 `kind`**（`/updates/check`、`/updates/apply`
+ * 各自在 `taskSnapshot()` 里给一个），面板不另存一份本地状态：
+ * 断线重连时服务端从头重放快照，自己记的那份不会跟着走，
+ * 反而会出现「词和真事不一致」——正是原来那个 bug 的形态。
+ *
+ * 行里与底部按钮**共用这一个函数**：两边各写一次三元，
+ * 就是当初「更新跑起来了，行里和按钮都还在说检查中」的来路。
+ */
+function runningText(kind: TaskSnapshot['kind'] | null | undefined): string {
+  return kind === 'apply' ? '更新中…' : '检查中…'
+}
+
+/**
  * 更新报告：检查 → 看报告 → 勾选 → 更新 → 结果汇总。
  *
  * 原则是**绝不自动更新**。检查完只是给建议，
@@ -114,6 +129,15 @@ export function UpdatePanel({
     求值的，那个位置没有被内容区那层 `task ? …` 的收窄兜着。
   */
   const finished = task?.status === 'done' ? task : null
+
+  /*
+    这一轮跑的是检查还是更新——行里那句词（与底部按钮）据此选，不再写死「检查中」。
+
+    行里出现 `pending` / `running` 的，必然属于**当前这一轮**（一次任务把它的项目
+    从 pending 起步带来，跑完的都落成 done），所以拿当前快照的 `task.kind` 给它们定词是对的。
+    `task` 还没有时（POST 在路上，行里不会有这两个状态）退回检查，与默认语义一致。
+  */
+  const runKind = task?.kind ?? null
 
   /*
     这一屏上**每个项目最近一次的结果**，按项目 id 攒着。
@@ -263,7 +287,9 @@ export function UpdatePanel({
                 onClick={startCheckNow}
                 disabled={busy || ids.length === 0 || overLimit}
               >
-                {busy ? '检查中…' : task ? '重新检查' : '开始检查'}
+                {/* 跑着的时候这个词也得按这一轮是什么给：更新跑起来时这个按钮同样是禁用的，
+                    说「检查中」是假话（此刻一行都没在检查）。 */}
+                {busy ? runningText(runKind) : task ? '重新检查' : '开始检查'}
               </Button>
             )}
           </div>
@@ -345,6 +371,7 @@ export function UpdatePanel({
                 <TaskRow
                   key={t.id}
                   item={item}
+                  runKind={runKind}
                   checked={picked.has(t.id)}
                   onToggle={() => toggle(t.id)}
                   onRetry={() => retryOne(t.id)}
@@ -398,11 +425,14 @@ function PendingRow({ name }: { name: string }) {
 
 function TaskRow({
   item,
+  runKind,
   checked,
   onToggle,
   onRetry,
 }: {
   item: TaskItem
+  /** 这一轮跑的是检查还是更新——决定「running」那一格说什么词 */
+  runKind: TaskSnapshot['kind'] | null
   checked: boolean
   onToggle: () => void
   onRetry: () => void
@@ -453,8 +483,18 @@ function TaskRow({
           {item.name}
         </Link>
 
+        {/*
+          「正在做」与「还没轮到」都要说话。
+          `running` 那句词原来写死成「检查中…」——用户点的是「更新选中的 N 个」，
+          行里却在说检查，与事实不符。现在按这一轮是什么给（见 `runningText`）。
+          `pending` 原来什么都不画：检查受并发限流（默认 4）会排队，更新更是严格串行，
+          于是「还没轮到」的那些行整行空白，看起来像卡住了。视觉沿用 running 那一档
+          （同样的次级灰 + 等宽），行不会因为这两个词来回跳。
+        */}
         {item.state === 'running' ? (
-          <span className="font-mono text-[12px] text-ink-3">检查中…</span>
+          <span className="font-mono text-[12px] text-ink-3">{runningText(runKind)}</span>
+        ) : item.state === 'pending' ? (
+          <span className="font-mono text-[12px] text-ink-3">排队中</span>
         ) : item.state === 'failed' ? (
           <span className="text-[12.5px] text-signal-bad">{item.error ?? '失败'}</span>
         ) : rep ? (
