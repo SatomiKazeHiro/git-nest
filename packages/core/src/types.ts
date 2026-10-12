@@ -222,6 +222,31 @@ export interface UpdateCheckSummary {
   recommendation: UpdateRecommendation | null
 }
 
+/**
+ * 前端与后端的**默认端口**。
+ *
+ * ## 为什么它住在 core
+ *
+ * 这两个数字要在**两个进程、两套配置系统**里各用一次：server 的监听端口与 CORS
+ * 白名单（`apps/server/src/config.ts`）、vite 的监听端口与代理目标
+ * （`apps/web/vite.config.ts`）。各写一份的后果不是「报错」，而是**悄悄不一致**：
+ * 漏改 CORS 那一处，界面每个写操作都会 403，而那条报错不会告诉你是端口没跟上
+ * （跨站写入闸只会说「拒绝跨站写入」）。放在两端共用的包里，改一处就够。
+ *
+ * ## 只有默认值在这里
+ *
+ * `GIT_NEST_PORT` / `GIT_NEST_CORS` / `GIT_NEST_API` 三个环境变量照旧各自能盖回去，
+ * 所以这层约束**随时可撤**：谁要临时换端口，不用改代码。
+ *
+ * ## 选号理由
+ *
+ * - 避开 1xxxx / 2xxxx：那是「默认端口 + 10000 / 20000」那套惯例的区段，
+ *   同一台机器上跑别的项目时最容易撞；
+ * - 不越过 **49151**：Windows 的动态端口范围从 49152 起，绑在那里面会偶发
+ *   「地址已被占用」，而那个错误很难归因。
+ */
+export const DEFAULT_PORTS = { web: 36378, api: 36379 } as const
+
 /** 能作为「问过远程」依据的状态（与 isRemoteCheckStatus 同一份定义）。 */
 export const REMOTE_CHECK_STATUSES = ['up_to_date', 'behind', 'ahead', 'diverged'] as const
 

@@ -1,4 +1,4 @@
-﻿import cors from '@fastify/cors'
+import cors from '@fastify/cors'
 import Fastify from 'fastify'
 import { ZodError } from 'zod'
 import type { Scheduler } from '@git-nest/core/git'
@@ -44,10 +44,10 @@ export function buildApp(options: AppOptions = {}) {
     只拦「带 Origin 且不在白名单」的写请求：
     - 浏览器跨站一定会带 Origin（表单、fetch、XHR 都是），所以这一条就够挡住上面那些；
     - curl / 脚本 / 测试不带 Origin —— 不拦（本机工具的正常用法要留着）；
-    - 同源的页面（vite 代理下就是 `http://localhost:36378`）带的是白名单里的 Origin。
+    - 同源的页面（vite 代理下就是 web 端口那个来源）带的是白名单里的 Origin。
 
     只做**一层**校验，不做「本机才允许」那类判断：Host 在 vite 代理（changeOrigin:false）
-    下仍是 `localhost:36378`，按 Host 卡会误伤正常开发。
+    下仍是 localhost 加 web 端口，按 Host 卡会误伤正常开发。
   */
   app.addHook('onRequest', async (req, reply) => {
     if (!WRITE_METHODS.has(req.method)) return
@@ -123,7 +123,7 @@ const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
 /**
  * 允许的浏览器来源：
- * - `GIT_NEST_CORS`（默认 http://localhost:36378）里的那一个，外加本机的等价
+ * - `GIT_NEST_CORS`（默认是 web 端口那个来源）里的那一个，外加本机的等价
  *   写法——vite 端口用 127.0.0.1 打开时 Origin 就不是 localhost，
  *   那不是「跨站」，不该被拦
  * - 打包成桌面软件后 webview 自己的来源（见 `config.tauriOrigins`）。

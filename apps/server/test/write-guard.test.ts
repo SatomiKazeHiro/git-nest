@@ -1,4 +1,5 @@
-﻿import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
+import { DEFAULT_PORTS } from '@git-nest/core'
 import { buildApp } from '../src/app.ts'
 import { openDatabase } from '../src/db/index.ts'
 
@@ -28,11 +29,12 @@ describe('写接口的跨站闸', () => {
   })
 
   it('白名单里的 Origin（本机 web）照常放行', async () => {
-    // 只验闸门本身：这一条会真的去跑一轮 auto-fetch，但库里没有项目，等于空跑
+    // 只验闸门本身：这一条会真的去跑一轮 auto-fetch，但库里没有项目，等于空跑。
+    // **端口读的是同一个常量**：谁要是又往 CORS 默认里手写一个端口，这条会红
     const res = await app.inject({
       method: 'POST',
       url: '/api/auto-fetch',
-      headers: { origin: 'http://localhost:36378' },
+      headers: { origin: `http://localhost:${DEFAULT_PORTS.web}` },
     })
     expect(res.statusCode).toBe(200)
   })
@@ -41,7 +43,7 @@ describe('写接口的跨站闸', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/auto-fetch',
-      headers: { origin: 'http://127.0.0.1:36378' },
+      headers: { origin: `http://127.0.0.1:${DEFAULT_PORTS.web}` },
     })
     expect(res.statusCode).toBe(200)
   })
@@ -55,7 +57,7 @@ describe('写接口的跨站闸', () => {
     打包成桌面软件之后的来源。
 
     这几条是「等打包那天才发现就晚了」的那一类：开发时页面跑在 vite 上，
-    Origin 是 http://localhost:36378，一路绿灯；装成应用之后 webview 换了自己的
+    Origin 就是 web 端口那个来源，一路绿灯；装成应用之后 webview 换了自己的
     来源，于是添加项目、勾选更新、设置**全部 403**——而本地开发毫无异常。
     把它们写进白名单与测试，是为了在打包之前就把这件事解决掉。
   */

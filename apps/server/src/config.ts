@@ -1,21 +1,22 @@
-﻿import path from 'node:path'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { DEFAULT_PORTS } from '@git-nest/core'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 /** 仓库根目录（apps/server → ../../..） */
  const repoRoot = path.resolve(here, '..', '..', '..')
 
 export const config = {
-  port: Number(process.env['GIT_NEST_PORT'] ?? 36379),
+  port: Number(process.env['GIT_NEST_PORT'] ?? DEFAULT_PORTS.api),
   host: process.env['GIT_NEST_HOST'] ?? '127.0.0.1',
   dbFile: process.env['GIT_NEST_DB'] ?? path.join(repoRoot, 'data', 'git-nest.db'),
   /** 本地单用户工具，默认只监听回环地址 */
-  corsOrigin: process.env['GIT_NEST_CORS'] ?? 'http://localhost:36378',
+  corsOrigin: process.env['GIT_NEST_CORS'] ?? `http://localhost:${DEFAULT_PORTS.web}`,
   /**
    * 打包成桌面软件之后 webview 的来源。
    *
-   * **这一条是「别等到打包那天才发现」的**：开发时页面跑在 vite 上，Origin 是
-   * `http://localhost:36378`；装成应用之后 webview 自己起一个来源，那些写接口
+   * **这一条是「别等到打包那天才发现」的**：开发时页面跑在 vite 上，Origin 就是
+   * web 端口那个来源；装成应用之后 webview 自己起一个来源，那些写接口
    * 会因为不在白名单里而**全部 403**——添加项目、勾选更新、设置，一个都发不出去。
    * 而它只在打包后才现形，本地开发一路绿灯。
    *
