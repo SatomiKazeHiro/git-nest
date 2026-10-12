@@ -1,6 +1,6 @@
 import { useMemo, type ComponentType, type ReactNode } from 'react'
 import { orderBy } from 'es-toolkit'
-import { LaptopMinimal, Shapes, Tag } from 'lucide-react'
+import { LaptopMinimal, MessageCircleQuestionMark, Shapes, Tag } from 'lucide-react'
 import { type Attention } from '@git-nest/core'
 import { categoryIcon } from '@/features/categories/icons'
 import { categoryLabelOf } from '@/features/categories/label'
@@ -167,10 +167,22 @@ export function FilterPanel() {
             （`book-open`）——两者不是一回事。直接喂 `name` 会每一行都取到 undefined，
             于是左栏永远什么都不画：看着接上了，其实和没接一样（这正是用户问的
             「设置里有图标、左栏却没有」）。
-            「未分类」那一组没有对应记录 → `?.icon` 是 undefined → 什么都不画。
+            「未分类」那一组没有对应记录（它是空串的哨兵），所以它那枚图标在下面**单独给**：
+            固定的一枚，不进注册表。
             图标跟着这一行的颜色走（`currentColor`）；认不出来同样不塞占位图。
           */
-          const CategoryIcon = categoryIcon(allCategories.find((c) => c.key === name)?.icon)
+          const CategoryIcon =
+            categoryIcon(allCategories.find((c) => c.key === name)?.icon) ??
+            /*
+              「未分类」不是一条分类记录（库里存的是空串），所以它取不到 icon——而
+              「取不到就什么都不画」那条规矩是给**坏数据**定的，不是给这一项的：它和别的
+              分类项并排，缺一枚图标看着像坏了。
+
+              所以给它一枚**固定的**问号气泡：问号表示「没有归属」，与"某种分类"无关，
+              因此它**不进图标注册表、也不可配置**（注册表里那 94 个是「分类可以选什么」，
+              这一枚不是选项）。
+            */
+            (name === UNCATEGORIZED ? MessageCircleQuestionMark : undefined)
           return (
             <Item
               key={name}
