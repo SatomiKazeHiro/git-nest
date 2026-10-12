@@ -114,7 +114,7 @@ export function CategorySection() {
                 return (
                   <li
                     key={c.key}
-                    className="flex flex-wrap items-center gap-2 border-b border-line-soft py-1.5 last:border-b-0"
+                    className="flex items-center gap-2 border-b border-line-soft py-1.5 last:border-b-0"
                   >
                     {Icon ? <Icon size={14} className="shrink-0 text-ink-3" /> : null}
 
@@ -133,19 +133,12 @@ export function CategorySection() {
                           保存
                         </Button>
                         <Button onClick={() => setRenaming(null)}>取消</Button>
-                        {/*
-                          改名时也能换图标。**包一层 `w-full`**：这一行是 flex 行
-                          （`li` 上有 `flex-wrap`），不包的话 12rem 的网格会把整行往
-                          横向撑爆，而不是乖乖换到下一行。
-                        */}
-                        <div className="w-full">
-                          <IconPicker
-                            value={renaming.icon}
-                            onChange={(icon) =>
-                              setRenaming({ key: c.key, label: renaming.label, icon })
-                            }
-                          />
-                        </div>
+                        {/* 触发控件只占一行高，所以这里不再需要 w-full 换行——改名的行高
+                            与平时一样（上一版是常显网格，才非得换到下一行） */}
+                        <IconPicker
+                          value={renaming.icon}
+                          onChange={(icon) => setRenaming({ key: c.key, label: renaming.label, icon })}
+                        />
                       </>
                     ) : (
                       <>

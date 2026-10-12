@@ -3,11 +3,18 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { IconPicker } from './IconPicker'
 
 /**
- * 图标选择器。
+ * 图标选择器：**触发控件 + 浮层**。
  *
- * 三件事是它的全部职责：**搜得到**（94 个图标靠翻是找不到的）、**选得中**、
- * **清得掉**（图标是可选的）。所以这里逐条钉住，包括"清空查询回到全部"与
- * "点已选中的那一项 = 取消选中"这两个容易漏的边界。
+ * ## 两条规矩（都是真问题逼出来的，不是洁癖）
+ *
+ * 1. **凡是在浮层里点东西，一律 `within(panel())`**。触发控件与网格项本来会同名
+ *    （一个说"当前是打开的书"、一个说"可以选打开的书"）；现在触发控件的名字加了
+ *    「当前图标：」前缀，但**撞名的可能永远存在**（比如占位文案与某一项同名）——
+ *    限定范围既让查询说的是本意，也让它不会因为别处多一个按钮就红。
+ * 2. **测的是行为，不是位置**。浮层是 portal 到 `document.body` 的 `position: fixed`，
+ *    jsdom 没有布局引擎（`getBoundingClientRect()` 全 0、没有视口、没有真实滚动），
+ *    所以"贴在下面""放不下往上翻""滚动时关掉"这里一律验不了，只能靠眼睛与真实浏览器。
+ *    （能跑是因为 jsdom 返回的 `DOMRect` 是 truthy，浮层照样挂载。）
  */
 function renderPicker(value: string | null = null) {
   const onChange = vi.fn()
@@ -15,87 +22,148 @@ function renderPicker(value: string | null = null) {
   return { ...view, onChange }
 }
 
-const searchBox = () => screen.getByLabelText('搜索图标')
+const trigger = () => screen.getByRole('button', { expanded: false })
+const panel = () => screen.getByRole('dialog', { name: '选择图标' })
+/** 浮层里的一个图标项。**只在这个范围内找**——外面那个是触发控件。 */
+const iconIn = (name: string) => within(panel()).getByRole('button', { name })
 
-describe('IconPicker', () => {
-  it('一开始列出全部图标', () => {
-    const { container } = renderPicker()
-    // 每个图标一个按钮；「不设图标」与搜索框不是网格里的
-    expect(container.querySelectorAll('button[aria-pressed]').length).toBeGreaterThan(50)
+describe('IconPicker · 触发控件', () => {
+  it('显示当前选中的图标（视觉上是图标 + 中文名）', () => {
+    renderPicker('book-open')
+    const button = trigger()
+
+    expect(button.textContent).toContain('打开的书')
+    expect(button.querySelector('svg')).not.toBeNull()
   })
 
-  it('输入中文名能筛出对应那一项', () => {
+  it('没有图标时显示占位，而不是空白', () => {
+    renderPicker(null)
+
+    expect(trigger().textContent).toContain('选择图标')
+  })
+
+  it('可访问名字与浮层里同名的那一项**不撞**（带「当前图标：」前缀）', () => {
+    renderPicker('book-open')
+
+    // 触发控件：说的是"现在的值"
+    expect(screen.getByRole('button', { name: '当前图标：打开的书' })).toBeTruthy()
+    // 浮层还没开，所以「打开的书」这个名字此刻不属于任何按钮
+    expect(screen.queryByRole('button', { name: '打开的书' })).toBeNull()
+  })
+
+  it('`aria-expanded` 跟着开合走，并且指向浮层', () => {
     renderPicker()
-    fireEvent.change(searchBox(), { target: { value: '打开的书' } })
+    fireEvent.click(trigger())
 
-    expect(screen.getByRole('button', { name: '打开的书' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: '扳手' })).toBeNull()
+    expect(screen.getByRole('button', { expanded: true }).getAttribute('aria-controls')).toBe(
+      panel().id,
+    )
   })
+})
 
-  it('输入英文 key 也能筛出来（不区分大小写）', () => {
+describe('IconPicker · 浮层', () => {
+  it('点触发控件打开它，并且一开始列出全部图标', () => {
     renderPicker()
-    fireEvent.change(searchBox(), { target: { value: 'BOOK-OPEN' } })
+    fireEvent.click(trigger())
 
-    expect(screen.getByRole('button', { name: '打开的书' })).toBeTruthy()
+    expect(panel()).toBeTruthy()
+    expect(within(panel()).getAllByRole('button').length).toBeGreaterThan(50)
   })
 
-  it('按中文关键词也能筛（用户不知道图标叫什么）', () => {
-    renderPicker()
-    fireEvent.change(searchBox(), { target: { value: '知识库' } })
-
-    expect(screen.getByRole('button', { name: '打开的书' })).toBeTruthy()
-  })
-
-  it('清空查询回到全部', () => {
-    const { container } = renderPicker()
-    fireEvent.change(searchBox(), { target: { value: '打开的书' } })
-    const filtered = container.querySelectorAll('button[aria-pressed]').length
-
-    fireEvent.change(searchBox(), { target: { value: '' } })
-
-    expect(container.querySelectorAll('button[aria-pressed]').length).toBeGreaterThan(filtered)
-  })
-
-  it('搜不到时给一句话，不给空网格', () => {
-    renderPicker()
-    fireEvent.change(searchBox(), { target: { value: 'zzzzz' } })
-
-    expect(screen.getByText(/没有匹配的图标/)).toBeTruthy()
-  })
-
-  it('点一项把它的 key 回调出去', () => {
+  it('选一项：回调它的 key，然后关掉浮层', () => {
     const { onChange } = renderPicker()
-    fireEvent.click(screen.getByRole('button', { name: '打开的书' }))
+    fireEvent.click(trigger())
+    fireEvent.click(iconIn('打开的书'))
 
     expect(onChange).toHaveBeenCalledWith('book-open')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('「不选图标」把它清成 null，然后关掉浮层', () => {
+    const { onChange } = renderPicker('brain')
+    fireEvent.click(trigger())
+    fireEvent.click(iconIn('不选图标'))
+
+    expect(onChange).toHaveBeenCalledWith(null)
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('点已选中的那一项 = 取消选中（回调 null）', () => {
     const { onChange } = renderPicker('book-open')
-    fireEvent.click(screen.getByRole('button', { name: '打开的书' }))
+    fireEvent.click(trigger())
+    // **点的是浮层里那一项**，不是上面那个显示着同一个中文名的触发控件
+    fireEvent.click(iconIn('打开的书'))
 
     expect(onChange).toHaveBeenCalledWith(null)
   })
 
-  it('「不设图标」把它清成 null；当前没有图标时它是禁用的', () => {
-    const { onChange } = renderPicker('brain')
-    fireEvent.click(screen.getByRole('button', { name: '不设图标' }))
-    expect(onChange).toHaveBeenCalledWith(null)
+  it('Escape 关闭', () => {
+    renderPicker()
+    fireEvent.click(trigger())
+    fireEvent.keyDown(document, { key: 'Escape' })
 
-    /*
-      必须 `within(none.container)`：同一个测试里前一个选择器还挂在 DOM 上，直接
-      `getAllByRole(...)[0]` 取到的是**它**的按钮（value 是 'brain'，当然不 disabled）
-      ——上一版就是这么红的：**测错了对象，不是组件错了**。组件那边 `disabled` 的判据
-      是 `value === null`（IconPicker.tsx 里那一行），传 null 就该禁用，断言不动。
-    */
-    const none = renderPicker(null)
-    const button = within(none.container).getByRole('button', { name: '不设图标' })
-    expect((button as HTMLButtonElement).disabled).toBe(true)
-    expect(none.onChange).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('点浮层外面关闭；点浮层里面不关', () => {
+    renderPicker()
+    fireEvent.click(trigger())
+    fireEvent.mouseDown(panel())
+    expect(screen.queryByRole('dialog')).toBeTruthy()
+
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('再点一次触发控件把它收起来（同一个按钮管开也管关）', () => {
+    renderPicker()
+    fireEvent.click(trigger())
+    fireEvent.click(screen.getByRole('button', { expanded: true }))
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+})
+
+describe('IconPicker · 搜索（沿用）', () => {
+  /** 打开浮层并搜一个词。之后**一切都只在浮层里查**。 */
+  const search = (q: string) => {
+    renderPicker()
+    fireEvent.click(trigger())
+    fireEvent.change(screen.getByLabelText('搜索图标'), { target: { value: q } })
+  }
+
+  it('按中文名筛', () => {
+    search('打开的书')
+    expect(iconIn('打开的书')).toBeTruthy()
+    expect(within(panel()).queryByRole('button', { name: '扳手' })).toBeNull()
+  })
+
+  it('按英文 key 筛，且不区分大小写', () => {
+    search('BOOK-OPEN')
+    expect(iconIn('打开的书')).toBeTruthy()
+  })
+
+  it('按中文关键词筛（用户不知道图标叫什么）', () => {
+    search('知识库')
+    expect(iconIn('打开的书')).toBeTruthy()
+  })
+
+  it('清空查询回到全部', () => {
+    search('打开的书')
+    const filtered = within(panel()).getAllByRole('button').length
+    fireEvent.change(screen.getByLabelText('搜索图标'), { target: { value: '' } })
+
+    expect(within(panel()).getAllByRole('button').length).toBeGreaterThan(filtered)
+  })
+
+  it('搜不到时给一句话，不给空网格', () => {
+    search('zzzzz')
+    expect(screen.getByText(/没有匹配的图标/)).toBeTruthy()
   })
 
   it('按钮的可访问名字是中文名，不是 key', () => {
-    renderPicker()
-    expect(screen.queryByRole('button', { name: 'book-open' })).toBeNull()
+    search('book')
+    expect(within(panel()).queryByRole('button', { name: 'book-open' })).toBeNull()
+    expect(iconIn('打开的书')).toBeTruthy()
   })
 })
