@@ -1,5 +1,5 @@
 import type { DB } from '../db/index.ts'
-import type { Category } from '@git-nest/core'
+import { RESERVED_CATEGORY_LABELS, type Category } from '@git-nest/core'
 
 /**
  * 分类的读写。
@@ -53,6 +53,42 @@ export function listCategories(db: DB): Category[] {
 export function categoryByKey(db: DB, key: string): Category | null {
   const row = db.prepare(`${SELECT_CATEGORY} WHERE c.key = ?`).get(key) as CategoryRow | undefined
   return row ? toCategory(row) : null
+}
+
+/** 名字比较一律 trim + 忽略大小写：「AI」「ai 」「AI 」在用户眼里是同一个名字。 */
+const normalizeLabel = (label: string) => label.trim().toLowerCase()
+
+/**
+ * 显示名能不能用。**一条规则，两个来源**（而不是给每种情况写一个特例）：
+ *
+ * 1. **保留字**（`RESERVED_CATEGORY_LABELS`）：「未分类」是「没有分类」的哨兵，
+ *    再拿它当分类名，左栏就会出现两行同名却在做不同的事；
+ * 2. **与任何已存在的分类重名**——内置四个也在 `categories` 表里，所以「工具」
+ *    这种名字被这一条自然挡住，不需要再单独列举一遍内置项。
+ *
+ * `exceptKey` 是给改名用的：把分类改成它**当前**的名字（或只改大小写、只加空格）
+ * 必须放行，否则「只改一下图标」这类操作会被它自己的名字挡住。
+ *
+ * 返回 null = 可以用；否则返回**冲突的那一方**，让路由把话说清——「已经有一个叫
+ * 「工具」的分类」比「名字重复」有用得多。
+ */
+export function categoryLabelProblem(
+  db: DB,
+  label: string,
+  exceptKey?: string,
+): { kind: 'reserved' | 'duplicate'; label: string } | null {
+  const wanted = normalizeLabel(label)
+
+  for (const reserved of RESERVED_CATEGORY_LABELS) {
+    if (normalizeLabel(reserved) === wanted) return { kind: 'reserved', label: reserved }
+  }
+
+  const rows = db.prepare('SELECT key, label FROM categories').all() as {
+    key: string
+    label: string
+  }[]
+  const hit = rows.find((r) => r.key !== exceptKey && normalizeLabel(r.label) === wanted)
+  return hit ? { kind: 'duplicate', label: hit.label } : null
 }
 
 /**

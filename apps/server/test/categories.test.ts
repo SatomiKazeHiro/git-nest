@@ -93,18 +93,42 @@ describe('分类 · 内置四个', () => {
 
 describe('分类 · 新增', () => {
   it('key 服务端生成：从名称取 slug，撞了就加序号', async () => {
-    const first = await send('POST', '/categories', { label: 'AI 项目' })
+    /*
+      **不同 label、同一个 slug**：`AI Project` 与 `AI-Project` 都会被折成
+      `ai-project`。不能再用「建两条同名分类」去撞 key——重名现在直接 409
+      （那是另一条规则，用户拍板的）。**key 撞车与 label 撞名是两件事**：
+      前者是服务端生成标识时的去重，后者是用户在界面上看到的同名词。
+    */
+    const first = await send('POST', '/categories', { label: 'AI Project' })
     expect(first.statusCode).toBe(201)
-    expect(first.json().category.key).toBe('ai')
+    expect(first.json().category.key).toBe('ai-project')
 
-    const second = await send('POST', '/categories', { label: 'AI 项目' })
-    expect(second.json().category.key).toBe('ai-2')
+    const second = await send('POST', '/categories', { label: 'AI-Project' })
+    expect(second.statusCode).toBe(201)
+    expect(second.json().category.key).toBe('ai-project-2')
+
+    // 两条都在，而且各自按 key 取得到——key 是唯一标识，label 只是名字
+    const categories = (await get('/categories')).json().categories as {
+      key: string
+      label: string
+    }[]
+    expect(categories.find((c) => c.key === 'ai-project')?.label).toBe('AI Project')
+    expect(categories.find((c) => c.key === 'ai-project-2')?.label).toBe('AI-Project')
   })
 
   it('名称全是中文、取不出 slug 时兜底成 cat-1（照样唯一）', async () => {
-    const res = await send('POST', '/categories', { label: '知识库' })
-    expect(res.statusCode).toBe(201)
-    expect(res.json().category.key).toBe('cat-1')
+    /*
+      两条**不同**的中文名，slug 都是空的——同样不能用同名撞。
+      （原来这里用的是「知识库」：那个名字现在也进不来，它是内置项的 label、
+      算重名；两种原因都会让这条红。）
+    */
+    const first = await send('POST', '/categories', { label: '中文甲' })
+    expect(first.statusCode).toBe(201)
+    expect(first.json().category.key).toBe('cat-1')
+
+    const second = await send('POST', '/categories', { label: '中文乙' })
+    expect(second.statusCode).toBe(201)
+    expect(second.json().category.key).toBe('cat-2')
   })
 
   it('新增的不是内置项，引用数为 0', async () => {
@@ -195,5 +219,56 @@ describe('项目上的分类：必须在表里，或者空串', () => {
     const ok = await send('PATCH', `/projects/${id}`, { category: 'experiments' })
     expect(ok.statusCode).toBe(200)
     expect(ok.json().project.category).toBe('experiments')
+  })
+})
+
+describe('分类 · 名字不能重复，也不能叫「未分类」', () => {
+  it('「未分类」是保留名（它表示「没有分类」）→ 409', async () => {
+    const res = await send('POST', '/categories', { label: '未分类' })
+    expect(res.statusCode).toBe(409)
+    expect(res.json().message).toContain('保留名')
+  })
+
+  it('与内置项重名 → 409（内置四个也在表里，走的是同一条规则）', async () => {
+    const res = await send('POST', '/categories', { label: '工具' })
+    expect(res.statusCode).toBe(409)
+    // 消息要点名跟谁撞了：只说「名字重复」，用户在几十个分类里找不到那个
+    expect(res.json().message).toContain('工具')
+  })
+
+  it('与已存在的用户分类重名 → 409', async () => {
+    await send('POST', '/categories', { label: 'AI 项目' })
+
+    const res = await send('POST', '/categories', { label: 'AI 项目' })
+    expect(res.statusCode).toBe(409)
+    expect(res.json().message).toContain('AI 项目')
+  })
+
+  it('大小写与前后空格的变体也算重名', async () => {
+    await send('POST', '/categories', { label: 'AI 项目' })
+
+    for (const variant of ['ai 项目', '  AI 项目  ', 'AI 项目']) {
+      expect((await send('POST', '/categories', { label: variant })).statusCode, variant).toBe(409)
+    }
+    // 内置项走同一条规则（两头的空格先被 schema 的 trim 收掉，比较这一层也会再 trim 一次）
+    for (const variant of ['工具 ', ' 工具']) {
+      expect((await send('POST', '/categories', { label: variant })).statusCode, variant).toBe(409)
+    }
+  })
+
+  it('改自己的名字放行：当前名字、只改大小写、只加空格都不算重名', async () => {
+    await send('POST', '/categories', { label: 'AI 项目' })
+
+    expect((await send('PATCH', '/categories/ai', { label: 'AI 项目' })).statusCode).toBe(200)
+    expect((await send('PATCH', '/categories/ai', { label: 'ai 项目' })).statusCode).toBe(200)
+    expect((await send('PATCH', '/categories/ai', { label: '  ai 项目  ' })).statusCode).toBe(200)
+  })
+
+  it('改成别人的名字（内置项 / 保留字）→ 409；全新名字 → 放行', async () => {
+    await send('POST', '/categories', { label: 'AI 项目' })
+
+    expect((await send('PATCH', '/categories/ai', { label: '工具' })).statusCode).toBe(409)
+    expect((await send('PATCH', '/categories/ai', { label: '未分类' })).statusCode).toBe(409)
+    expect((await send('PATCH', '/categories/ai', { label: '模型' })).statusCode).toBe(200)
   })
 })

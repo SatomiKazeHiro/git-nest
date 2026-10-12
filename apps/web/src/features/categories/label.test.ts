@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { builtinCategoryList } from '@git-nest/core'
+import { RESERVED_CATEGORY_LABELS, builtinCategoryList } from '@git-nest/core'
+import { UNCATEGORIZED } from '@/store/ui'
 import { categoryLabelOf } from './label'
 
 /**
@@ -25,5 +26,19 @@ describe('categoryLabelOf', () => {
 
   it('表里没有就原样返回 key，不编「未知分类」', () => {
     expect(categoryLabelOf(builtinCategoryList(), 'ghost')).toBe('ghost')
+  })
+})
+
+/**
+ * 保留字与哨兵必须是同一个词，这条把它拉到一起。
+ *
+ * 它跨越两个包：保留字在 core（服务端校验读它，不许有人把分类叫「未分类」），
+ * 哨兵在 web 的 store（左栏那一行「未分类」）。两边各改各的时候谁都不会报错——
+ * 症状是「某个分类名被拒了，可界面上根本找不到那个词」，或者反过来的同形两行。
+ * 这是唯一会把它们对齐的地方。
+ */
+describe('保留字与哨兵', () => {
+  it('core 的 RESERVED_CATEGORY_LABELS 恰好就是 store 的 UNCATEGORIZED', () => {
+    expect([...RESERVED_CATEGORY_LABELS]).toEqual([UNCATEGORIZED])
   })
 })
