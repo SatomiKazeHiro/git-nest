@@ -6,6 +6,7 @@ import {
   createProjectSchema,
   createTagSchema,
   idParamSchema,
+  labelProblemMessage,
   listProjectsQuerySchema,
   setProjectTagsSchema,
   updateCategorySchema,
@@ -185,7 +186,8 @@ export const categoryRoutes = (db: DB): FastifyPluginAsync => async (fastify) =>
 
   fastify.post('/categories', async (req, reply) => {
     const input = parse(createCategorySchema, req.body)
-    assertCategoryLabelUsable(db, input.label)
+    const problem = categoryLabelProblem(db, input.label)
+    if (problem) throw conflict(labelProblemMessage(problem))
     return reply.code(201).send({ category: createCategory(db, input) })
   })
 
@@ -198,7 +200,10 @@ export const categoryRoutes = (db: DB): FastifyPluginAsync => async (fastify) =>
     const patch = parse(updateCategorySchema, req.body)
     // 改名才查；只改图标不碰名字。**把自己排除在外**：改成它当前的名字（或只改
     // 大小写、只加空格）必须放行
-    if (patch.label !== undefined) assertCategoryLabelUsable(db, patch.label, key)
+    if (patch.label !== undefined) {
+      const problem = categoryLabelProblem(db, patch.label, key)
+      if (problem) throw conflict(labelProblemMessage(problem))
+    }
     if (!updateCategory(db, key, patch)) throw notFound('分类')
     return { category: categoryByKey(db, key) }
   })
@@ -215,21 +220,6 @@ export const categoryRoutes = (db: DB): FastifyPluginAsync => async (fastify) =>
 
     return deleteCategory(db, key)
   })
-}
-
-/**
- * 显示名被占用、或者是保留字 → 409，并把「是谁占了」写进消息里。
- *
- * 只说「名字重复」等于没说：设置页那一行有几十个分类，用户需要知道跟谁撞了。
- */
-function assertCategoryLabelUsable(db: DB, label: string, exceptKey?: string): void {
-  const problem = categoryLabelProblem(db, label, exceptKey)
-  if (!problem) return
-  throw conflict(
-    problem.kind === 'reserved'
-      ? `「${problem.label}」是保留名（它表示「没有分类」），换一个名字`
-      : `已经有一个叫「${problem.label}」的分类了`,
-  )
 }
 
 async function createFromInput(

@@ -127,4 +127,24 @@ export const migrations = [
         ).join(',\n        ')};
     `,
   },
+  {
+    id: '005_categories_label_unique',
+    /*
+      分类显示名的唯一索引。**库层兜底**，与 `projects.path` 同一个两层结构：
+      应用层那条规则（`categoryLabelProblem`）负责给「跟谁撞了」这种好消息，
+      这一层负责兜**并发**——两个同名请求同时通过应用层检查时，只有一条能落库。
+
+      ⚠️ **它压不掉「内部多空格」**：索引表达式是 `lower(trim(label))`，trim 只去两头，
+      于是『AI  项目』与『AI 项目』在它眼里是两个不同的值。那一段由应用层的
+      `normalizeCategoryLabel` 负责（**写入之前**就把内部连续空白压成一个）。
+      两张网合起来才是完整的规则——只留索引会漏，只留应用层会让并发穿透。
+
+      加它之前查过现有数据：本机库里只有内置四条，`lower(trim(label))` 无重复，
+      所以建索引是安全的。真有违反的行时 SQLite 会直接报错、迁移失败——那时要做的是
+      把那些行改掉，**不是**把索引去掉。
+    */
+    sql: `
+      CREATE UNIQUE INDEX idx_categories_label_unique ON categories(lower(trim(label)));
+    `,
+  },
 ] as const

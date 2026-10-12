@@ -1,5 +1,11 @@
 import type { DB } from '../db/index.ts'
-import { RESERVED_CATEGORY_LABELS, type Category } from '@git-nest/core'
+import {
+  RESERVED_CATEGORY_LABELS,
+  categoryLabelKey,
+  normalizeCategoryLabel,
+  type Category,
+  type CategoryLabelProblem,
+} from '@git-nest/core'
 
 /**
  * 分类的读写。
@@ -55,9 +61,6 @@ export function categoryByKey(db: DB, key: string): Category | null {
   return row ? toCategory(row) : null
 }
 
-/** 名字比较一律 trim + 忽略大小写：「AI」「ai 」「AI 」在用户眼里是同一个名字。 */
-const normalizeLabel = (label: string) => label.trim().toLowerCase()
-
 /**
  * 显示名能不能用。**一条规则，两个来源**（而不是给每种情况写一个特例）：
  *
@@ -66,28 +69,31 @@ const normalizeLabel = (label: string) => label.trim().toLowerCase()
  * 2. **与任何已存在的分类重名**——内置四个也在 `categories` 表里，所以「工具」
  *    这种名字被这一条自然挡住，不需要再单独列举一遍内置项。
  *
+ * 比较走 `categoryLabelKey`（归一化 + 忽略大小写）：写入时已经归一过一遍
+ * （见 `createCategory`），这里再算一次是为了让「库里已有的旧行」与「这次要写的
+ * 新值」用同一把尺子。
+ *
  * `exceptKey` 是给改名用的：把分类改成它**当前**的名字（或只改大小写、只加空格）
  * 必须放行，否则「只改一下图标」这类操作会被它自己的名字挡住。
  *
- * 返回 null = 可以用；否则返回**冲突的那一方**，让路由把话说清——「已经有一个叫
- * 「工具」的分类」比「名字重复」有用得多。
+ * 返回 null = 可以用；**措辞不在这里**——它和规则一起住在 core（`labelProblemMessage`）。
  */
 export function categoryLabelProblem(
   db: DB,
   label: string,
   exceptKey?: string,
-): { kind: 'reserved' | 'duplicate'; label: string } | null {
-  const wanted = normalizeLabel(label)
+): CategoryLabelProblem | null {
+  const wanted = categoryLabelKey(label)
 
   for (const reserved of RESERVED_CATEGORY_LABELS) {
-    if (normalizeLabel(reserved) === wanted) return { kind: 'reserved', label: reserved }
+    if (categoryLabelKey(reserved) === wanted) return { kind: 'reserved', label: reserved }
   }
 
   const rows = db.prepare('SELECT key, label FROM categories').all() as {
     key: string
     label: string
   }[]
-  const hit = rows.find((r) => r.key !== exceptKey && normalizeLabel(r.label) === wanted)
+  const hit = rows.find((r) => r.key !== exceptKey && categoryLabelKey(r.label) === wanted)
   return hit ? { kind: 'duplicate', label: hit.label } : null
 }
 
@@ -101,7 +107,10 @@ export function categoryLabelProblem(
  *   于是两条路生成出来的 key 长得很不一样）。
  */
 export function createCategory(db: DB, input: { label: string; icon: string | null }): Category {
-  const slug = slugify(input.label)
+  // **存归一后的名字**：内部连续空白压成一个、两头去掉。不这么做的话
+  // 「AI  项目」与「AI 项目」会成为两条长得几乎一样、却永远分在两处的记录。
+  const label = normalizeCategoryLabel(input.label)
+  const slug = slugify(label)
   const base = slug || 'cat'
   let key = slug || `${base}-1`
   let n = 1
@@ -112,7 +121,7 @@ export function createCategory(db: DB, input: { label: string; icon: string | nu
     .get() as { n: number }
   db.prepare(
     'INSERT INTO categories (key, label, icon, builtin, sort_order) VALUES (?, ?, ?, 0, ?)',
-  ).run(key, input.label, input.icon, next.n)
+  ).run(key, label, input.icon, next.n)
 
   const created = categoryByKey(db, key)
   if (!created) throw new Error('分类写入后读不回来')
@@ -129,7 +138,8 @@ export function updateCategory(
   const params: (string | null)[] = []
   if (patch.label !== undefined) {
     sets.push('label = ?')
-    params.push(patch.label)
+    // 改名同样存归一后的值：否则「只多敲了一个空格」的重命名会把库里那一条改型
+    params.push(normalizeCategoryLabel(patch.label))
   }
   if (patch.icon !== undefined) {
     sets.push('icon = ?')

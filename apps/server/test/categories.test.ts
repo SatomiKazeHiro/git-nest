@@ -272,3 +272,43 @@ describe('分类 · 名字不能重复，也不能叫「未分类」', () => {
     expect((await send('PATCH', '/categories/ai', { label: '模型' })).statusCode).toBe(200)
   })
 })
+
+describe('分类 · 名字的归一化与库层兜底', () => {
+  it('存进去的是归一后的 label（内部连续空白压成一个）', async () => {
+    const created = await send('POST', '/categories', { label: 'AI  项目' })
+    expect(created.statusCode).toBe(201)
+    expect(created.json().category.label).toBe('AI 项目')
+
+    const categories = (await get('/categories')).json().categories as { label: string }[]
+    expect(categories.some((c) => c.label === 'AI 项目')).toBe(true)
+    expect(categories.some((c) => c.label === 'AI  项目')).toBe(false)
+  })
+
+  it('归一化之后，「AI  项目」与「AI 项目」算重名 → 409', async () => {
+    await send('POST', '/categories', { label: 'AI 项目' })
+
+    const res = await send('POST', '/categories', { label: 'AI  项目' })
+    expect(res.statusCode).toBe(409)
+    expect(res.json().message).toContain('AI 项目')
+  })
+
+  it('库层也兜着：绕过应用层直接插一条同名行，唯一索引会挡住', () => {
+    // 应用层给的是「跟谁撞了」这种好消息；这一层兜的是并发——两个同名请求同时
+    // 通过应用层检查。直接 INSERT 就是在模拟那个并发窗口。
+    expect(() =>
+      db
+        .prepare(
+          `INSERT INTO categories (key, label, icon, builtin, sort_order)
+           VALUES ('sneaky', ' 工具 ', NULL, 0, 99)`,
+        )
+        .run(),
+    ).toThrow(/UNIQUE/i)
+  })
+
+  it('那条唯一索引确实建出来了', () => {
+    const row = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?`)
+      .get('idx_categories_label_unique')
+    expect(row).toBeTruthy()
+  })
+})
