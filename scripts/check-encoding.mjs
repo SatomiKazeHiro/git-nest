@@ -19,7 +19,13 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
   walk() 跳过 `.` 开头的目录、node_modules、dist，所以扫根不会跑偏。
 */
 const ROOTS = ['.']
-const SKIP_DIRS = new Set(['node_modules', 'dist', '.git'])
+/*
+  `target` 是 Rust/Cargo 的构建缓存（加 Tauri 壳之后才出现）。必须跳过，两个理由：
+  1. 里面有**压缩后的二进制资源**被 Cargo 以 `.css` 之类的名字落盘，按 utf8 读进来
+     必然是一堆 U+FFFD —— 那是格式使然，不是编码坏掉的痕迹，报出来就是纯噪音；
+  2. 它动辄 GB 级，扫一遍纯属浪费（这个脚本是提交前跑的）。
+*/
+const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', 'target'])
 const EXT = /\.(ts|tsx|md|json|css|sql|mjs)$/
 
 /** 真正该排除的目录：.reference 里是参考资料，.gitattributes / pnpm-lock 有自己的编码规则 */

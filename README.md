@@ -33,11 +33,30 @@ pnpm build          # 构建
 pnpm check:encoding # 检查编码（有几个刻意的 fixture 会被报出来，属正常）
 ```
 
+## 桌面壳（Tauri 2，第一段）
+
+壳在 `src-tauri/`，**还没到出安装包那一步**。dev 形态要**两个终端**：界面与 API 仍由
+现有的 `pnpm dev` 提供（壳不改这件事），壳只把窗口挂到 vite 上。
+
+```bash
+pnpm dev            # 终端 1：界面（36378）+ API（36379）
+pnpm desktop:dev    # 终端 2：打开 git-nest 窗口
+```
+
+应该看到一个标题 `git-nest`、1280×840 居中的窗口，里面是真实界面。
+
+其余脚本（`desktop:gen` / `desktop:icons` / `desktop:sidecar` / `desktop:check` /
+`desktop:build`）的职责，以及「为什么 dev 不用 `beforeDevCommand`」「CSP 为什么长这样」
+「sidecar 还差什么」，都写在
+[`src-tauri/README.md`](src-tauri/README.md) 与 [`src-tauri/SIDECAR.md`](src-tauri/SIDECAR.md)。
+
 ## 文档
 
 - [`docs/DESIGN.md`](docs/DESIGN.md)——**设计原则与界面约定**（这份是"为什么这么做"的正本，README 不复制它）
 - [`docs/DETAIL-OVERLAY.md`](docs/DETAIL-OVERLAY.md)——详情浮层的方案与**排期**（等 Tauri 封装之后）
 - [`docs/LIST-SCALE.md`](docs/LIST-SCALE.md)——列表规模那一轮（分页 / 虚拟化）的方案与**排期**
+- [`docs/TAURI-PACKAGING.md`](docs/TAURI-PACKAGING.md)——桌面包的**备案**（已核实的事实与待定决策）
+- [`src-tauri/SIDECAR.md`](src-tauri/SIDECAR.md)——Node 服务随包分发的**进度与差距清单**
 
 ## 源码结构
 
@@ -45,4 +64,5 @@ pnpm check:encoding # 检查编码（有几个刻意的 fixture 会被报出来�
 apps/server   Fastify + better-sqlite3；算状态、存清单、跑 git
 apps/web      React + Vite；只渲染服务端算好的结论
 packages/core 两端共用的类型、schema、常量（浏览器安全那份在这里）
+src-tauri     Tauri 2 桌面壳（Rust）；dev 只提供窗口，打包时负责拉起 Node 服务
 ```
