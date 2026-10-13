@@ -1,10 +1,24 @@
-// 临时冒烟测试（跑完就删，不属于交付物）：
-// 把 sidecar 产物整份复制到一个**仓库外面**的临时目录，在那里拉起来真发一次 HTTP 请求。
-//
-// 为什么要复制出去：如果就地跑 `node src-tauri/binaries/git-nest-server/index.mjs`，
-// Node 的模块解析会沿着目录树往上走，`better-sqlite3` 会命中**仓库根或 apps/server 的
-// node_modules**——那样绿了也证明不了「随包能起」，因为随包形态下那些目录根本不存在。
-// 复制到 %TEMP% 之后，最近的祖先里只有随包带的那份，才是有鉴别力的测试。
+/**
+ * sidecar 产物的**隔离冒烟测试**。
+ *
+ * 它回答一个具体问题：把 `src-tauri/binaries/` 里的东西挪到一个**仓库外面**的空目录，
+ * 服务还能不能起来、还能不能真的应答？——这就是「随包分发」要成立的前提。
+ *
+ * 为什么必须复制出去：如果就地跑 `node src-tauri/binaries/node-resources/git-nest-server/index.mjs`，
+ * Node 的模块解析会沿着目录树往上走，`better-sqlite3` 会命中**仓库根或 apps/server 的
+ * node_modules`——那样绿了也证明不了随包能起。复制到 %TEMP%（并清掉 NODE_PATH）之后，
+ * 最近的祖先里只剩随包那份，才是有鉴别力的测试。
+ *
+ * 它还复刻了**打包后的落点**（externalBin 在可执行文件目录、resources 解到
+ * `git-nest-server/` 子目录），而不是照抄仓库里的目录形状——壳在真机上看到的就是那个形状。
+ *
+ * 用法：
+ *   node scripts/smoke-sidecar.mjs bin              # externalBin 那支 exe + run.cjs（壳的走法）
+ *   node scripts/smoke-sidecar.mjs node             # 直接用 node 跑 index.mjs
+ *   node scripts/smoke-sidecar.mjs bin --no-native  # 反向对照：抽掉随包 node_modules，应当失败
+ *
+ * 前置：先跑 `pnpm desktop:sidecar`。
+ */
 import { spawn } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

@@ -64,7 +64,28 @@ src-tauri/binaries/
 （冒烟用的是临时库，`数据库文件已创建=true`），也就是「数据库路径可被壳指到应用数据目录」
 这条接缝是通的。
 
-### 3. 壳这一侧已经接好（但**没能**真机验证）
+### 3. `tauri build --no-bundle` 真的过了（2026-10-13 本轮实测）
+
+```
+   Compiling git-nest v0.1.0 (D:\Git\personal\git-nest\src-tauri)
+    Finished `release` profile [optimized] target(s) in 2m 58s
+       Built application at: D:\Git\personal\git-nest\src-tauri\target\release\git-nest.exe
+```
+
+它跑到了**打包**那一步（不是只到 check），所以图标、`externalBin`、`resources`
+这条链都是通的。落点与 Rust 侧的拼法**逐条对上**：
+
+| 产出 | Rust 侧预期 | 对不对 |
+|---|---|---|
+| `target/release/git-nest-server.exe` | `sidecar_exe_name()`（Tauri 去掉 `-<triple>` 后缀） | ✓ |
+| `target/release/binaries/node-resources/git-nest-server/index.mjs` | `launcher_path()` 的 `git-nest-server/index.mjs`（`binaries/node-resources/` 前缀被剥掉） | ✓ |
+
+**但 release 二进制在本会话里起不到能跑 `setup` 的那一步**：
+`Failed to setup app: 拒绝访问。 (os error 5)`（`tauri-2.12.3/src/app.rs:1444`）——
+WebView2 建窗口被拒，本会话没有交互式桌面会话。所以「壳真的把 sidecar 拉起来了」
+这一条**仍然没有验到**，见下面的差距清单第 1 条。
+
+### 4. 壳这一侧已经接好（但**没能**真机验证）
 
 - `tauri.conf.json`：`bundle.externalBin: ["binaries/git-nest-server"]` +
   `bundle.resources: ["binaries/node-resources/git-nest-server/**/*"]`
@@ -83,37 +104,48 @@ src-tauri/binaries/
 
 ## 还差什么（逐条，别把这部分当已完成）
 
-1. **`tauri build --no-bundle` 没跑过**：本轮只跑到 `cargo check`。
-   `resources` 的 glob 与 `externalBin` 的落点只在 `cargo check` 阶段被**校验了存在性**，
-   真正的「复制到资源目录」要等一次完整 build。**这是最该先补的一步。**
-2. **壳能不能真的把 sidecar 拉起来，没验过**：需要 GUI 与 release 构建。
-   本轮起不了窗口，所以 `spawn_api_server()` 在 release 下的整条路径
-   （`resource_dir()` 解析、`current_exe()` 旁边的 exe、`GIT_NEST_CORS`）都是**照文档写的**，
-   没有真机跑过。
-3. **前端还不知道 API 在哪** ✗ —— 这是当前**最大**的一个洞。
+1. **壳真的把 sidecar 拉起来了吗——仍然没验到** ✗（本轮最实质的缺口）。
+   `tauri build --no-bundle` 过了，落点也对上了（见下），release 二进制也**能启动**，
+   但**它在本会话里起不到能跑 `setup` 的那一步**：直接崩在
+   `Failed to setup app: 拒绝访问。 (os error 5)`
+   （`tauri-2.12.3/src/app.rs:1444`）——这是 **WebView2 建窗口被拒**，
+   属于本会话没有交互式桌面会话的环境限制，不是代码问题。
+   所以 `spawn_api_server()` 在 release 下的整条路径（`resource_dir()` 解析、
+   `current_exe()` 旁边的 exe、`GIT_NEST_CORS`、`app_data_dir()` 落库）**都还没真机跑过**。
+   要真验到，得在一个有桌面会话的机器上跑 `src-tauri/target/release/git-nest.exe`。
+
+   **已经验到的替代证据**（比 `cargo check` 强，比真机弱）：
+   `tauri build --no-bundle` 产出后，落点与 Rust 侧的拼法**逐条对上**——
+   - `target/release/git-nest-server.exe` 存在（Tauri 把 `-<triple>` 后缀去掉了，
+     与 `sidecar_exe_name()` 拼的名字一致 ✓）；
+   - `target/release/binaries/node-resources/git-nest-server/{index.mjs,run.cjs,README.txt,node_modules/}`
+     存在（`binaries/node-resources/` 这层前缀**如预期被剥掉**，
+     与 `launcher_path()` 里的 `git-nest-server/index.mjs` 一致 ✓）。
+2. **前端还不知道 API 在哪** ✗ —— 这是当前**最大**的一个洞，而且**它的后果已经可预见**。
    `apps/web/src/lib/api.ts` 里是相对路径 `fetch('/api' + path)`，`taskStream.ts` 里是
    `new EventSource('/api/...')`。dev 形态下 vite 代理把 `/api` 转给 36379 ✓；**打包形态下
    没有 vite 代理**，`/api` 会打到 webview 自己的来源（`http://tauri.localhost`）上，
-   **一个请求都到不了服务端** ✗。
+   **一个请求都到不了服务端** ✗。上面那次启动虽然崩在窗口创建，但即使窗口起来了，
+   界面也只会显示「连不上后端，确认 apps/server 还在跑」。
    要补的是「让前端知道 API 的绝对地址」，两条候选（都还没做）：
-   - 壳在启动时把地址注入页面（例如 `withGlobalTauri` 已经开了，可以从 Rust 侧
+   - 壳在启动时把地址注入页面（`withGlobalTauri` 已经开了，可以从 Rust 侧
      通过 `webview.eval()` 写一个全局变量，前端读它、读不到再回退到相对路径）；
    - 或者构建期由 Vite 注入（`define`），但那个端口又要在 web 侧出现一次 ✗。
 
    这一步动的是 `apps/web` 的**源码**（不是依赖），并且要保住「浏览器里开发照旧能用
    相对路径 + vite 代理」。建议单独一轮做，带测试。
-4. **Node 运行时的分发方式只是权宜**：现在是复制**构建机的** `node.exe`，所以产物与
-   构建机同平台，也没有版本校验。出安装包那一轮应换成官方的平台分发包
+3. **Node 运行时的分发方式只是权宜**：现在是复制**构建机的** `node.exe`（约 80 MB），
+   所以产物与构建机同平台，也没有版本校验。出安装包那一轮应换成官方的平台分发包
    （按 target triple 取），并核对 Node 版本（产物 `target: node22`，跟
    `package.json` 的 `engines` 一致）。
-5. **`better-sqlite3` 的 `.node` 是构建机上的 prebuild**：只对本机平台有效。
+4. **`better-sqlite3` 的 `.node` 是构建机上的 prebuild**：只对本机平台有效。
    跨平台打包要在对应平台装依赖（或换成 prebuild 下载对应 ABI/平台的那一份）。
-6. **`run.cjs` 的兜底没测过**：它把启动失败打成一行中文日志再 `exit(1)`。真机没跑过。
-7. **服务端没有「我起来了」的信号**（`docs/TAURI-PACKAGING.md` 的 D6）：现在壳拉起来
+5. **`run.cjs` 的兜底没测过**：它把启动失败打成一行中文日志再 `exit(1)`。真机没跑过。
+6. **服务端没有「我起来了」的信号**（`docs/TAURI-PACKAGING.md` 的 D6）：现在壳拉起来
    就不管了，不轮询端口。窗口可能先于服务可用而显示「连不上后端」。
    第一段没做，因为需要动 `apps/server`（加一个就绪输出或健康轮询），
    而那属于「改服务端」，先不动。
-8. **`GIT_NEST_CORS` 的值是「照仓库里既有的判断写的」，不是真机实测的**：
+7. **`GIT_NEST_CORS` 的值是「照仓库里既有的判断写的」，不是真机实测的**：
    Windows 用 `http://tauri.localhost`、其余用 `tauri://localhost`。
    依据是 `apps/server/src/config.ts` 的 `config.tauriOrigins` 默认清单
    （`tauri://localhost,http://tauri.localhost,https://tauri.localhost`）与
