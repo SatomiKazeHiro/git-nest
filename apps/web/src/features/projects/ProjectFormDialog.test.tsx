@@ -509,6 +509,92 @@ describe('记录 · 编辑 / 预览', () => {
     expect(screen.getByRole('button', { name: /预览/ }).getAttribute('type')).toBe('button')
   })
 
+  it('切换与内容在**同一个**带边框的块里（不是「顶上一排按钮 + 底下一个框」）', async () => {
+    /*
+      用户报的就是这个：「东一块、西一块，看不出是一个组件」。
+      所以这里钉结构——切换那一段与内容要有**共同的祖先**，而边框挂在那一位上；
+      边框要是挂在切换自己身上，那就又回到「两枚独立按钮」了。
+    */
+    mockCreate()
+    renderDialog()
+    const area = await box()
+
+    const bar = screen.getByRole('group', { name: '记录视图' })
+    const frame = bar.parentElement!
+    // 切换在框里、内容也在框里
+    expect(frame.contains(area)).toBe(true)
+    expect(frame.className).toContain('border-line')
+    expect(frame.className).toContain('rounded-[3px]')
+    // 边框**不在**切换那一条上（不然它就是「一枚带框的按钮」）。
+    // 注意 `border-line-soft` 里也含 `border-line` 这几个字，所以比的是**整圈的边框**。
+    expect(bar.className).not.toContain('border border-line')
+    // 顶栏在内容之前（上面是切换、下面是内容）
+    const order = frame.querySelectorAll('*')
+    expect(Array.from(order).indexOf(bar)).toBeLessThan(Array.from(order).indexOf(area))
+  })
+
+  it('两段是连起来的一段：各自不带边框，中间只有一条浅色分隔线', async () => {
+    mockCreate()
+    renderDialog()
+    const area = await box()
+
+    const write = screen.getByRole('button', { name: /编辑/ })
+    const preview = screen.getByRole('button', { name: /预览/ })
+
+    for (const seg of [write, preview]) {
+      // 段自己不带边框、不带圆角、不带底色：那三样拼起来就是「两枚按钮」的观感
+      expect(seg.className).not.toContain('border')
+      expect(seg.className).not.toContain('rounded-[3px]')
+      expect(seg.className).not.toContain('bg-panel')
+    }
+    // 只有最外那两侧是圆的
+    expect(write.className).toContain('rounded-tl-[3px]')
+    expect(preview.className).toContain('rounded-tr-[3px]')
+
+    // 两段紧挨：中间那位是那条分隔线，而且它就在两段之间
+    const between = write.nextElementSibling!
+    expect(between.tagName).toBe('SPAN')
+    expect(between.getAttribute('aria-hidden')).toBe('true')
+    expect(between.className).toContain('bg-line-soft')
+    expect(between.nextElementSibling).toBe(preview)
+    // 分隔线在顶栏里，而顶栏与内容之间那条线由顶栏的下边框给
+    expect(write.parentElement!.className).toContain('border-b')
+    expect(write.parentElement!.contains(area)).toBe(false)
+  })
+
+  it('选中那一段是「亮着」的：`aria-pressed` + 仓库既有的浅蓝底/深蓝字', async () => {
+    mockCreate()
+    renderDialog()
+    await box()
+
+    const write = screen.getByRole('button', { name: /编辑/ })
+    const preview = screen.getByRole('button', { name: /预览/ })
+    // 编辑态：编辑那一段亮着（语汇与过滤面板那排可点项一致）
+    expect(write.getAttribute('aria-pressed')).toBe('true')
+    expect(write.className).toContain('bg-accent-wash')
+    expect(write.className).toContain('text-accent-ink')
+    expect(preview.getAttribute('aria-pressed')).toBe('false')
+    expect(preview.className).not.toContain('bg-accent-wash')
+
+    fireEvent.click(preview)
+    expect(preview.getAttribute('aria-pressed')).toBe('true')
+    expect(preview.className).toContain('bg-accent-wash')
+    expect(write.className).not.toContain('bg-accent-wash')
+  })
+
+  it('textarea 自己不再带边框：它只是这块里的一层内容', async () => {
+    /*
+      两个框套在一起（外层一个、textarea 自己一个）也是「两块东西」的来源。
+      textarea 那份边框与圆角用 `!` 覆盖掉了，这里把它钉住。
+    */
+    mockCreate()
+    renderDialog()
+
+    const area = await box()
+    expect(area.className).toContain('!border-0')
+    expect(area.className).toContain('!rounded-none')
+  })
+
   it('点「预览」/「编辑」**不提交、也不关闭弹窗**', async () => {
     /*
       用户实测过的那次：按钮住在 `<form>` 里，而 HTML 里 `<button>` 默认是 `submit`，
