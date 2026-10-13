@@ -42,6 +42,8 @@ const baseProject = {
   sortOrder: 1,
   tags: [] as { id: number; name: string; color: string | null }[],
   latestCheck: null,
+  // 「最近一次尝试」；详情页的用例不关心它，但接口形状里它是必有的
+  lastAttempt: null,
 }
 
 const okStatus: RepoStatus = {

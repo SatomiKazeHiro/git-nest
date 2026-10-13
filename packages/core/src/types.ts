@@ -4,7 +4,7 @@
  * 约定：对外一律用 camelCase；本地绝对路径（path）只出现在 server 内部与本机响应里，
  * 绝不写入任何会被提交或分享的文件。
  */
-import type { UpdateStatus } from './git/types.ts'
+import type { GitError, UpdateStatus } from './git/types.ts'
 
 /** git 层的状态类型在这里也转出去，前后端只认一份定义。 */
 export type {
@@ -210,6 +210,35 @@ export interface UpdateCheckSummary {
 }
 
 /**
+ * 「最近一次检查尝试」——**不管成功还是失败**的那一次。
+ *
+ * ## 为什么它必须和 `UpdateCheckSummary` 分开
+ *
+ * `latestCheck` 的语义是「最近一次**合格**检查」（`isRemoteCheckStatus` 那几种状态，
+ * 也就是真的问到过远程结论），这个语义不能动：界面的新鲜度靠它，一次失败的检查
+ * 若能刷新它，断网后点一次检查反而会显示「刚确认过的已是最新」。
+ *
+ * 但那留下过一个真实的坑：用户看到「上次检查 42 分钟前 / 落后远程 ↓631」，
+ * 而最近三次检查**全都失败**了（fetch 到 github 443 被重置）。界面上一片安静：
+ * 失败的原因服务端早就存进了 `update_checks.detail.error`，却没有任何地方读它。
+ * 于是「42 分钟前落后 631」是一个**没有近期依据**的旧结论，而用户无从知道「为什么」。
+ *
+ * 所以这一份是**另一个问题**的答案：「最近一次尝试是什么时候、成没成、没成是为什么」。
+ * 界面上它只做一件事——给「上次检查」那一格挂一枚警示，并说清那个时间来自更早的一次成功。
+ *
+ * `error` 就是 core 的 `GitError`（含 `kind` / `message` / 可选 `raw`），
+ * 原样从 `update_checks.detail` 里读回来，不在这里另写文案。
+ */
+export interface LastUpdateAttempt {
+  /** 这次尝试发生的时间（ISO） */
+  at: string
+  /** 这次尝试的结果状态，`error` 是其中最常见的一种 */
+  status: UpdateStatus
+  /** 失败归因；成功（`null`）时界面只显示时间，不加警示 */
+  error: GitError | null
+}
+
+/**
  * 前端与后端的**默认端口**。
  *
  * ## 为什么它住在 core
@@ -377,7 +406,15 @@ export const DEFAULT_SORT_DIR: Record<ProjectSort, SortDir> = {
 /** 列表页的一行：项目 + tag + 最近一次检查摘要。 */
 export interface ProjectListItem extends Project {
   tags: Tag[]
+  /** 最近一次**合格**检查（真的问到过远程结论）；没查过就是 null */
   latestCheck: UpdateCheckSummary | null
+  /**
+   * 最近一次**尝试**，不管成败。和 `latestCheck` 是两个问题，见 `LastUpdateAttempt`。
+   *
+   * 和 `latestCheck` 一样由 repo 层给默认值（null = 一条检查记录都没有）、
+   * 路由层不需再填——它是纯数据库事实，不碰磁盘。
+   */
+  lastAttempt: LastUpdateAttempt | null
   /** 服务端算好的行动分类。前端只渲染，不重算。 */
   attention: Attention
   /**

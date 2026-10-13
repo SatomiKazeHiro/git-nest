@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
+import { formatRelative } from '@/lib/format'
 import { ProjectRow } from './ProjectRow'
 
 /*
@@ -45,6 +46,12 @@ const project: ProjectListItem = {
     aheadCount: 0,
     behindCount: 0,
     recommendation: null,
+  },
+  // 这一份是「最近一次尝试」；默认这条夹具里它是成功的，警示那组用例再覆盖它
+  lastAttempt: {
+    at: '2026-10-05T00:00:00Z',
+    status: 'up_to_date',
+    error: null,
   },
   attention: 'synced',
 }
@@ -137,6 +144,98 @@ describe('ProjectRow · 差异列不许说没依据的话', () => {
     // 「远程领先」那个词原本住在「同步状态」那一列，那一列按设计文档收掉了；
     // 数字还在（而且它才是真正查到的东西）
     expect(text).toContain('↓3')
+  })
+})
+
+/**
+ * 「上次检查」这一格：**时间来自更早一次成功的检查，而最近一次尝试可能失败了**。
+ *
+ * 这是用户遇到过的真实困惑：一边写着「上次检查 42 分钟前 / 落后远程 ↓631」，
+ * 一边最近三次检查全都失败（fetch 到 github 443 被重置），界面上一个字都不说。
+ * 库里早就存着失败原因（`update_checks.detail.error`），只是没有任何地方读它。
+ *
+ * 两条一起钉：**警示只由「最近一次尝试」决定**，而**格子里显示的时间仍然来自
+ * 最近一次成功**。只钉前者的话，一个「拿失败时间刷新格子」的实现也能过——
+ * 那正是这个软件最要消灭的「没有依据的肯定」。
+ */
+describe('ProjectRow · 最近一次检查失败时，那一格要说出来', () => {
+  const failedAttempt = {
+    at: '2026-10-06T00:00:00Z',
+    status: 'error' as const,
+    error: {
+      kind: 'network' as const,
+      message: '连不上远程。检查网络、代理或 DNS',
+      raw: 'fatal: unable to access ... Connection reset by peer',
+    },
+  }
+  /** 上一次**成功**检查的时间，与上面那次失败**故意不同** */
+  const lastSuccessAt = '2026-10-05T00:00:00Z'
+
+  /** 那一格（`col-checked`），按类名取——`getByText` 会连标题里的文案一起命中 */
+  const checkedCell = (container: HTMLElement) =>
+    container.querySelector('td.col-checked') as HTMLElement
+
+  it('最近一次尝试失败：加警示标记，标题里写清哪一次失败、为什么', () => {
+    const { container } = renderRow(status(), {
+      lastAttempt: failedAttempt,
+      latestCheck: { ...project.latestCheck!, checkedAt: lastSuccessAt },
+    })
+    const cell = checkedCell(container)
+
+    expect(cell.querySelector('[role="img"]')).not.toBeNull()
+    const title = cell.getAttribute('title') ?? ''
+    expect(title).toContain('最近一次检查失败')
+    expect(title).toContain(failedAttempt.error.message)
+  })
+
+  it('**警示归警示，时间还是上次成功那一次的**（不拿失败时间冒充检查结论）', () => {
+    const { container } = renderRow(status(), {
+      lastAttempt: { ...failedAttempt, at: '2026-10-06T00:00:00Z' },
+      latestCheck: { ...project.latestCheck!, checkedAt: '2026-10-05T00:00:00Z' },
+    })
+    const cell = checkedCell(container)
+    const successText = formatRelative('2026-10-05T00:00:00Z')
+    const attemptText = formatRelative('2026-10-06T00:00:00Z')
+
+    // 文案要把两件事分开说：这是更早一次成功的时间
+    expect(cell.getAttribute('title')).toContain('更早一次成功')
+    // 而且显示的就是那个成功的时刻——前置断言两个时间的显示**确实不同**，
+    // 否则这条用例在两天都落进同一个粒度（比如都变成日期）时会静默失效
+    expect(successText).not.toBe(attemptText)
+    expect(cell.textContent).toContain(successText)
+    expect(cell.textContent).not.toContain(attemptText)
+  })
+
+  it('最近一次尝试是成功的：不加警示（这一格不是「检查出了问题」的告示栏）', () => {
+    const { container } = renderRow(status(), {
+      lastAttempt: { at: lastSuccessAt, status: 'up_to_date', error: null },
+      latestCheck: { ...project.latestCheck!, checkedAt: lastSuccessAt },
+    })
+    const cell = checkedCell(container)
+
+    expect(cell.querySelector('[role="img"]')).toBeNull()
+    expect(cell.textContent).toContain(formatRelative(lastSuccessAt))
+  })
+
+  it('状态异常但没有归因（旧记录 / 半条记录）：只照旧显示时间，不塞一枚说不出原因的警示', () => {
+    const { container } = renderRow(status(), {
+      lastAttempt: { at: '2026-10-06T00:00:00Z', status: 'missing', error: null },
+      latestCheck: { ...project.latestCheck!, checkedAt: lastSuccessAt },
+    })
+    const cell = checkedCell(container)
+
+    expect(cell.querySelector('[role="img"]')).toBeNull()
+    expect(cell.textContent).toContain(formatRelative(lastSuccessAt))
+  })
+
+  it('连一次成功的检查都没有，而最近一次尝试失败了：说清「还没有过成功的检查」', () => {
+    const { container } = renderRow(status(), { lastAttempt: failedAttempt, latestCheck: null })
+    const cell = checkedCell(container)
+
+    expect(cell.querySelector('[role="img"]')).not.toBeNull()
+    // 这一格里没有「上次成功的时间」可指，所以不能照抄那一句
+    expect(cell.getAttribute('title')).toContain('还没有过一次成功的检查')
+    expect(cell.textContent).toContain('没查过')
   })
 })
 

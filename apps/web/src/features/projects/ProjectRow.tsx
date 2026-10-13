@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import { Pencil, Trash2 } from 'lucide-react'
+import { AlertTriangle, Pencil, Trash2 } from 'lucide-react'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
 import { formatRelative } from '@/lib/format'
 import { useUiStore } from '@/store/ui'
@@ -7,6 +7,42 @@ import { AttentionBadge, Diff, type Comparability } from '@/features/status/badg
 import { ProjectLogo } from './ProjectLogo'
 import { ProjectTypeBadge } from './ProjectTypeBadge'
 import folderUrl from '@/assets/folder.svg'
+
+/**
+ * 「上次检查」那一格的悬停说明。
+ *
+ * 这一格显示的时间**来自更早一次成功的检查**（`latestCheck.checkedAt`）——
+ * 库里的失败记录不能刷新它，否则断网后点一次检查，清单页反而会显示刚刚确认过的
+ * 绿色「已是最新」。而最近一次尝试失败时又必须说出来，不然用户看到的是
+ * 「42 分钟前 / 落后 631」配上一片安静，无从知道那是个旧结论。
+ *
+ * 所以措辞把**两件事分开写**，并点明时间的来源：先说是哪一次尝试失败了、为什么，
+ * 再说显示的那个时间是哪一次的。只说「检查失败」会被读成「这一格的时间不可信」
+ * 或者「没有数据」，而它其实是**上一次成功的结论仍然有效**。
+ */
+function checkedCellTitle(p: ProjectListItem): string {
+  const reason = failureReason(p)
+  if (reason === null) return p.latestCheck ? `上次检查结果：${p.latestCheck.status}` : '还没检查过'
+  const at = formatRelative(p.lastAttempt?.at ?? null)
+  // 「没有一次成功」和「有更早一次成功」是两种事实，指错方向比不说更坏
+  return p.latestCheck
+    ? `最近一次检查失败（${at}）：${reason}；上面显示的时间来自更早一次成功的检查`
+    : `最近一次检查失败（${at}）：${reason}；还没有过一次成功的检查`
+}
+
+/**
+ * 最近一次尝试的失败归因——**有原因就显示**（`missing` / `not_a_repo` 这类状态
+ * 本来也带着 error，见 `classifyError`，所以它们一起照顾到了）。
+ *
+ * 只认 `message`：它是给人看的那一句。旧记录、或者只有 `{ kind: 'network' }`
+ * 那种半条记录会在服务端被守卫读成 `error: null`，这里也就跟着没有原因——
+ * 那时**不加标记**，一枚说不出原因的警示只会让人更慌，而它旁边那个时间一点也不假。
+ *
+ * 标题与那枚警示图标**读同一个函数**，所以不会出现「有警示却没写原因」。
+ */
+function failureReason(p: ProjectListItem): string | null {
+  return p.lastAttempt?.error?.message ?? null
+}
 
 /**
  * 那两个数字有没有可比的对象。**四种情况分开写**，因为它们都回答「有没有依据」，
@@ -149,11 +185,27 @@ export function ProjectRow({
         />
       </td>
 
+      {/*
+        「上次检查」这一格。时间来自**最近一次成功的检查**（`latestCheck`），
+        而最近一次尝试失败时旁边挂一枚警示——理由见 `checkedCellTitle`。
+        警示只在**有归因**时出现（见 `failureReason`）：一枚说不出原因的警示
+        只会让人更慌，而它旁边那个时间一点也不假。
+      */}
       <td
         className="col-checked truncate text-right font-mono text-[12px] text-ink-3"
-        title={p.latestCheck ? `上次检查结果：${p.latestCheck.status}` : '还没检查过'}
+        title={checkedCellTitle(p)}
       >
-        {p.latestCheck ? formatRelative(p.latestCheck.checkedAt) : '没查过'}
+        <span className="inline-flex items-center justify-end gap-1">
+          {failureReason(p) !== null ? (
+            <AlertTriangle
+              size={12}
+              role="img"
+              aria-label="最近一次检查失败"
+              className="shrink-0 text-signal-bad"
+            />
+          ) : null}
+          {p.latestCheck ? formatRelative(p.latestCheck.checkedAt) : '没查过'}
+        </span>
       </td>
       <td className="col-actions">
         <span className="row-actions flex justify-end gap-1">

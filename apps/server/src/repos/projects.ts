@@ -12,9 +12,13 @@ import {
   type Project,
   type ProjectDetail,
   type ProjectListItem,
+  type LastUpdateAttempt,
   type Tag,
+  type GitError,
+  type GitErrorKind,
   type UpdateCheckSummary,
   type UpdateRecommendation,
+  type UpdateStatus,
   type UpdateVerdict,
 } from '@git-nest/core'
 
@@ -209,11 +213,13 @@ export function listProjects(db: DB, opts: ListProjectsOptions = {}): ProjectLis
   const ids = rows.map((r) => r.id)
   const tags = tagsByProject(db, ids)
   const checks = latestChecksByProject(db, ids)
+  const attempts = lastAttemptsByProject(db, ids)
 
   return rows.map((r) => ({
     ...toProject(r),
     tags: tags.get(r.id) ?? [],
     latestCheck: checks.get(r.id) ?? null,
+    lastAttempt: attempts.get(r.id) ?? null,
     attention: r.attention,
     // 这一层不碰磁盘：logo 与类型都是路由那一层扫出来的结论。不知道就说不知道。
     hasLogo: false,
@@ -235,6 +241,7 @@ export function getProject(db: DB, id: number): ProjectDetail | null {
     ...toProject(row),
     tags: tagsByProject(db, [id]).get(id) ?? [],
     latestCheck: latestChecksByProject(db, [id]).get(id) ?? null,
+    lastAttempt: lastAttemptsByProject(db, [id]).get(id) ?? null,
     attention: row.attention,
     hasLogo: false,
     projectType: null,
@@ -376,6 +383,81 @@ function latestChecksByProject(db: DB, ids: number[]): Map<number, UpdateCheckSu
     map.set(projectId, { ...summary, recommendation: recommendationFromDetail(detail) })
   }
   return map
+}
+
+/**
+ * 每个项目**最新那一行**（不按 status 过滤）：最近一次尝试，成没成、失败的话为什么。
+ *
+ * **不能拿它顶替 `latestChecksByProject`**，两者回答的是两个问题：
+ * 上面那个过滤到 `REMOTE_CHECK_STATUSES`（只认真的问到过远程结论的那次），
+ * 界面上的新鲜度必须用它——失败的检查若能刷新新鲜度，断网后点一次检查，
+ * 清单页反而会显示刚确认过的绿色「已是最新」。
+ * 这一个反过来：**要的正是那些被过滤掉的失败行**——用户遇到过的真实困惑就是
+ * 「一边说 42 分钟前落后 631、一边检查什么都不给」，因为失败的原因存进库之后
+ * 没有任何地方读它。
+ */
+function lastAttemptsByProject(db: DB, ids: number[]): Map<number, LastUpdateAttempt> {
+  const map = new Map<number, LastUpdateAttempt>()
+  if (ids.length === 0) return map
+  /*
+    取法与 `latestChecksByProject` 同一个形状（`MAX(id)` 逐项目取最新），
+    只是**不加 status 过滤**。用 id 而不是 `checked_at` 定「最新」：两者都由
+    `recordUpdateCheck` 在同一瞬间写下，而 id 是自增主键，没有并列可言。
+  */
+  const rows = db
+    .prepare(
+      `SELECT project_id AS projectId, checked_at AS checkedAt, status, detail
+       FROM update_checks WHERE id IN (
+         SELECT MAX(id) FROM update_checks
+         WHERE project_id IN (${ids.map(() => '?').join(',')})
+         GROUP BY project_id
+       )`,
+    )
+    .all(...ids) as { projectId: number; checkedAt: string; status: UpdateStatus; detail: string | null }[]
+
+  for (const r of rows) {
+    map.set(r.projectId, { at: r.checkedAt, status: r.status, error: errorFromDetail(r.detail) })
+  }
+  return map
+}
+
+/** core 的 `GitErrorKind` 取值。用来挡住库里那些不是 `GitError` 的东西。 */
+const GIT_ERROR_KINDS = new Set<string>([
+  'missing',
+  'not_a_repo',
+  'path_too_long',
+  'timeout',
+  'auth',
+  'network',
+  'locked',
+  'unknown',
+  'fetch_failed',
+])
+
+/**
+ * 从 `update_checks.detail` 里取回这次尝试的失败原因。
+ *
+ * 守卫是必要的，不是防自己的写入：`detail.error` 的类型在写入侧是 `unknown`
+ * （见 `repos/updates.ts` 的 `UpdateCheckDetail`），旧记录里可能只有
+ * `{ kind: 'network' }`（测试与早期记录就是这样，没有 `message`）——那读出来
+ * 就是一条没有内容的警示。**宁可说「没有原因」，也不要往界面塞半条**。
+ */
+function errorFromDetail(detail: string | null): GitError | null {
+  if (!detail) return null
+  try {
+    const { error } = JSON.parse(detail) as { error?: unknown }
+    if (typeof error !== 'object' || error === null) return null
+    const { kind, message, raw } = error as { kind?: unknown; message?: unknown; raw?: unknown }
+    if (typeof kind !== 'string' || !GIT_ERROR_KINDS.has(kind)) return null
+    if (typeof message !== 'string' || message.length === 0) return null
+    return {
+      kind: kind as GitErrorKind,
+      message,
+      ...(typeof raw === 'string' && raw.length > 0 ? { raw } : {}),
+    }
+  } catch {
+    return null
+  }
 }
 
 /**

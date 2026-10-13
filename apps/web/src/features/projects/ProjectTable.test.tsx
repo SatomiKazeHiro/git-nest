@@ -34,6 +34,7 @@ const project = (id: number, name: string, category: string): ProjectListItem =>
     sortOrder: id,
     tags: [],
     latestCheck: null,
+    lastAttempt: null,
     attention: 'unchecked',
     hasLogo: false,
     projectType: null,
@@ -85,6 +86,12 @@ function renderedNames(container: HTMLElement): string[] {
 
 beforeEach(() => {
   useUiStore.getState().clearFilters()
+  /*
+    空状态那条用例会按按钮，按下去就改这两个开关。**每条用例都从「都关着」开始**：
+    store 是模块级单例，上一个文件/用例留下的 `formOpen: true` 会让
+    「点了才打开」这类断言失去鉴别力（本来就已经是 true 了）。
+  */
+  useUiStore.setState({ scanOpen: false, formOpen: false, editingId: null })
 })
 
 describe('ProjectTable · 默认序（sort = null）', () => {
@@ -241,5 +248,41 @@ describe('ProjectTable · 默认序按分类的显示名分组', () => {
     await waitFor(() => {
       expect(renderedNames(container)).toEqual(['zebra-one', 'tools-one'])
     })
+  })
+})
+
+/**
+ * 空清单那两枚动作。
+ *
+ * 原来只有「添加第一个项目」，而**首次使用的人更可能想扫描**：仓库已经在本机了，
+ * 一个个手填路径是把已知的东西重新打一遍。补上的那一枚不是新做的功能——`openScan`
+ * 早就是设置里一个独立弹窗、工具条上也有同一个入口——它只是在这条路上多给一个入口。
+ *
+ * 「扫描目录」的措辞必须与工具条**逐字一致**：同一个动作在两个地方叫两个名字，
+ * 用户会以为它们不一样。
+ */
+describe('ProjectTable · 空清单状态', () => {
+  it('两枚动作都在：「添加第一个项目」与「扫描目录」', () => {
+    renderTable([])
+
+    expect(screen.getByRole('button', { name: '添加第一个项目' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '扫描目录' })).toBeTruthy()
+  })
+
+  it('点「扫描目录」就把扫描弹窗打开（不是跳路由、也不打开添加表单）', () => {
+    renderTable([])
+    fireEvent.click(screen.getByRole('button', { name: '扫描目录' }))
+
+    expect(useUiStore.getState().scanOpen).toBe(true)
+    // 别顺带把添加表单也打开：那是另一枚按钮的事
+    expect(useUiStore.getState().formOpen).toBe(false)
+  })
+
+  it('「添加第一个项目」照旧打开添加表单，且不动扫描开关', () => {
+    renderTable([])
+    fireEvent.click(screen.getByRole('button', { name: '添加第一个项目' }))
+
+    expect(useUiStore.getState().formOpen).toBe(true)
+    expect(useUiStore.getState().scanOpen).toBe(false)
   })
 })

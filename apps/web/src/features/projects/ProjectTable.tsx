@@ -103,6 +103,7 @@ export function ProjectTable({
 function EmptyList() {
   const filters = useUiStore((s) => s.filters)
   const openCreate = useUiStore((s) => s.openCreate)
+  const openScan = useUiStore((s) => s.openScan)
   const clearFilters = useUiStore((s) => s.clearFilters)
 
   return hasFilter(filters) ? (
@@ -116,9 +117,22 @@ function EmptyList() {
       title="清单还是空的"
       body="先把已经在本机的仓库加进来：每加一个，清单上就多一行，之后就能在这里统一看着它们。路径填本地目录，例如 D:/Git/canvas-editor。"
       action={
-        <Button variant="primary" onClick={openCreate}>
-          添加第一个项目
-        </Button>
+        /*
+          两枚动作，而不是一枚。首次使用的人**更可能想扫描**——仓库已经在本机了，
+          一个个手填路径是把已知的东西重新打一遍。主次按这个分：扫描目录是次
+          （它只是另一条入口，工具条上那枚就是同一个动作），添加第一个项目是主
+          （没有它就没法加一个清单外的目录）。
+          措辞与工具条**逐字一致**：同一个动作在两个地方叫两个名字，用户会以为
+          它们不一样。
+        */
+        <span className="flex items-center gap-2">
+          <Button variant="primary" onClick={openCreate}>
+            添加第一个项目
+          </Button>
+          <Button onClick={openScan} title="扫描一个目录，把本机仓库批量加进清单">
+            扫描目录
+          </Button>
+        </span>
       }
     />
   )

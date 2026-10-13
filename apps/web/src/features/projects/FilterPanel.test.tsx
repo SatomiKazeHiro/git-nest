@@ -30,6 +30,7 @@ const project = (category: string): ProjectListItem =>
     sortOrder: 1,
     tags: [],
     latestCheck: null,
+    lastAttempt: null,
     attention: 'unchecked',
     hasLogo: false,
     projectType: null,

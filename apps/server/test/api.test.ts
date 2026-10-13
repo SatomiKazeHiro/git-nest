@@ -343,6 +343,114 @@ describe('latestCheck 只能由成功的远程检查提供', () => {
   })
 })
 
+/**
+ * 「最近一次尝试失败了」这件事必须报出来，而**它不能污染 `latestCheck`**。
+ *
+ * 上面那组钉的是后一半（失败记录不许刷新新鲜度）。这里钉的是前一半：
+ * 用户遇到过的真实困惑是——一边写着「上次检查 42 分钟前 / 落后远程 ↓631」，
+ * 一边最近三次检查全都失败（fetch 到 github 443 被重置），界面上一个字都不说。
+ * 失败原因早就落在 `update_checks.detail.error` 里了，只是没有任何地方读它。
+ *
+ * 所以两条路（列表与详情）都要带上 `lastAttempt`，而 `latestCheck` 仍然指向
+ * **上一次成功**那条。这是个真不变量：只钉一半的话，「拿失败那次去刷新
+ * latestCheck」这种实现能过第一组，却会把界面变成「刚确认过的旧结论」。
+ */
+describe('lastAttempt：最近一次尝试（不管成败）', () => {
+  const insertCheck = (projectId: number, status: string, checkedAt: string, detail: unknown) =>
+    db
+      .prepare(
+        `INSERT INTO update_checks (project_id, checked_at, status, ahead_count, behind_count, detail)
+         VALUES (?, ?, ?, NULL, NULL, ?)`,
+      )
+      .run(projectId, checkedAt, status, detail === null ? null : JSON.stringify(detail))
+
+  const NETWORK_ERROR = {
+    kind: 'network',
+    message: '连不上远程。检查网络、代理或 DNS',
+    raw: "fatal: unable to access 'https://github.com/x/y.git/': Recv failure: Connection was reset",
+  }
+
+  it('**最近一次失败 → lastAttempt 带原因，latestCheck 仍然指向上一次成功**', async () => {
+    const created = await makeProject('attempt-failed')
+    const id = created.json().project.id
+    const lastSuccessAt = new Date(Date.now() - 42 * 60_000).toISOString()
+    // 上一次成功：落后 631
+    insertCheck(id, 'behind', lastSuccessAt, { verdict: 'safe', canPull: true })
+    // 之后连着三次失败（用户遇到的那种：fetch 到 github 443 被重置）。
+    // 最新的那次的时间记下来，等下要拿它当判据——**取的是最新那一行**，
+    // 而不是最早的那次失败。
+    const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString()
+    insertCheck(id, 'error', at(3), { error: NETWORK_ERROR })
+    insertCheck(id, 'error', at(2), { error: NETWORK_ERROR })
+    const lastFailedAt = at(1)
+    insertCheck(id, 'error', lastFailedAt, { error: NETWORK_ERROR })
+
+    const detail = await app.inject({ method: 'GET', url: `/api/projects/${id}` })
+    const project = detail.json().project
+
+    // 前一半：最近一次尝试是谁、为什么失败
+    expect(project.lastAttempt).toMatchObject({
+      at: lastFailedAt,
+      status: 'error',
+      error: { kind: 'network', message: NETWORK_ERROR.message },
+    })
+
+    // 后一半：上一次成功的结论照旧，一个字段都没被失败行盖掉
+    expect(project.latestCheck.status).toBe('behind')
+    expect(project.latestCheck.checkedAt).toBe(lastSuccessAt)
+    expect(project.latestCheck.recommendation.verdict).toBe('safe')
+
+    // 列表那条路也带着同一份（列表与详情必须一致，前端只读一处）
+    const list = await app.inject({ method: 'GET', url: '/api/projects' })
+    const row = list.json().projects.find((p: { id: number }) => p.id === id)
+    expect(row.lastAttempt).toMatchObject({
+      at: lastFailedAt,
+      status: 'error',
+      error: { kind: 'network' },
+    })
+    expect(row.latestCheck.checkedAt).toBe(lastSuccessAt)
+  })
+
+  it('从没检查过：lastAttempt 是 null（不是「检查过但什么都没发生」）', async () => {
+    const created = await makeProject('never-checked')
+    const id = created.json().project.id
+
+    const detail = await app.inject({ method: 'GET', url: `/api/projects/${id}` })
+    expect(detail.json().project.lastAttempt).toBeNull()
+  })
+
+  it('成功之后又成功：lastAttempt 就是那条成功的（error 为 null，界面不加警示）', async () => {
+    const created = await makeProject('attempt-ok')
+    const id = created.json().project.id
+    insertCheck(id, 'up_to_date', new Date().toISOString(), { verdict: 'safe', canPull: false })
+
+    const list = await app.inject({ method: 'GET', url: '/api/projects' })
+    const row = list.json().projects.find((p: { id: number }) => p.id === id)
+    expect(row.lastAttempt).toMatchObject({ status: 'up_to_date', error: null })
+  })
+
+  it('旧记录里的 error 只有半条（没有 message）→ 读成 null，不往界面塞半条原因', async () => {
+    const created = await makeProject('legacy-half-error')
+    const id = created.json().project.id
+    insertCheck(id, 'error', new Date().toISOString(), { error: { kind: 'network' } })
+
+    const detail = await app.inject({ method: 'GET', url: `/api/projects/${id}` })
+    expect(detail.json().project.lastAttempt).toMatchObject({ status: 'error', error: null })
+  })
+
+  it('detail 不是合法 JSON → 照样给出时间与状态，error 读成 null', async () => {
+    const created = await makeProject('broken-detail')
+    const id = created.json().project.id
+    db.prepare(
+      `INSERT INTO update_checks (project_id, checked_at, status, ahead_count, behind_count, detail)
+       VALUES (?, ?, ?, NULL, NULL, ?)`,
+    ).run(id, new Date().toISOString(), 'error', '{ 这不是 JSON')
+
+    const detail = await app.inject({ method: 'GET', url: `/api/projects/${id}` })
+    expect(detail.json().project.lastAttempt).toMatchObject({ status: 'error', error: null })
+  })
+})
+
 describe('tags', () => {
   it('创建标签、统计使用数、删除标签', async () => {
     const created = await app.inject({
