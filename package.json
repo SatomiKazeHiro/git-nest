@@ -16,9 +16,17 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "bench:status": "node packages/core/bench-status.mjs",
-    "check:encoding": "node scripts/check-encoding.mjs"
+    "check:encoding": "node scripts/check-encoding.mjs",
+    "desktop:gen": "node scripts/gen-tauri-dev-config.mjs",
+    "desktop:icons": "node scripts/gen-tauri-icons.mjs",
+    "desktop:sidecar": "node scripts/build-sidecar.mjs",
+    "desktop:dev": "pnpm desktop:gen && pnpm desktop:sidecar && tauri dev --config src-tauri/gen/app.config.json",
+    "desktop:build": "pnpm desktop:gen && pnpm desktop:sidecar && tauri build --config src-tauri/gen/app.config.json",
+    "desktop:check": "pnpm desktop:gen && pnpm desktop:sidecar && cargo check --manifest-path src-tauri/Cargo.toml"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.12.2",
+    "esbuild": "^0.28.2",
     "typescript": "^5.9.3",
     "vitest": "^3.2.7"
   }

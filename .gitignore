@@ -15,3 +15,12 @@ data/
 .claude
 # superpowers 执行计划的临时工作区（ledger / briefs / review package）
 .superpowers/
+
+# Tauri / Rust
+# Cargo 构建缓存：桌面壳第一次编译会产出 GB 级文件，绝不能进版本库
+src-tauri/target/
+# build.rs 的生成物（从 packages/core 派生的 devUrl、ACL schema 等）。
+# 它是生成物不是源文件：手改会在下一次构建时被覆盖。
+src-tauri/gen/
+# sidecar 产物（打包后的服务 + Node 运行时 + 原生模块），由 scripts/build-sidecar.mjs 生成
+src-tauri/binaries/

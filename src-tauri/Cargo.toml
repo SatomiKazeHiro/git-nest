@@ -1,0 +1,28 @@
+[package]
+name = "git-nest"
+version = "0.1.0"
+description = "git-nest 的桌面壳"
+edition = "2021"
+# 跟着 workspace 根 package.json 的 license/version 走；桌面壳本身不对外发布，
+# 这里只是 Cargo 要求的元数据。
+publish = false
+
+# 默认就是 src/main.rs；显式写出来是为了说明 desktop 库与 bin 的分工
+[lib]
+# Tauri v2 的推荐形态：逻辑放 lib（desktop），bin 只做一行入口。
+# 理由写在 src/main.rs 与 src/lib.rs 的注释里（移动端入口复用同一个 lib）。
+name = "git_nest_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+# Tauri v2（不是 v1）。tauri-build 负责代码生成、能力文件校验、schema 生成。
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# Tauri v2 核心。default features 里包含 wry webview 与系统 webview 绑定。
+tauri = { version = "2", features = [] }
+# Tauri v2 的插件式 shell：v2 把 v1 的 allowlist 换成了插件 + ACL 权限，
+# 拉起 sidecar 走的就是这个插件的 Rust API（见 src/lib.rs）。
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
