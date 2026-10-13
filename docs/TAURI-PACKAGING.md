@@ -27,9 +27,13 @@ B（服务留在壳外，壳只指过去）省事但**不算一个应用** ✗�
 **D2 服务端用什么打** —— 倾向 **esbuild 单文件**：
 `esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.mjs --external:better-sqlite3`。
 理由：一条命令把 `@git-nest/core`（含子路径）**内联进来**，运行时不再依赖 workspace 软链 ✓。
-代价/注意：`esbuild` 不是 `apps/server` 的现有依赖 ✗ → 要作为 **devDependency** 加进去（这是真实的
-依赖新增，说明在此）；`better-sqlite3` **必须保持 external** ✓（原生 `.node` 不能打进 JS）；
-加完要**实测** `node dist/index.mjs` 真能起、能响应一个只读请求。
+代价/注意：`esbuild` **不是** `apps/server` 的直接依赖 ✗，但**实测在 `apps/server` 这个解析上下文里
+`require.resolve('esbuild')` 能解析到** ✓（`tsx` 依赖它）—— 所以**实验阶段不必先加依赖** ✓；
+一旦它变成正式构建脚本，**必须显式声明** ✗（不能赖传递依赖：`tsx` 换个版本就可能把它带走）。
+`better-sqlite3` **必须保持 external** ✓（原生 `.node` 不能打进 JS）；加完要**实测**
+`node dist/index.mjs` 真能起、能响应一个只读请求。
+另外 `apps/server/tsconfig.json` 是 **`noEmit`** ✓ —— 想走 `tsc` 那条路要显式覆盖，而且它**不会**
+内联 `@git-nest/core` ✗，所以打捆仍是更干净的那条。
 
 **D3 原生模块怎么办** —— `better-sqlite3` 的 `.node` 按目标平台准备（dev 机上是现成的；
 打包时把它连同 `node_modules/better-sqlite3` 一起拷进 sidecar 资源目录，或走它的 prebuild）。
