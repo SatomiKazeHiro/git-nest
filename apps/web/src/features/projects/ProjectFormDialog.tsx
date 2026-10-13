@@ -2,14 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import { Check, Plus, X } from 'lucide-react'
 import { createProjectSchema } from '@git-nest/core'
 import { useCategories } from '@/features/categories/queries'
+import { categoryIcon } from '@/features/categories/icons'
+import { categoryLabelOf } from '@/features/categories/label'
 import { ApiError } from '@/lib/api'
 import { Button, ErrorNote, Field, Input, Textarea } from '@/components/ui'
 import { Dialog } from '@/components/Dialog'
+import { Select } from '@/components/Select'
 import { TagPicker } from './TagPicker'
 import { useCreateProject, useProject, useSetProjectTags, useUpdateProject } from './queries'
 // 标签是独立资源：选标签这个动作读的是 tags feature 的接口，不是项目自己的
 import { useTags } from '@/features/tags/queries'
-import { useUiStore } from '@/store/ui'
+import { UNCATEGORIZED, useUiStore } from '@/store/ui'
 
 interface FormState {
   name: string
@@ -278,51 +281,75 @@ export function ProjectFormDialog() {
         </Field>
 
         {/*
-          分类是一个**枚举**，所以这里是一排可点的 chip，而不是文本框。
+          ## 为什么是**下拉**，不是原来那一排 chip，也不是更早的文本框
 
-          文本框 + datalist 留着「随时可以打一个不在表里的值」这条路，于是
-          `backup` / `backups`、`试验` / `experiments` 这类近似重复防不住——
-          分组时看着像多了一个组。
+          曾经这里是文本框 + datalist：那条路留着「随时可以打一个不在表里的值」，于是
+          `backup` / `backups`、`试验` / `experiments` 这类近似重复防不住——分组时
+          看着像多了一个组。**这一条现在仍然成立**，所以它不回到文本框。
 
-          **「未分类」不在这一排里。** 它不是「一个分类」，是「这个项目没有分类」。
-          之前把它当成一个选项、于是新项目默认就「选中」它，看起来像「你选了
-          未分类」，其实只是什么都没选——白占一个高亮位，还会让人以为那也是一个
-          可以选的分类。
+          收成单选之后先做的是**开关**（点亮的 chip，再点一下取消）。那一版错在把
+          「分类已经变成一份**用户可以自己加的名单**」当成了固定的枚举：分类多起来
+          之后，chip 那一排既占宽度又占高度——每加一个分类，弹窗就多一格、多绕一行。
+          而「从一份名单里选一个」这件事，下拉说得比一排 chip 更直接。
 
-          所以改成**开关**：点亮起是选中，再点一下取消（回到没有分类）。
-          零个点亮就是「未分类」，不需要额外的选项来表示。
-          用 `aria-pressed` 而不是 radio：单选组里没法「取消选中」（方向键总会
-          选上某一个），而这里必须能取消。
+          用的是 `components/Select.tsx`（触发控件 + 浮层），不是原生 `<select>`：
+          **分类是有图标的**（左栏和详情页都画），而原生 `<option>` 里画不了图标。
+          代价在那边文件头写着——原生菜单白送的那些能力（输入法首字母跳转、手机上的
+          系统滚轮）这里没有，换来的是图标、清空和统一的主题样式。
+
+          **「未分类」＝「没有分类」这条语义没变**，它没有变成名单里的第 N 个分类：
+          `Select` 的**空值就是空串**（库里存的就是空串，不是「未分类」这三个字），
+          那一格由触发控件上的 `placeholder` 承担，而 × 是「回到未分类」那个动作。
+          编辑一个未分类的项目时，控件上明写着「未分类」，不是靠「一个都没点亮」去猜。
         */}
-        <fieldset>
-          <legend className="text-[12px] font-medium text-ink-2">分类</legend>
-          {errors['category'] ? (
-            <p className="mt-1 text-[12px] text-signal-bad">{errors['category']}</p>
-          ) : null}
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {categories.map((c) => (
-              <button
-                key={c.key}
-                type="button"
-                aria-pressed={form.category === c.key}
-                onClick={() =>
-                  setForm((f) => ({ ...f, category: f.category === c.key ? '' : c.key }))
-                }
-                className={`cursor-pointer rounded-[3px] border px-2 py-1 text-[12px] ${
-                  form.category === c.key
-                    ? 'border-accent bg-accent-wash text-accent'
-                    : 'border-line bg-panel text-ink-2 hover:border-ink-3 hover:text-ink'
-                }`}
-              >
-                {c.label}
-              </button>
-            ))}
-          </div>
-          <p className="mt-1.5 text-[12px] text-ink-3">
-            只用来分组与筛选。再点一下取消选择；一个都不选就是「未分类」。
-            是不是你自己写的，在上面那个勾选框里选。
-          </p>
-        </fieldset>
+        <Field
+          label="分类"
+          error={errors['category']}
+          hint={`只用来分组与筛选。用右边的 × 或选「${UNCATEGORIZED}」回到没有分类（新项目默认就是它）。是不是你自己写的，在上面那个勾选框里选。`}
+        >
+          {(id) => (
+            <Select
+              id={id}
+              aria-label="分类"
+              className="w-56"
+              /* 空串就是「未分类」，所以清空与选「未分类」是同一个结果 */
+              value={form.category}
+              onChange={(v) => setForm((f) => ({ ...f, category: v }))}
+              clearable
+              placeholder={UNCATEGORIZED}
+              options={[
+                /*
+                  「未分类」是**一个显式选项**，不是「什么都不显示」：对分类来说
+                  「没有分类」是一个合法状态，用户要能主动选回它。
+                */
+                { value: '', label: UNCATEGORIZED },
+                /*
+                  清单里存着一个现在名单里没有的 key（分类被删了）时，把它自己摆出来：
+                  否则控件上显示的是占位（看着像「这个项目没有分类」，而其实它有一个
+                  陈旧的值）。标签原样返回 key——编一个「未知分类」只会让人以为是自己
+                  填错了。它是**只读的现状**，不是给别人选的项：用户一选别的，它就不在
+                  这份名单里了。
+
+                  判空那一半也是必须的：空值由上面那一项承担，这里再给空值画一项的话，
+                  浮层里会出现两枚「未分类」，其中一枚还不是空的（上一版原生下拉里
+                  就是这个症状：一个没有文字的重复项）。
+                */
+                ...(form.category && !categories.some((c) => c.key === form.category)
+                  ? [{ value: form.category, label: categoryLabelOf(categories, form.category) }]
+                  : []),
+                ...categories.map((c) => {
+                  const Icon = categoryIcon(c.icon)
+                  return {
+                    value: c.key,
+                    label: c.label,
+                    /* 认不出图标就什么都不画，不塞占位图（那会让人以为它本来就有图标） */
+                    icon: Icon ? <Icon size={14} aria-hidden /> : undefined,
+                  }
+                }),
+              ]}
+            />
+          )}
+        </Field>
 
         {/* 记录就在这个弹窗里改 —— **这是它唯一的编辑器**。
             详情页那个「记录」是只读展示（链接可点），所以不存在

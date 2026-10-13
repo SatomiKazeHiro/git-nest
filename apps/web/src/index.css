@@ -486,6 +486,33 @@
 }
 
 /*
+  ── 共用下拉（`components/Select.tsx`）的选项 ──────────────────────────────
+
+  这两个状态**不能写成 Tailwind 工具类**：`.select-item` 是拼在元素上的固定类名，
+  加不加 `bg-accent-wash` 这种工具类只会改「基础样式」，改不动「鼠标指上去」和
+  「键盘高亮」——那两个是伪类与属性选择器的事，Tailwind 那套写法要它自己的
+  `hover:` / `data-*` 变体，而这里两处状态（`data-highlighted` 与 `data-selected`）
+  是组件的语义，不是排版。写在无层样式里（和 `.list-check` 同一层）优先级也够。
+
+  `data-highlighted` 由鼠标划过与上下键**共用**：一次只该有一项亮着，键盘和鼠标
+  指到的是同一项——分两套状态的话，鼠标停在某一项上时按一下方向键会出现两个高亮。
+*/
+.select-item {
+  color: var(--color-ink-2);
+}
+.select-item:hover {
+  background-color: var(--color-sunken);
+}
+.select-item[data-highlighted] {
+  background-color: var(--color-accent-wash);
+  color: var(--color-ink);
+}
+.select-item[data-selected] {
+  color: var(--color-accent);
+  font-weight: 500;
+}
+
+/*
   清单表。**一个表头 + 平铺的行，表里没有「分区」这回事。**
 
   分组曾经被渲染成表里的一整行分隔条（`colSpan` 的 `<tr>`），
