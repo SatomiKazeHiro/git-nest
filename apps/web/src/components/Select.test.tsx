@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Folder } from 'lucide-react'
 import { Select, type SelectOption } from './Select'
@@ -308,5 +308,137 @@ describe('Select · 受控用法', () => {
     fireEvent.click(screen.getByLabelText('清空分类'))
 
     expect(triggerButton().textContent).toContain('未分类')
+  })
+})
+
+describe('Select · 这一块的内部次序', () => {
+  it('DOM 次序是 `[文字] … [×] [v]`：× 在 v **之前**，v 在不带 × 时也还在最右边', () => {
+    /*
+      用户报过「× 跑到 v 右边去了」。次序是能测的，就不用靠眼睛看：
+      把这一块里的节点按**文档次序**走一遍，看先遇到哪一个。
+
+      不用 `compareDocumentPosition` 的位掩码：那一位在 jsdom + 这层转换下算出来一直
+      是 0（同一个节点才该是 0），拿它断言会永远绿/永远红——判据本身不可信，就别用它。
+    */
+    const { container, rerender } = render(
+      <Select aria-label="分类" options={OPTIONS} value="tools" onChange={() => {}} clearable />,
+    )
+    const controlOf = () => container.firstElementChild as HTMLElement
+    const chevron = () => container.querySelector('.lucide-chevron-down')
+
+    /** 这一块里按文档次序排好的元素，取其中两个的先后 */
+    function documentOrder(root: HTMLElement): Element[] {
+      const out: Element[] = []
+      const walk = (node: Node) => {
+        if (node instanceof Element) out.push(node)
+        node.childNodes.forEach(walk)
+      }
+      walk(root)
+      return out
+    }
+
+    const order = documentOrder(controlOf())
+    const clear = container.querySelector('button[aria-label="清空分类"]')
+    const v = chevron()
+    expect(clear).not.toBeNull()
+    expect(v).not.toBeNull()
+    expect(order.indexOf(clear!)).toBeGreaterThan(-1)
+    // v 排在 × **后面**
+    expect(order.indexOf(v!)).toBeGreaterThan(order.indexOf(clear!))
+
+    // × 不画（没有值）时，v 依然在最右边那一格
+    rerender(<Select aria-label="分类" options={OPTIONS} value="" onChange={() => {}} clearable />)
+    expect(container.querySelector('button[aria-label="清空分类"]')).toBeNull()
+    expect(chevron()).not.toBeNull()
+  })
+
+  it('v 只是装饰（自己不带点击），点它左边那块＝**一次**点击就打开、再点一次才关', () => {
+    /*
+      v 如果单独接一个 `onClick`，一次点击会命中它和它左边那层按钮两次，等于没反应。
+      所以这里钉两件事：v 上没有绑定点击；那一片区域的交互仍然只是「一次点击 = 开，
+      再一次 = 关」。v 是画在控件最右边的纯装饰，不接任何事件。
+    */
+    renderSelect()
+    const v = document.querySelector('.lucide-chevron-down')
+    expect(v).not.toBeNull()
+    expect(v!.getAttribute('role')).toBeNull()
+    expect(v!.closest('button')).toBeNull()
+
+    // 点它左边那块（触发按钮）——用户点 v 那一片命中的就是这里
+    fireEvent.click(triggerButton())
+    expect(screen.getByRole('listbox', { name: '分类' })).toBeTruthy()
+
+    fireEvent.click(triggerButton())
+    expect(screen.queryByRole('listbox')).toBeNull()
+  })
+})
+
+describe('Select · 浮层与控件对齐', () => {
+  /** 控件的矩形。列宽 224 正是弹窗里那一格（`w-56`）的量级 */
+  const CONTROL = { left: 100, top: 80, width: 224, height: 28 }
+  const rect = (): DOMRect => ({
+    x: CONTROL.left,
+    y: CONTROL.top,
+    top: CONTROL.top,
+    bottom: CONTROL.top + CONTROL.height,
+    left: CONTROL.left,
+    right: CONTROL.left + CONTROL.width,
+    width: CONTROL.width,
+    height: CONTROL.height,
+    toJSON: () => ({}),
+  })
+
+  /** 窗口大小也一起打桩：向上还是向下翻由它算出来 */
+  function stubLayout(width: number, height: number) {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: height })
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(rect)
+  }
+
+  function panel() {
+    return screen.getByRole('listbox', { name: '分类' })
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('左边缘与宽度都对齐**有边框的整块**（不是里面那枚按钮）', async () => {
+    /*
+      jsdom 不做排版，`getBoundingClientRect` 全是 0——所以这里给它打桩。
+      打桩之后「面板与控件对齐」这件事就是可测的，不必只靠眼睛。
+    */
+    stubLayout(1280, 800)
+    const { container } = render(
+      <Select aria-label="分类" options={OPTIONS} value="tools" onChange={() => {}} clearable />,
+    )
+    // 打桩的是**整块**那个有边框的元素（`aria-haspopup` 是里面那枚按钮，不是它）
+    const control = container.firstElementChild as HTMLElement
+    expect(control.getBoundingClientRect().width).toBe(CONTROL.width)
+
+    fireEvent.click(triggerButton())
+    const list = panel()
+
+    expect(list.style.position).toBe('fixed')
+    expect(list.style.left).toBe(`${CONTROL.left}px`)
+    // 不比控件窄；对齐比的是**左边缘**，宽度只许更宽（选项文字长时读得全）
+    expect(parseFloat(list.style.width)).toBeGreaterThanOrEqual(CONTROL.width)
+    // 往下放：贴在控件下边缘 + 4px
+    expect(list.style.top).toBe(`${CONTROL.top + CONTROL.height + 4}px`)
+    expect(list.style.bottom).toBe('')
+  })
+
+  it('下面放不下就向上翻：只改上下（`bottom` 生效），**左右一个像素都不动**', () => {
+    stubLayout(1280, 120) // 控件底下只剩 12px
+    render(<Select aria-label="分类" options={OPTIONS} value="tools" onChange={() => {}} clearable />)
+
+    fireEvent.click(triggerButton())
+    const list = panel()
+
+    expect(list.style.top).toBe('')
+    expect(list.style.bottom).toBe(`${120 - CONTROL.top + 4}px`)
+    // 横向与不翻的那一支完全一致
+    expect(list.style.left).toBe(`${CONTROL.left}px`)
+    expect(parseFloat(list.style.width)).toBeGreaterThanOrEqual(CONTROL.width)
   })
 })

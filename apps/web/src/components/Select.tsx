@@ -109,6 +109,14 @@ export function Select({
     换成真实名单），记下标的话高亮会滑到另一项上去。
   */
   const [active, setActive] = useState<string | null>(null)
+  /*
+    定位的基准是**那个有边框的整块控件**，不是里面那枚按钮。
+    用户眼里的「输入框」就是这一块（`border` 画在它身上），所以浮层必须与它左对齐、
+    同宽；按里面那枚按钮去算，按钮的右边缘还空着 × 与 v 的位置，浮层就会比控件窄、
+    左边缘也跟着偏（用户看到的就是「面板没和输入框对齐」）。
+  */
+  const controlRef = useRef<HTMLDivElement>(null)
+  /** 里面那枚按钮：焦点还给它，点击也归它（v 是它的一部分，见下面的结构） */
   const triggerRef = useRef<HTMLButtonElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const listId = useId()
@@ -162,18 +170,28 @@ export function Select({
     if (!open) return
 
     const LIST_MAX_H = 264 // 浮层最多这么高，只用来决定往上还是往下
+    const GAP = 4 // 控件与浮层之间的缝
+    const MARGIN = 8 // 离窗口边缘至少留这么多
+    const MIN_W = 176 // 浮层再窄也留这么宽：比它更窄时选项文字会被截得看不出是什么
     const reposition = () => {
-      const rect = triggerRef.current?.getBoundingClientRect()
+      /*
+        量的是**有边框的整块**（`controlRef`）。浮层与它左对齐、同宽——这一点是
+        「面板和输入框没对齐」那个 bug 的正面修法：量里面那枚按钮的话，它的右边缘
+        还空着 × 与 v 的位置，浮层自然窄一截、左边缘也偏。
+      */
+      const rect = controlRef.current?.getBoundingClientRect()
       if (!rect) return
-      // 至少和触发控件一样宽（选项比它长时才读得全），但不超出窗口
-      const width = Math.min(Math.max(rect.width, 176), window.innerWidth - 16)
+      // 可以比控件宽（选项文字更长时读得全），但**左边缘一定与控件齐**
+      const room = window.innerWidth - 2 * MARGIN
+      const width = Math.min(Math.max(MIN_W, rect.width), room)
       const below = window.innerHeight - rect.bottom
-      const up = below < LIST_MAX_H + 8 && rect.top > below
-      const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8))
+      // 下面放不下就向上翻。**翻的是上下，横向一个字都不动**
+      const up = below < LIST_MAX_H + GAP && rect.top > below
+      const left = Math.min(Math.max(MARGIN, rect.left), Math.max(MARGIN, window.innerWidth - width - MARGIN))
       setPos(
         up
-          ? { bottom: window.innerHeight - rect.top + 4, left, width }
-          : { top: rect.bottom + 4, left, width },
+          ? { bottom: window.innerHeight - rect.top + GAP, left, width }
+          : { top: rect.bottom + GAP, left, width },
       )
     }
     reposition()
@@ -261,14 +279,21 @@ export function Select({
   return (
     <>
       {/*
-        **两枚按钮是并列的，不嵌套**（可清空时这一格上有「打开列表」与「清空」两个动作）：
-        按钮里再放一枚按钮，一是非法 HTML（浏览器会把内层那枚移出去，于是「点 × 清空」
-        变成「点 × 顺手打开浮层」），二是嵌套的可交互元素本身就是无障碍缺陷。
+        **这一整块（含边框）就是那个控件**：里面依次是 `[图标][文字]` ……… `[×]` `[v]`。
+        浮层的定位基准也是它（`controlRef`），所以面板与它左对齐、同宽。
 
-        箭头那枚图标**画在触发按钮里面**、自己不接点击：把它放到外面单独接一个 `onClick`
-        的话，「点箭头」会同时命中它和底下那层触发按钮，两次切换等于没反应。
+        三条约束，每一条都有理由：
+
+        - **v 在最右边、且只是装饰**：它自己**不接** `onClick`——命中的是它左边那块
+          触发按钮（点 v 的区域＝点按钮）。单独给它接一个的话，一次点击会同时命中它和
+          下面那层按钮，两次切换等于没反应（这个坑踩过一次）。
+        - **× 紧挨在 v 左边，而且不打开面板**：× 是**触发按钮的兄弟**（不是孙子），
+          点它不会冒泡到那枚按钮，所以「清空」不会顺手把列表打开。
+        - **× 不显示时 v 仍在最右边、位置不跳**：× 给固定尺寸（`w-4`），它出现与消失
+          只影响自己那一格。
       */}
       <div
+        ref={controlRef}
         className={`flex h-7 items-center gap-1.5 rounded-[3px] border border-line bg-panel pr-2 pl-2 focus-within:border-accent ${className}`}
       >
         <button
@@ -286,7 +311,6 @@ export function Select({
         >
           {current?.icon ? <span className="shrink-0 text-ink-2">{current.icon}</span> : null}
           <span className="min-w-0 flex-1 truncate">{isEmpty ? placeholder : current?.label}</span>
-          <ChevronDown size={13} aria-hidden className="shrink-0 text-ink-3" />
         </button>
 
         {clearable && !isEmpty ? (
@@ -298,7 +322,6 @@ export function Select({
             */
             aria-label={`清空${ariaLabel}`}
             title="清空"
-            /* 宽度与高度都写死，× 出现/消失时这一格不会跟着抖一下 */
             className="flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center text-ink-3 hover:text-ink"
             onClick={() => {
               /* 焦点先留在这一格上（清完可能还要再选），再把值清掉 */
@@ -309,6 +332,9 @@ export function Select({
             <X size={12} aria-hidden />
           </button>
         ) : null}
+
+        {/* v 在 × **右边**：这两枚谁先谁后是用户报过的坑，DOM 次序就按看到的次序排 */}
+        <ChevronDown size={13} aria-hidden className="shrink-0 text-ink-3" />
       </div>
 
       {open && pos
