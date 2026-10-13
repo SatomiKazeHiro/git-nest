@@ -41,6 +41,9 @@ function isDontPull(r: UpdateRecommendation | null): r is UpdateRecommendation {
  *
  * 行里与底部按钮**共用这一个函数**：两边各写一次三元，
  * 就是当初「更新跑起来了，行里和按钮都还在说检查中」的来路。
+ *
+ * 底部那枚主按钮**只在更新真的跑着时**改写文案（那时它换成「更新中…（N/M）」，
+ * 见 `applyLabel`）；检查那一档照旧用这里的词——它的行为不该被这次改动碰。
  */
 function runningText(kind: TaskSnapshot['kind'] | null | undefined): string {
   return kind === 'apply' ? '更新中…' : '检查中…'
@@ -130,13 +133,13 @@ export function UpdatePanel({
   */
   const finished = task?.status === 'done' ? task : null
 
-  /*
-    这一轮跑的是检查还是更新——行里那句词（与底部按钮）据此选，不再写死「检查中」。
-
-    行里出现 `pending` / `running` 的，必然属于**当前这一轮**（一次任务把它的项目
-    从 pending 起步带来，跑完的都落成 done），所以拿当前快照的 `task.kind` 给它们定词是对的。
-    `task` 还没有时（POST 在路上，行里不会有这两个状态）退回检查，与默认语义一致。
-  */
+  /**
+   * 这一轮**检查还是更新**——行里那句词据此选，不再写死「检查中」。
+   *
+   * 行里出现 `pending` / `running` 的，必然属于**当前这一轮**（一次任务把它的项目
+   * 从 pending 起步带来，跑完的都落成 done），所以拿当前快照的 `task.kind` 给它们定词是对的。
+   * `task` 还没有时（POST 在路上，行里不会有这两个状态）退回检查，与默认语义一致。
+   */
   const runKind = task?.kind ?? null
 
   /*
@@ -168,6 +171,66 @@ export function UpdatePanel({
   const dontPullNames = reports
     .filter((i) => isReport(i.result) && isDontPull(i.result.recommendation))
     .map((i) => i.name)
+  /**
+   * 这一轮**更新**刚起步时的范围：勾了哪几个。
+   *
+   * 它只回答「这一轮的分母是多少、谁在里边」——两个字段在 `startApply` 那一刻定下来、
+   * 之后不再变；「已经几个」一律从上面这份累积行里数（见 `applyProgress`）。
+   * 所以它不是第二份进度真相，而是缺了就没法知道分母的那个数：任务快照的 `total`
+   * 只覆盖这一轮带到的行，而按钮要报的是「用户勾的那一批」有几个。
+   *
+   * 它的**寿命**由 `applyPending` 那句推导管着：这一轮有了结果就跑完，POST 一起步就
+   * 失败则由下面那个 effect 放掉。每次 `startApply` 重新开跑时覆盖。
+   */
+  const [applyRun, setApplyRun] = useState<{ ids: Set<number>; startingTotal: number } | null>(null)
+
+  /*
+    POST 在路上、任务快照还没回来的那一小段：`task` 仍是上一轮的**检查**快照。
+    这段时间里底部不能按「`finished` 是不是检查」或「`runKind` 是不是 apply」来判，
+    两个判据此刻都还说「这是检查」——于是刚点下去就会掉回那个禁用的检查按钮，
+    等快照到了再跳回来。判据加上 `applyRun`（点下去那一刻就有了），这条带子从点击
+    起就锁在更新这一档，中途不再换。
+
+    **但这一轮一旦有了结果就要交回去**（`applyFinished`）：`busy` 落回 false 时
+    `applyRunning` 已经不成立，若还把 `applyPending` 算作真，文案就永久停在
+    「更新中…启动中」——底部锁死、按钮可点却点不出下一步。这里把「有没有结果」
+    并进同一个推导，渲染期就正确，不留一帧的旧状态。
+  */
+  const applyFinished = task !== null && task.kind === 'apply' && task.status !== 'running'
+  const applyPending = applyRun !== null && !applyFinished
+
+  /*
+    更新正在跑：只有这种时候才把「更新选中的 N 个」留在原地并换成进度文案。
+    判据取任务快照的 `kind`，不另记一个「我在更新」的本地开关——断线重连时服务端
+    从头重放快照，自己记的那份不会跟着走，正是行里那句词当初出错的来路。
+  */
+  const applyRunning = busy && runKind === 'apply'
+
+  /**
+   * 起跑就没跑起来（服务端拒了 / 网络断了）：把这一轮放掉。
+   *
+   * `run()` 自己把异常收成 `error` 而不抛出（见 `taskStream.ts`），所以这里只能看
+   * `error`。这条与上面 `applyFinished` 各管一头，缺一条底部就锁死：
+   * - POST 失败时任务快照根本没换成 apply，`applyFinished` 永远不成立 → 靠这条；
+   * - 正常跑完时 `error` 是空的 → 靠 `applyFinished`。
+   */
+  useEffect(() => {
+    if (error && applyRun) setApplyRun(null)
+  }, [error, applyRun])
+
+  /*
+    更新中那枚按钮的文案。三种状态：
+    - 快照还没回来（`applyPending` 但还不是 `applyRunning`）：说「启动中…」，
+      因为**此刻一个都还没开始跑**，报「0/2」是抢先替服务端说话；
+    - 跑起来了：分子是这批里已经跑完的，分母是**这一轮开头勾的那批**；
+    - 其余（含更新收尾后）：交回原来的文案，数仍由现有汇总逻辑给（`picked.size`）。
+  */
+  const applyProgressNow = applyProgress(rowItems, applyRun)
+  const applyLabel = applyRunning
+    ? `更新中…（${applyProgressNow.done}/${applyProgressNow.total}）`
+    : applyPending
+      ? '更新中…启动中'
+      : `更新选中的 ${picked.size} 个`
 
   // 数量多时先确认范围：检查会联网 fetch 十几个仓库，不能一点就开跑
   const threshold = settings?.confirmThreshold ?? 20
@@ -207,6 +270,17 @@ export function UpdatePanel({
     void startCheck([projectId], includeOwn)
   }
 
+  /**
+   * 离开「更新中」这一档：回到检查档时把这一轮的范围一并丢掉。
+   *
+   * 不然它会一直躺在那儿——下一次更新开跑时被覆盖是没错，可「上一轮的分母」和
+   * 「这一轮勾了谁」在概念上不该同时存在。
+   */
+  const leaveApplyRun = () => {
+    reset()
+    setApplyRun(null)
+  }
+
   const startCheckNow = () => {
     if (overLimit) return
     if (overThreshold && !confirming) {
@@ -214,9 +288,22 @@ export function UpdatePanel({
       return
     }
     setConfirming(false)
-    reset()
+    leaveApplyRun()
     setPicked(new Set())
     void startCheck(ids.length > 0 ? ids : undefined, includeOwn)
+  }
+
+  /**
+   * 开一轮更新。
+   *
+   * 开跑这一刻把**分母**记下来（勾了几个），这就是 `applyRun` 存在的唯一理由：
+   * 任务快照只报它自己带到的那几行，按钮要报的却是「我勾的这一批」。
+   * 「已经几个」不在这里记——那是从累积行里现数的（见 `applyProgress`）。
+   */
+  const startApplyNow = () => {
+    const applyIds = [...picked]
+    setApplyRun({ ids: new Set(applyIds), startingTotal: applyIds.length })
+    void startApply(applyIds)
   }
 
   return (
@@ -225,7 +312,7 @@ export function UpdatePanel({
       title="联网检查更新"
       description="检查会联网 fetch 远程；更新只在你勾选之后执行，且只做 fast-forward。关掉窗口＝放弃这次查看，服务端仍会跑完并记下结果。"
       onClose={() => {
-        reset()
+        leaveApplyRun()
         onClose()
       }}
       /*
@@ -235,6 +322,11 @@ export function UpdatePanel({
 
         报告读完时主按钮换成「更新选中的 N 个」，**重新检查退成次要按钮**——
         这一刻用户要做的是更新，不是再查一次。
+
+        **更新跑起来之后这枚按钮不换位置、不消失**：它留在原地禁用，文案改成
+        「更新中…（已完成/这一轮总数）」（见 `applyLabel`）。原来它整段时间不见了，
+        用户在这一刻恰恰最想知道「正在更新几个 / 已经几个」——底部那个检查按钮上的
+        「更新中…」只说在跑，不说跑到哪了。
       */
       footer={
         <div className="flex flex-wrap items-center gap-3">
@@ -252,9 +344,19 @@ export function UpdatePanel({
           ) : null}
 
           <div className="ml-auto flex flex-wrap items-center gap-3">
-            {finished?.kind === 'check' ? (
+            {/*
+              报告读完（`finished?.kind === 'check'`）进这一档；**点了更新之后也一直留在这里**
+              （`applyPending`）——原来只在检查读完时进，而「点了更新」到「更新快照回来」
+              之间 `task` 还是那张检查快照（`finished?.kind === 'check'` 和 `runKind` 都还
+              指着检查），于是刚点下去就掉回下面那个禁用的检查按钮，快照到了再跳回来：
+              按钮跳一下、用户点的那一刻最想看的进度整段时间看不见。
+              更新这一轮走完，`finished` 又成立，这一档自然回到它正常的样子。
+            */}
+            {finished?.kind === 'check' || applyPending ? (
               <>
-                {updatable.length > 0 && picked.size < updatable.length ? (
+                {/* 更新这段（含快照还没回来的那一小段）两个「勾选」动作没有意义——
+                    勾选已经交给这一轮了，按原样让位 */}
+                {!applyPending && updatable.length > 0 && picked.size < updatable.length ? (
                   <button
                     onClick={() => setPicked(new Set(updatable.map((i) => i.projectId)))}
                     className="text-[12.5px] text-accent hover:underline"
@@ -262,7 +364,7 @@ export function UpdatePanel({
                     全选可更新的 {updatable.length} 个
                   </button>
                 ) : null}
-                {picked.size > 0 ? (
+                {!applyPending && picked.size > 0 ? (
                   <button
                     onClick={() => setPicked(new Set())}
                     className="text-[12.5px] text-ink-3 hover:text-ink"
@@ -270,12 +372,16 @@ export function UpdatePanel({
                     清空勾选
                   </button>
                 ) : null}
+                {/*
+                  这枚按钮**留在原地**：更新进行中它只是禁用 + 报进度，不再消失。
+                  文案里的分子分母见 `applyProgress` / `applyRun`。
+                */}
                 <Button
                   variant="primary"
                   disabled={picked.size === 0 || busy}
-                  onClick={() => void startApply([...picked])}
+                  onClick={startApplyNow}
                 >
-                  更新选中的 {picked.size} 个
+                  {applyLabel}
                 </Button>
                 <Button onClick={startCheckNow} disabled={busy || ids.length === 0 || overLimit}>
                   重新检查
@@ -287,8 +393,9 @@ export function UpdatePanel({
                 onClick={startCheckNow}
                 disabled={busy || ids.length === 0 || overLimit}
               >
-                {/* 跑着的时候这个词也得按这一轮是什么给：更新跑起来时这个按钮同样是禁用的，
-                    说「检查中」是假话（此刻一行都没在检查）。 */}
+                {/* 跑着的时候这个词也得按这一轮是什么给——说「检查中」是假话。
+                    更新跑着时这枚按钮根本不该出现（那一档由上面 `applyRunning` 接管），
+                    这里的 `runningText(runKind)` 是给检查那一档兜底的。 */}
                 {busy ? runningText(runKind) : task ? '重新检查' : '开始检查'}
               </Button>
             )}
@@ -581,6 +688,28 @@ function ReportCell({ report }: { report: UpdateReport }) {
       ) : null}
     </span>
   )
+}
+
+/**
+ * 更新进行中那枚按钮的进度：`done` 个已经跑完 / `startingTotal` 个这一轮开头勾下的。
+ *
+ * **分子从累积的任务行里数**，与下面 `checkSummary` 是同一份真相——弹出这个弹窗
+ * 本来就把每行的状态攒在 `rows` 里，进度没有第二个来源。数的口径是「这一行有更新结论
+ * 了」：更新的结果是一条 `PullResult`（`incoming` 那些才是检查报告），所以
+ * `isPull` 就是「这行的更新已经落地」。
+ *
+ * 分母不能取任务快照的 `total`——那个数说的是「这一轮带到了几行」，而按钮要报的是
+ * 「用户勾了几个」；今天两者恰好相等，但这是巧合，不是这条逻辑的前提。
+ *
+ * `!applyRun`（理论上点不出：能点这枚按钮就说明刚开跑）退回 0/N，不编数。
+ */
+function applyProgress(
+  rowItems: TaskItem[],
+  applyRun: { ids: Set<number>; startingTotal: number } | null,
+): { done: number; total: number } {
+  if (!applyRun) return { done: 0, total: 0 }
+  const done = rowItems.filter((i) => applyRun.ids.has(i.projectId) && isPull(i.result)).length
+  return { done, total: applyRun.startingTotal }
 }
 
 /**
