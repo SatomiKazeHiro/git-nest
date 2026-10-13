@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { apiUrl } from '@/lib/api'
 
 /**
  * 项目的小 logo。
@@ -38,7 +39,9 @@ export function ProjectLogo({
 
   return (
     <img
-      src={`/api/projects/${projectId}/logo`}
+      // 走 apiUrl()：打包形态下没有 vite 代理，相对路径会打到 webview 自己身上
+      // （见 lib/api.ts 顶部那段说明）
+      src={apiUrl(`/projects/${projectId}/logo`)}
       alt=""
       aria-hidden
       onLoad={(e) => {

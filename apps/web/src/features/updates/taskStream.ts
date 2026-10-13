@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PullResult, UpdateReport } from '@git-nest/core'
-import { ApiError, api } from '@/lib/api'
+import { ApiError, api, apiUrl } from '@/lib/api'
 
 export interface TaskItem {
   projectId: number
@@ -196,7 +196,9 @@ export function useUpdateTask(onFinished?: () => void, options: UpdateTaskOption
 
       const connect = () => {
         if (finished) return
-        const source = new EventSource(`/api/updates/${initial.id}/events`)
+        // 地址必须走 `apiUrl()`：打包形态下没有 vite 代理，
+        // 相对路径会打到 webview 自己身上（见 lib/api.ts 顶部那段说明）
+        const source = new EventSource(apiUrl(`/updates/${initial.id}/events`))
         sourceRef.current = source
         armSilenceWatchdog(source)
 

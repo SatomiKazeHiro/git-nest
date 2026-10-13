@@ -164,21 +164,36 @@ fn spawn_api_server(app: &tauri::AppHandle) -> Option<CommandChild> {
 ///
 /// 它和 externalBin 那支 exe 是**两份不同的文件**：exe 是 Node 运行时（被壳 exec 的
 /// 那支），脚本才是真正的服务入口，所以脚本走 `bundle.resources`。
-/// resources 的那条 glob 在 `tauri.conf.json` 里是
-/// `binaries/node-resources/git-nest-server/**/*`——`binaries/node-resources/` 这层前缀
-/// 会被 Tauri **剥掉**再落进资源目录，于是这里拼的是 `git-nest-server/index.mjs`。
+///
+/// ## 这个相对路径必须与 `tauri.conf.json` 里 `resources` 那条 glob **一模一样**
+///
+/// 那条 glob 是 `binaries/node-resources/git-nest-server/**/*`，而 Tauri **保留 glob 的
+/// 目录结构、不剥掉任何前缀**——所以装出来是
+/// `<resource_dir>/binaries/node-resources/git-nest-server/index.mjs`。
+///
+/// **这里曾经写错过**（第一版写成 `git-nest-server/index.mjs`，以为前缀会被剥掉）。
+/// 那个错的来源是只看了 `tauri build --no-bundle` 的暂存目录
+/// （`target/release/binaries/node-resources/…`，恰好和期望的形状只差一层），
+/// 而「装出来长什么样」要看打包器生成的清单：
+/// `src-tauri/target/release/wix/x64/main.wxs`（Windows）里有权威的目录嵌套。
+/// **以后验资源落点，读那份清单，别靠推断。**（详见 `SIDECAR.md`）
 fn launcher_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     let path = app
         .path()
         .resolve(
-            "git-nest-server/index.mjs",
+            "binaries/node-resources/git-nest-server/index.mjs",
             tauri::path::BaseDirectory::Resource,
         )
         .ok()?;
     path.exists().then_some(path)
 }
 
-/// externalBin 落进可执行文件目录时用的文件名（Tauri 会把 `-<target-triple>` 后缀去掉）。
+/// externalBin 落进可执行文件目录时用的文件名。
+///
+/// 与 resources **不同**：externalBin 那条路会把 `-<target-triple>` 后缀去掉
+/// （实测清单里是 `<File Name="git-nest-server.exe">`，源文件是
+/// `git-nest-server-x86_64-pc-windows-msvc.exe`）。两条路的命名规则不一样，
+/// 是因为一条是「Tauri 认识的 sidecar」、另一条只是「随包的资源文件」。
 fn sidecar_exe_name() -> &'static str {
     if cfg!(windows) {
         "git-nest-server.exe"
@@ -216,6 +231,67 @@ fn webview_origin() -> &'static str {
     }
 }
 
+/// 建主窗口，并在**页面加载之前**把 API 基地址注入页面。
+///
+/// ## 为什么窗口要在 Rust 里建，而不是写在 `tauri.conf.json` 的 `app.windows`
+///
+/// 只有一条原因：**注入时机**。
+///
+/// 界面必须知道 API 的绝对地址（打包形态下没有 vite 代理，相对路径 `/api` 会打到
+/// webview 自己身上）。这件事有两种做法：
+///
+/// 1. 写在配置的 `app.windows` 里，然后在 `setup` 里 `window.eval(...)` 补注入。
+///    **不可靠**：`setup` 时页面已经开始加载，而界面一挂载就会发请求
+///    （`react-query` 那几个）——注入和首屏请求在赛跑，打包后偶发「第一个请求打错地址」，
+///    这种时序 bug 极难复现。
+/// 2. `WebviewWindowBuilder::initialization_script`：**页面任何脚本之前**执行。
+///    没有赛跑，因为它压根不并发。
+///
+/// 选了 2，代价是窗口的尺寸/标题这些配置从 JSON 搬到了 Rust（见下）。
+/// 顺带说明为什么不用配置里的 `app.windows` + `window.__TAURI__` 那条路：
+/// 全局对象是 Tauri 自己的 API，运行期地址是**我们的**事实，混在一起只会让
+/// 「谁负责这个地址」变模糊。
+///
+/// ## 为什么地址是运行期算的
+///
+/// 端口来自 `build.rs` 从 `packages/core/src/types.ts` 生成的 `ports::API_PORT`
+/// ——Rust 侧没有第二份数字。**不**在构建期把地址烘进前端产物（那会在用户改
+/// `GIT_NEST_PORT` 时制造「服务在新端口、前端打旧端口」的组合故障，而且报错不说是端口问题）。
+fn create_main_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWindow> {
+    // dev 形态下窗口打开的是 vite（`build.devUrl`，由 build.rs 从 core 的 web 端口生成）；
+    // release 形态下是打进应用的静态文件。`WebviewUrl::default()` 两种形态各自取对的那个。
+    //
+    // 结尾的分号不能省：初始化脚本会被拼进一段更大的脚本里，不加分号在某些拼接方式下
+    // 会和后一段的首行粘成一句（ASI 不是哪里都靠得住）。
+    let init_script = format!(
+        "globalThis.{API_BASE_GLOBAL} = \"http://127.0.0.1:{}\";",
+        ports::API_PORT
+    );
+
+    let window = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::default())
+        .title("git-nest")
+        .inner_size(1280.0, 840.0)
+        // 尺寸下限：三栏（导航 / 列表 / 详情）是设计基线，再窄就没有并排的意义了
+        .min_inner_size(960.0, 600.0)
+        .resizable(true)
+        .center()
+        .initialization_script(init_script)
+        .build()?;
+
+    log_line(
+        app,
+        &format!(
+            "已建主窗口，并注入 API 基地址 http://127.0.0.1:{}",
+            ports::API_PORT
+        ),
+    );
+    Ok(window)
+}
+
+/// 壳注入 API 基地址用的全局变量名。
+/// 与 `apps/web/src/lib/api.ts` 里的 `BASE_GLOBAL` 必须一致（那边有对应说明）。
+const API_BASE_GLOBAL: &str = "__GIT_NEST_API_BASE__";
+
 /// 壳的日志。
 ///
 /// 为什么是 `eprintln!` 而不是什么日志系统：Tauri v2 **没有** `app.log(...)`
@@ -232,6 +308,13 @@ pub fn run() {
         // v2 的插件式 shell：sidecar 走它（v1 的 allowlist 在 v2 已经没有了）。
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
+            // 先建窗口（它负责把 API 地址注入页面），再拉服务。
+            // 这个顺序是刻意的但**不是必须的**：页面里那些请求要等界面挂载之后才发，
+            // 而注入发生在页面加载前，所以两者不会互相等。先建窗口只是让
+            // 「窗口没起来」这种更早的失败更早暴露。
+            let window = create_main_window(app.handle())?;
+            let _ = window.set_focus();
+
             let child = spawn_api_server(app.handle());
             // 谁拉的谁负责收：把子进程句柄放进状态，退出时统一杀（见下面 RunEvent）。
             // 不这么做的话窗口关了 Node 还在跑，下次启动就是 EADDRINUSE。

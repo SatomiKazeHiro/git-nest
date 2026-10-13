@@ -9,18 +9,6 @@
   },
   "app": {
     "withGlobalTauri": true,
-    "windows": [
-      {
-        "label": "main",
-        "title": "git-nest",
-        "width": 1280,
-        "height": 840,
-        "minWidth": 960,
-        "minHeight": 600,
-        "resizable": true,
-        "center": true
-      }
-    ],
     "security": {
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost http://localhost http://127.0.0.1"
     }

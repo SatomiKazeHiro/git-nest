@@ -110,6 +110,37 @@ connect-src 'self' ipc: http://ipc.localhost http://localhost http://127.0.0.1
 
 这件事没有默认答案，所以在这里写明，而不是留在配置里让人猜。
 
+## 界面怎么知道 API 在哪（打包形态下唯一挡住「能用」的事）
+
+浏览器里开发时，`/api` 是相对路径、由 vite 代理转到 36379——**代理是 dev server 的功能**。
+打包后没有 dev server、没有代理，页面的来源变成 Tauri 的自定义协议，
+相对路径 `/api` 会打到 **webview 自己身上**，一个请求都到不了服务端。
+所以地址在打包形态下必须由壳给：
+
+- 壳在**页面加载之前**注入 `globalThis.__GIT_NEST_API_BASE__`；
+- 前端所有 `/api` 拼接都走 `apps/web/src/lib/api.ts` 的 `apiUrl()`（唯一收口）；
+- 拿不到注入值（浏览器开发、全部现有测试）→ 退回相对路径，行为与从前**一模一样**。
+
+### 为什么窗口在 Rust 里建，而不是写在 `tauri.conf.json` 的 `app.windows`
+
+**只为了注入时机。** 另一条路（配置里建窗口 + `setup` 里 `window.eval(...)` 补注入）
+不可靠：`setup` 时页面已经开始加载，而界面一挂载就发请求，两者在赛跑——
+打包后偶发「第一个请求打错地址」，这种时序 bug 极难复现。
+`WebviewWindowBuilder::initialization_script` 是**页面任何脚本之前**执行，不存在赛跑。
+
+代价：窗口的标题/尺寸/居中从 JSON 搬到了 `src/lib.rs`（形状与原来的配置相同：
+1280×840、最小 960×600、居中、可缩放）。
+
+### 为什么不是构建期用 Vite `define` 钉死端口
+
+端口可被 `GIT_NEST_PORT` 覆盖。构建期钉死会制造一个很难查的组合故障：
+用户改了端口 → 服务端监听新端口、前端还在打旧端口 → 报「连不上后端」，
+而那条报错**不会告诉你是端口没跟上**。这与下面 CSP 的 `connect-src` 只写 host、
+不写端口是同一个道理：地址是**运行期事实**，不该在构建期定稿。
+
+这件事**不需要任何 capability / 权限**：初始化脚本是壳在建窗口时自己提供的，
+不是前端调用 Tauri 的命令，不经过 IPC 与 ACL。
+
 ## sidecar（Node 服务）现在到哪一步了
 
 选了 **A：把 Node 当 sidecar 打进包**（理由与差距逐条见
@@ -120,9 +151,9 @@ connect-src 'self' ipc: http://ipc.localhost http://localhost http://127.0.0.1
 ```
 build.rs                       生成端口常量 + gen/app.config.json，然后调 tauri_build
 src/main.rs                    一行入口，调 lib 的 run()
-src/lib.rs                     壳的组装 + sidecar 的拉起/关停 + 数据目录
+src/lib.rs                     壳的组装 + 建窗并注入 API 地址 + sidecar 的拉起/关停 + 数据目录
 capabilities/main-window.json  v2 的权限声明（替代 v1 的 allowlist）
-tauri.conf.json                v2 配置（$schema 指 config/2）
+tauri.conf.json                v2 配置（$schema 指 config/2）；窗口不在这里（见上）
 gen/                           生成物（app.config.json、schemas），进 .gitignore
 binaries/                      sidecar 产物，进 .gitignore
 icons/                         占位图标

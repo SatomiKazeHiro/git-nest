@@ -73,12 +73,49 @@ src-tauri/binaries/
 ```
 
 它跑到了**打包**那一步（不是只到 check），所以图标、`externalBin`、`resources`
-这条链都是通的。落点与 Rust 侧的拼法**逐条对上**：
+这条链都是通的。**但第一版的结论是错的**，见下一节——`--no-bundle` 的暂存目录
+**不能**用来判断「装出来长什么样」。
 
-| 产出 | Rust 侧预期 | 对不对 |
+### 3.1 `--no-bundle` 的暂存目录骗了我一次（已修，教训记在这里）
+
+**证据**：完整打包（`pnpm desktop:build`，MSI 36.80 MiB + NSIS 25.14 MiB）生成的
+WiX 清单 `src-tauri/target/release/wix/x64/main.wxs` 里，资源的目录嵌套是
+
+```
+<Directory Name="binaries">
+  <Directory Name="node-resources">
+    <Directory Name="git-nest-server">
+      <File Name="index.mjs" Source="…\binaries\node-resources\git-nest-server\index.mjs" />
+```
+
+**`binaries/node-resources/` 这一层没有被剥掉** ✗ —— 装出来是
+`<resource_dir>/binaries/node-resources/git-nest-server/index.mjs`。
+
+**我原来的结论**：以为 `resources` 会把 glob 里带前缀的那层目录剥掉，于是
+`lib.rs` 解析的是 `resource_dir/git-nest-server/index.mjs` ✗✗。那样 release 起来
+只会打一行「没找到 sidecar 启动脚本」，服务不起。
+
+**错在哪**：我是从 `tauri build --no-bundle` 的暂存目录
+（`target/release/binaries/node-resources/git-nest-server/…`）**推断**的，
+而那个形状恰好和期望值只差一层、看着「像是被处理过」。
+`--no-bundle` 只把资源**摆到暂存位置**，真正的目录结构由打包器决定。
+
+**结论（以后照这条做）**：**Tauri 的 `resources` 保留 glob 的目录结构，不剥前缀。**
+验「资源落点对不对」的权威依据是**打包器生成的清单**——
+Windows 上是 `target/release/wix/x64/main.wxs`（WiX）或 NSIS 的脚本；
+**不用安装就能在打包机上看**。
+
+**改法（选了 (a)）**：改 `lib.rs` 的解析路径为
+`binaries/node-resources/git-nest-server/index.mjs`（一行），保留现有构建产物布局。
+没选 (b)（改 `resources` 写法让前缀真的落成 `git-nest-server/**`），因为那要先核实
+v2 的 `resources` 到底支持哪种映射形态——而 (a) 改动面最小、且布局已经跑通过一遍。
+
+顺带记下两条路的命名规则**不一样**（都在清单里能看到）：
+
+| 路 | 落点 | 命名 |
 |---|---|---|
-| `target/release/git-nest-server.exe` | `sidecar_exe_name()`（Tauri 去掉 `-<triple>` 后缀） | ✓ |
-| `target/release/binaries/node-resources/git-nest-server/index.mjs` | `launcher_path()` 的 `git-nest-server/index.mjs`（`binaries/node-resources/` 前缀被剥掉） | ✓ |
+| `externalBin` | 可执行文件所在目录 | `<File Name="git-nest-server.exe">`——**去掉** `-<triple>` 后缀 |
+| `resources` | `<resource_dir>` 下**保留** glob 的目录结构 | 原名不动 |
 
 **但 release 二进制在本会话里起不到能跑 `setup` 的那一步**：
 `Failed to setup app: 拒绝访问。 (os error 5)`（`tauri-2.12.3/src/app.rs:1444`）——
@@ -102,6 +139,25 @@ WebView2 建窗口被拒，本会话没有交互式桌面会话。所以「壳�
   直接报 `resource path ... doesn't exist`（实测）。所以 `desktop:check` /
   `desktop:dev` / `desktop:build` 都串了 `pnpm desktop:sidecar`。
 
+### 5. 界面知道 API 在哪了（差距清单第 2 条已补）
+
+打包形态下没有 vite 代理，相对路径 `/api` 会打到 webview 自己身上。现在由壳注入：
+
+- **壳**：`src/lib.rs` 的 `create_main_window()` 用
+  `WebviewWindowBuilder::initialization_script` 在**页面任何脚本之前**写入
+  `globalThis.__GIT_NEST_API_BASE__ = "http://127.0.0.1:<API_PORT>"`。
+  端口来自 `build.rs` 从 `packages/core/src/types.ts` 生成的常量（Rust 侧仍无第二份数字）。
+  **代价**：窗口的标题/尺寸从 `tauri.conf.json` 的 `app.windows` 搬到了 Rust——
+  因为 `app.windows` 里建的窗口没法在建之前注入（`setup` 里补 `eval` 会和首屏请求赛跑）。
+- **前端收口**：`apps/web/src/lib/api.ts` 的 `apiUrl(path)`。三个调用点全改到它：
+  `fetch`（`lib/api.ts` 自己）、`EventSource`（`features/updates/taskStream.ts`）、
+  `<img src>`（`features/projects/ProjectLogo.tsx`）。
+- **回归闸门**：`lib/apiUrl.guard.test.ts` + `lib/apiUrl.scan.ts` 扫全部应用源码，
+  禁止 `api.ts` / 扫描器自身之外出现裸 `/api` 字面量——因为漏一处的后果是**静默**的
+  （只在打包后现形，dev 与全部现有测试都是绿的）。
+- **不涉及 capability / 权限**：初始化脚本是壳建窗时自己提供的，不是前端调 Tauri 命令，
+  不经过 IPC 与 ACL。
+
 ## 还差什么（逐条，别把这部分当已完成）
 
 1. **壳真的把 sidecar 拉起来了吗——仍然没验到** ✗（本轮最实质的缺口）。
@@ -115,25 +171,15 @@ WebView2 建窗口被拒，本会话没有交互式桌面会话。所以「壳�
    要真验到，得在一个有桌面会话的机器上跑 `src-tauri/target/release/git-nest.exe`。
 
    **已经验到的替代证据**（比 `cargo check` 强，比真机弱）：
-   `tauri build --no-bundle` 产出后，落点与 Rust 侧的拼法**逐条对上**——
    - `target/release/git-nest-server.exe` 存在（Tauri 把 `-<triple>` 后缀去掉了，
      与 `sidecar_exe_name()` 拼的名字一致 ✓）；
-   - `target/release/binaries/node-resources/git-nest-server/{index.mjs,run.cjs,README.txt,node_modules/}`
-     存在（`binaries/node-resources/` 这层前缀**如预期被剥掉**，
-     与 `launcher_path()` 里的 `git-nest-server/index.mjs` 一致 ✓）。
-2. **前端还不知道 API 在哪** ✗ —— 这是当前**最大**的一个洞，而且**它的后果已经可预见**。
-   `apps/web/src/lib/api.ts` 里是相对路径 `fetch('/api' + path)`，`taskStream.ts` 里是
-   `new EventSource('/api/...')`。dev 形态下 vite 代理把 `/api` 转给 36379 ✓；**打包形态下
-   没有 vite 代理**，`/api` 会打到 webview 自己的来源（`http://tauri.localhost`）上，
-   **一个请求都到不了服务端** ✗。上面那次启动虽然崩在窗口创建，但即使窗口起来了，
-   界面也只会显示「连不上后端，确认 apps/server 还在跑」。
-   要补的是「让前端知道 API 的绝对地址」，两条候选（都还没做）：
-   - 壳在启动时把地址注入页面（`withGlobalTauri` 已经开了，可以从 Rust 侧
-     通过 `webview.eval()` 写一个全局变量，前端读它、读不到再回退到相对路径）；
-   - 或者构建期由 Vite 注入（`define`），但那个端口又要在 web 侧出现一次 ✗。
-
-   这一步动的是 `apps/web` 的**源码**（不是依赖），并且要保住「浏览器里开发照旧能用
-   相对路径 + vite 代理」。建议单独一轮做，带测试。
+   - 资源落点以 **WiX 清单**为准（`target/release/wix/x64/main.wxs`）：
+     `<resource_dir>/binaries/node-resources/git-nest-server/{index.mjs,run.cjs,README.txt,node_modules/}`
+     ——与其路径形态**逐字对上**（见上面 3.1；这一条最初写错过，已修）。
+2. ~~**前端还不知道 API 在哪**~~ → **已做**（见第 3 节；`apps/web/src/lib/api.ts` 的
+   `apiUrl()` 收口 + 壳的 `initialization_script` 注入）。
+   仍然**没能在打包形态下真机验到**：只能用单测证明「注入后 fetch 与 EventSource 都打到
+   注入地址」，而「壳真的把那个全局量写进了页面」这一步要等有桌面会话的机器。
 3. **Node 运行时的分发方式只是权宜**：现在是复制**构建机的** `node.exe`（约 80 MB），
    所以产物与构建机同平台，也没有版本校验。出安装包那一轮应换成官方的平台分发包
    （按 target triple 取），并核对 Node 版本（产物 `target: node22`，跟
