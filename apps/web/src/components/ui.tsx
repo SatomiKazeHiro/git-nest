@@ -34,10 +34,36 @@ const SIZES: Record<Size, string> = {
   md: 'h-7 gap-1.5 px-3 text-[13px]',
 }
 
-export function Button({ variant = 'ghost', size = 'md', className = '', ...rest }: ButtonProps) {
+/**
+ * 按钮。
+ *
+ * ## 默认 `type="button"`（**不要**改成 HTML 那个默认值）
+ *
+ * HTML 里 `<button>` 的默认 `type` 是 **`submit`**，而「提交」只在 `<form>` 里才有
+ * 意义。这一条踩过一次，症状很刺眼：编辑资料弹窗里那两枚「编辑 / 预览」切换按钮
+ * 没有写 `type`，于是点一下**等于提交表单**——校验通过就保存并关闭弹窗，
+ * 用户以为自己只是切了个视图 ✗。
+ *
+ * 所以这里把默认值定成 `type="button"`（真提交的地方自己写 `type="submit"`）：
+ * 这个组件有几十个调用点，绝大多数都不在表单里、也不打算提交；靠每个调用点自觉
+ * 记得写 `type="button"`，就是让**默认值**替所有人做错事。
+ *
+ * 代价说清楚：**要原生提交（回车/点击触发 `<form onSubmit`）时必须显式写
+ * `type="submit"`**，不再有「什么都不写就是提交」那条路。本仓库目前没有依赖它的
+ * 地方——唯一的那个 `<form>`（`ProjectFormDialog`）用 `onSubmit` 接回车、
+ * 底部那枚「保存」是 `onClick={submit}`（而且它在表单**外面**的底栏里）。
+ */
+export function Button({
+  variant = 'ghost',
+  size = 'md',
+  className = '',
+  type = 'button',
+  ...rest
+}: ButtonProps) {
   return (
     <button
       {...rest}
+      type={type}
       className={`inline-flex cursor-pointer items-center rounded-[3px] font-medium transition-colors disabled:cursor-not-allowed ${SIZES[size]} ${VARIANTS[variant]} ${className}`}
     />
   )

@@ -54,9 +54,16 @@ export function RecordEditor({
         切换用**仓库既有的控件语汇**：`Button` 的次要档（和「取消」同一档），
         选中那枚用 `aria-pressed` 表示——与过滤面板里那排可点的项同一套语义
         （不用 radio：这里两枚按钮就是「当前是哪一档」，不是一组要提交的值）。
+
+        **`type="button"` 写在这里是有意的**：这两枚只切换视图，不提交。它们住在
+        `<form>` 里，而 HTML 里 `<button>` 的默认 `type` 就是 `submit`——漏写的话
+        点一下会提交整个表单、弹窗直接关掉（用户实测到的那次就是这个）。
+        `components/ui.tsx` 的 `Button` 现在默认也是 `type="button"`，这里是**第二道**：
+        默认值哪天被改回去，这一处仍然是对的。
       */}
       <div role="group" aria-label="记录视图" className="flex justify-end gap-1">
         <Button
+          type="button"
           size="sm"
           aria-pressed={view === 'write'}
           onClick={() => setView('write')}
@@ -66,6 +73,7 @@ export function RecordEditor({
           编辑
         </Button>
         <Button
+          type="button"
           size="sm"
           aria-pressed={view === 'preview'}
           /* 预览面板要能被读屏与键盘找到，所以给它一个 id 让按钮指过去 */

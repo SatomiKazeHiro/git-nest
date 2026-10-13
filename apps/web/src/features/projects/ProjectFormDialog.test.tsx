@@ -499,4 +499,55 @@ describe('记录 · 编辑 / 预览', () => {
     expect(submitted[0]!['record']).not.toContain('<strong>')
     expect(String(submitted[0]!['record'])).toContain('**重点**')
   })
+
+  it('两枚切换按钮的 `type` 是 `button`（不是 HTML 默认的 `submit`）', async () => {
+    mockCreate()
+    renderDialog()
+    await box()
+
+    expect(screen.getByRole('button', { name: /编辑/ }).getAttribute('type')).toBe('button')
+    expect(screen.getByRole('button', { name: /预览/ }).getAttribute('type')).toBe('button')
+  })
+
+  it('点「预览」/「编辑」**不提交、也不关闭弹窗**', async () => {
+    /*
+      用户实测过的那次：按钮住在 `<form>` 里，而 HTML 里 `<button>` 默认是 `submit`，
+      于是点一下「预览」等于提交表单——校验通过就保存并关掉弹窗。
+      所以这里把表单填到**能通过校验**的样子：那样才走到真提交那条路，
+      用例才有意义（不填的话本来就提交不了，绿得没有信息量）。
+    */
+    const submitted = mockCreate()
+    renderDialog()
+
+    const area = await box()
+    fireEvent.change(area, { target: { value: record } })
+    fillRequired()
+
+    fireEvent.click(screen.getByRole('button', { name: /预览/ }))
+    fireEvent.click(screen.getByRole('button', { name: /编辑/ }))
+    // 给「万一真的提交了」留出它跑完的时间，否则这条断言可能是抢在提交之前过的
+    await new Promise((r) => setTimeout(r, 20))
+
+    expect(submitted).toHaveLength(0)
+    expect(useUiStore.getState().formOpen).toBe(true)
+    // 弹窗还在：那两格还能改
+    expect(screen.getByLabelText('名称')).toBeTruthy()
+  })
+
+  it('打开弹窗时焦点落在**第一个字段（名称）**上', async () => {
+    /*
+      查实的结论，不是愿望：`Dialog` 打开时把焦点给「内容区里第一个可聚焦元素」，
+      而表单里可聚焦的次序是 名称 → 本地路径 → 「我自己的」勾选框 → 分类（它现在
+      是一枚 `<button>`，以前是原生 `<select>`）→ 编辑/预览 → 记录 → 新标签。
+      所以焦点是**名称**；分类那一格换成按钮**没有**动到这一条。
+
+      钉住它是为了两件事：以后有人把某个控件换成更早就能聚焦的东西时能看出来；
+      以及「一进弹窗记录就是能编辑的样子」那种观感不要再被误当成焦点问题。
+    */
+    mockCreate()
+    renderDialog()
+
+    const name = await screen.findByLabelText('名称')
+    expect(document.activeElement).toBe(name)
+  })
 })
