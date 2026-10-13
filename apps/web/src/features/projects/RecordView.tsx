@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { MarkdownBody } from '@/features/readme/MarkdownBody'
 
 /**
  * 「记录」：这个项目**唯一**由你写的地方 —— 但这一页只**看**，写是在
@@ -14,6 +14,21 @@ import type { ReactNode } from 'react'
  * 只读就**必须**让链接能点：记录里写的多是「在 B 站看到 → 顺着找到 GitHub」这类句子，
  * 链接不可点等于要手抄。
  *
+ * ## 为什么现在走 Markdown（这**改了已有记录的显示**）
+ *
+ * 原来这里是「纯文本 + 一条正则把 http(s) 变成 `<a>`」，理由是「记录是纯文本」。
+ * 那条理由已经不成立了：**写的那一侧现在带 Markdown 预览**（编辑资料里的
+ * 「编辑 / 预览」切换），于是「记录是纯文本」这句话本身变成假的——用户在预览里
+ * 写 `**粗体**` 看到的是粗体、列表看到的是列表，存下去之后这一页要是还按纯文本
+ * 渲染，那就是**写与看不一致**，而这一页恰恰是「看」的那一侧。
+ *
+ * 所以现在与预览、与 README 共用 `MarkdownBody`（同一个渲染器、同一套 URL 白名单）。
+ *
+ * **代价说清楚**：老记录里如果本来就有 `*`、`#`、`_`、`- ` 这类字符，它们会被当
+ * Markdown 解释（`*x*` 会变成 `<em>`、行首 `- ` 会变成列表）。这是语义变更，不是
+ * 排版微调——一句话里拿 `*` 当星号用，现在会变成斜体。要处理的话是另一件事
+ * （例如转义、或者给记录一个「纯文本」标记），**这里没有顺手做**。
+ *
  * 这里原来挂的是备注列表（N 条、各自时间戳、能逐条改删），那是个「流」，
  * 而人要的是「文档」；摘要与来源链接也一起撤了。
  */
@@ -26,38 +41,10 @@ export function RecordView({ record }: { record: string }) {
       </p>
     )
   }
-  return (
-    // 正文尺寸与颜色：这是**你自己写的话**，是这个项目里唯一不是从 git 读来的
-    // 内容。原来它是 `text-ink-2` 的灰字、还缩在标签列右边一格宽里，读起来像脚注。
-    // 宽度上不再用 max-w-prose 压着——这一栏本来就不宽，压了只剩两三行。
-    <p className="whitespace-pre-wrap text-[13px] leading-6 text-ink [overflow-wrap:anywhere]">
-      {withLinks(record)}
-    </p>
-  )
-}
-
-/**
- * 把正文里的 http(s) 链接变成可点的 `<a>`。
- *
- * 就一个正则，不引 Markdown 解析器：记录是纯文本，唯一需要特殊对待的就是 URL。
- * 用 `split` 而不是 `replace`——带捕获组时，**奇数位正好是匹配到的 URL 本身**，
- * 不用再判断哪一段是链接。（每次新建正则：`/g` 的正则有 `lastIndex` 状态，
- * 复用会漏匹配。）
- */
-function withLinks(text: string): ReactNode[] {
-  return text.split(/(https?:\/\/[^\s<>()]+)/g).map((part, i) =>
-    i % 2 === 1 ? (
-      <a
-        key={i}
-        href={part}
-        target="_blank"
-        rel="noreferrer"
-        className="break-all text-accent hover:underline"
-      >
-        {part}
-      </a>
-    ) : (
-      part
-    ),
-  )
+  /*
+    正文尺寸与颜色：这是**你自己写的话**，是这个项目里唯一不是从 git 读来的内容，
+    所以不加灰、不缩进。字号与行高由 `.readme` 那套负责（与 README、预览同一套，
+    见 `MarkdownBody` 的注释）。
+  */
+  return <MarkdownBody>{record}</MarkdownBody>
 }

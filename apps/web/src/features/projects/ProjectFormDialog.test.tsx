@@ -363,3 +363,140 @@ describe('分类 · 下拉', () => {
     expect(submitted[0]!['category']).toBe('ghost')
   })
 })
+
+/**
+ * 「记录」的**编辑 / 预览**切换。
+ *
+ * 这里守两条：
+ *
+ * 1. 默认是编辑态，切到预览能看见渲染结果、切回来草稿还在；
+ * 2. **提交出去的仍然是 textarea 里那串 Markdown 原文**——预览是只读的一层显示，
+ *    存下去的不是它渲染出来的 HTML。这条走真实 `POST /api/projects` 看请求体，
+ *    只看 DOM 是看不出来的。
+ *
+ * 渲染本身（URL 白名单、raw HTML、GFM）在 `RecordView.test.tsx` 与
+ * `features/readme/ReadmeView.test.tsx` 里；那两处与这里共用同一个 `MarkdownBody`。
+ */
+describe('记录 · 编辑 / 预览', () => {
+  const record = '**重点**：在 https://example.com/a 看到的'
+
+  function mockCreate() {
+    const submitted: Record<string, unknown>[] = []
+    server.use(
+      http.post('/api/projects', async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>
+        submitted.push(body)
+        return HttpResponse.json({
+          project: { id: 1, ...body, tags: [], latestCheck: null, lastAttempt: null },
+        })
+      }),
+      http.get('/api/tags', () => HttpResponse.json({ tags: [] })),
+      http.get('/api/projects', () => HttpResponse.json({ projects: [], total: 0 })),
+    )
+    return submitted
+  }
+
+  /** 记录那个 textarea。它切到预览时只是 `hidden`，节点还在 */
+  async function box() {
+    return (await screen.findByLabelText('记录')) as HTMLTextAreaElement
+  }
+
+  function fillRequired() {
+    fireEvent.change(screen.getByLabelText('名称'), { target: { value: 'canvas-editor' } })
+    fireEvent.change(screen.getByLabelText('本地路径'), {
+      target: { value: 'D:/repos/canvas-editor' },
+    })
+  }
+
+  it('默认是编辑态：看得见 textarea，看不见预览那层 markdown 容器', async () => {
+    mockCreate()
+    renderDialog()
+
+    const area = await box()
+    expect(area.tagName).toBe('TEXTAREA')
+    expect(area.hasAttribute('hidden')).toBe(false)
+    expect(document.querySelector('.readme')).toBeNull()
+    expect(screen.getByRole('button', { name: /编辑/ }).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('点「预览」：渲染 markdown（`**粗体**` → `<strong>`），并过 URL 白名单', async () => {
+    mockCreate()
+    renderDialog()
+
+    const area = await box()
+    fireEvent.change(area, { target: { value: '**重点**' } })
+    fireEvent.click(screen.getByRole('button', { name: /预览/ }))
+
+    const preview = document.querySelector('.readme')!
+    expect(preview.querySelector('strong')?.textContent).toBe('重点')
+    expect(screen.getByRole('button', { name: /预览/ }).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('预览跟着**正在输入**的内容实时走（不用先失焦）', async () => {
+    mockCreate()
+    renderDialog()
+
+    const area = await box()
+    fireEvent.change(area, { target: { value: '第一版' } })
+    fireEvent.click(screen.getByRole('button', { name: /预览/ }))
+    expect(document.querySelector('.readme')?.textContent).toContain('第一版')
+
+    // textarea 在预览态下是隐藏的，但仍然可以继续输入（真实使用里是切回来再写，
+    // 这里直接改值就是在验证「预览读的是同一个受控值」）
+    fireEvent.change(area, { target: { value: '第二版' } })
+    expect(document.querySelector('.readme')?.textContent).toContain('第二版')
+    expect(document.querySelector('.readme')?.textContent).not.toContain('第一版')
+  })
+
+  it('预览里的链接过白名单：`javascript:` 不是链接', async () => {
+    mockCreate()
+    renderDialog()
+
+    const area = await box()
+    fireEvent.change(area, { target: { value: '[点我](javascript:alert(1))' } })
+    fireEvent.click(screen.getByRole('button', { name: /预览/ }))
+
+    const preview = document.querySelector('.readme')!
+    expect(preview.textContent).toContain('点我')
+    expect(preview.querySelector('a')).toBeNull()
+  })
+
+  it('切回「编辑」：textarea 的值还在（切走不是卸载）', async () => {
+    mockCreate()
+    renderDialog()
+
+    const area = await box()
+    fireEvent.change(area, { target: { value: record } })
+    fireEvent.click(screen.getByRole('button', { name: /预览/ }))
+    fireEvent.click(screen.getByRole('button', { name: /编辑/ }))
+
+    const back = await box()
+    expect(back.value).toBe(record)
+    expect(back.hasAttribute('hidden')).toBe(false)
+    expect(document.querySelector('.readme')).toBeNull()
+  })
+
+  it('提交的是**原始 Markdown 文本**，不是渲染出来的 HTML', async () => {
+    /*
+      这条是整件事的关键：预览是只读的一层显示，它**不参与提交**。
+      所以请求体里必须是用户敲进去的那串字符，一个字都不差。
+    */
+    const submitted = mockCreate()
+    renderDialog()
+
+    const area = await box()
+    fireEvent.change(area, { target: { value: record } })
+    // 先切到预览、再切回来，模拟「看了一眼渲染结果再保存」
+    fireEvent.click(screen.getByRole('button', { name: /预览/ }))
+    fireEvent.click(screen.getByRole('button', { name: /编辑/ }))
+
+    fillRequired()
+    fireEvent.click(screen.getByText('添加'))
+
+    await waitFor(() => expect(submitted).toHaveLength(1))
+    expect(submitted[0]!['record']).toBe(record)
+    // 渲染产物一个字符都不该混进请求体
+    expect(submitted[0]!['record']).not.toContain('<strong>')
+    expect(String(submitted[0]!['record'])).toContain('**重点**')
+  })
+})

@@ -1,11 +1,9 @@
 import { useState } from 'react'
-import Markdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { Button, ErrorNote } from '@/components/ui'
 import { ApiError } from '@/lib/api'
 import { formatBytes } from '@/lib/format'
 import { README_FULL_MAX_BYTES } from '@git-nest/core'
-import { readmeUrl } from './urlPolicy'
+import { MarkdownBody } from './MarkdownBody'
 import { useReadme } from './queries'
 
 const reason = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
@@ -14,9 +12,11 @@ const reason = (e: unknown, fallback: string) => (e instanceof ApiError ? e.mess
  * README 的渲染。
  *
  * 两条不变量：
- * 1. **打开它不向外部发任何请求。** 策略全在 `urlTransform` 里（`readmeUrl`），
- *    渲染出来的兜底是「不可点的普通文字 / alt 文字 / 灰底占位」，
- *    而不是留一个点了没反应或加载不出来的元素。
+ * 1. **打开它不向外部发任何请求。** 渲染那一层（`urlTransform` 里那道 `readmeUrl`
+ *    闸门、`skipHtml`、`components` 覆写）现在住在 `MarkdownBody` 里，与「记录」的
+ *    预览、详情页那条只读记录**共用同一份**——这一页只负责取数与分级加载。
+ *    兜底依旧是「不可点的普通文字 / alt 文字 / 灰底占位」，而不是留一个点了没反应
+ *    或加载不出来的元素。
  * 2. **读不出来与没有是两回事**，界面上说的话不一样。
  *
  * **两条查询而不是一条**：首屏那条负责「有没有 / 读没读得出来」，
@@ -58,51 +58,7 @@ export function ReadmeView({ projectId }: { projectId: number }) {
         {data.file} · {formatBytes(bytes)}
       </p>
 
-      <div className="readme">
-        <Markdown
-          remarkPlugins={[remarkGfm]}
-          /*
-            **原始 HTML 一律丢掉。**
-            不装 `rehype-raw` 时 react-markdown 的默认行为是把 raw HTML
-            **渲染成文本**——于是 README 里一个 `<a id="store-install"></a>`
-            这样的锚点会在界面上原样显示成一行尖括号标签（实测踩到过）。
-            `skipHtml` 才是「不渲染」：丢的是标记，不是内容。
-          */
-          skipHtml
-          /*
-            **唯一那个闸门。** 拦下的 URL 变成空串，下面的 components 看到
-            `href === ''` 就渲染成普通文字——不是留一个点了没反应的蓝链接。
-            （图片与链接放行的协议不同，`node.tagName` 就是要区分的那一位。）
-          */
-          urlTransform={(url, _key, node) =>
-            readmeUrl(url, node.tagName === 'img' ? 'image' : 'link')
-          }
-          components={{
-            a: ({ href, children }) =>
-              href ? (
-                <a href={href} target="_blank" rel="noreferrer noopener">
-                  {children}
-                </a>
-              ) : (
-                // 不可点的普通文字：文字还在，只是不再假装能点
-                <span>{children}</span>
-              ),
-            img: ({ src, alt }) => {
-              if (!src) {
-                return alt ? (
-                  <span className="readme-badge">{alt}</span>
-                ) : (
-                  <span className="readme-img-placeholder" aria-hidden />
-                )
-              }
-              // 这里只会是 data:image/*，不联网
-              return <img src={src} alt={alt ?? ''} />
-            },
-          }}
-        >
-          {data.content ?? ''}
-        </Markdown>
-      </div>
+      <MarkdownBody>{data.content ?? ''}</MarkdownBody>
 
       {/*
         渐变只在**真被截断**时出现。40KB 的 README 连渐变都不该有——

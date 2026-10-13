@@ -5,9 +5,10 @@ import { useCategories } from '@/features/categories/queries'
 import { categoryIcon } from '@/features/categories/icons'
 import { categoryLabelOf } from '@/features/categories/label'
 import { ApiError } from '@/lib/api'
-import { Button, ErrorNote, Field, Input, Textarea } from '@/components/ui'
+import { Button, ErrorNote, Field, Input } from '@/components/ui'
 import { Dialog } from '@/components/Dialog'
 import { Select } from '@/components/Select'
+import { RecordEditor } from './RecordEditor'
 import { TagPicker } from './TagPicker'
 import { useCreateProject, useProject, useSetProjectTags, useUpdateProject } from './queries'
 // 标签是独立资源：选标签这个动作读的是 tags feature 的接口，不是项目自己的
@@ -351,15 +352,26 @@ export function ProjectFormDialog() {
           )}
         </Field>
 
-        {/* 记录就在这个弹窗里改 —— **这是它唯一的编辑器**。
-            详情页那个「记录」是只读展示（链接可点），所以不存在
-            「一半在外面、一半在里面」那种边界说不清的情况。 */}
+        {/* 记录就在这个弹窗里改 —— **这是它唯一的编辑器**（详情页那一侧只读），
+            所以不存在「一半在外面、一半在里面」那种边界说不清的情况。
+
+            「编辑 / 预览」的切换与预览本身住在 `RecordEditor` 里：那是这一格的
+            **本地视图状态**，与这个表单的提交无关。提交出去的仍然是 textarea 里那串
+            Markdown **原文**（不是预览渲染出来的 HTML），一个字没变。
+            预览与详情页那条只读记录共用同一个渲染器（`features/readme/MarkdownBody`），
+            所以「写的时候看到的」与「保存后看到的」是同一套解释。 */}
         <Field
           label="记录"
           error={errors['record']}
-          hint="怎么找到这个项目的、有什么想法。链接直接写在句子里。"
+          hint="怎么找到这个项目的、有什么想法。链接直接写在句子里；按 Markdown 写，可以切到「预览」看一眼。"
         >
-          {(id) => <Textarea id={id} rows={8} value={form.record} onChange={set('record')} />}
+          {(id) => (
+            <RecordEditor
+              id={id}
+              value={form.record}
+              onChange={(v) => setForm((f) => ({ ...f, record: v }))}
+            />
+          )}
         </Field>
 
         {/* 标签也只有一个编辑器，就是这个字段。id 传下去，label 才真的关联到输入框。 */}
