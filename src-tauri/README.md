@@ -110,6 +110,37 @@ connect-src 'self' ipc: http://ipc.localhost http://localhost http://127.0.0.1
 
 这件事没有默认答案，所以在这里写明，而不是留在配置里让人猜。
 
+## 数据放在哪：**永远在 exe 旁边**
+
+```
+<exe 所在目录>\git-nest-data\
+  git-nest.db      ← 清单数据库
+  EBWebView\       ← WebView2 的用户数据（Chromium 那套缓存/存储）
+```
+
+- 便携版 = 把整个目录拷走，数据跟着走 ✓
+- 安装版 = **装在哪个目录，数据就在哪个目录** ✓
+- **`GIT_NEST_DATA_DIR`** 是唯一的**显式覆盖**（逃生口），优先级最高
+- **写不进去就大声失败并中止启动** ✗（不再有「悄悄退回 `%LOCALAPPDATA%`」那一档）——
+  报错里会写清想写哪儿、为什么写不了、三条出路（换安装目录 / 设 `GIT_NEST_DATA_DIR` / 用便携版）
+
+**为什么需要一个可写的安装位置**：这条规则意味着 exe 目录必须可写。
+`C:\Program Files\...` 对非提权进程是**只读**的，所以：
+
+| 安装包 | 默认装到哪 | 可写？ |
+|---|---|---|
+| NSIS（`*-setup.exe`） | `%LOCALAPPDATA%\Programs\git-nest\`（`installMode: currentUser`） | ✓ 不需要管理员/UAC |
+| MSI（`*.msi`） | `Program Files`（WiX 不支持每用户，我核过内嵌 schema） | ✗ → 安装向导里**改目录**，或设 `GIT_NEST_DATA_DIR` |
+
+**另一条必须知道的原因**：`WEBVIEW2_USER_DATA_FOLDER` 被设成 `<数据根>\EBWebView`，
+而它**必须在建窗之前**设好（WebView2 在建 environment 的那一刻读它）。
+这台机器上 WebView2 的默认位置（C 盘 `%LOCALAPPDATA%`）**建不起 environment**，
+窗口直接崩在 `WindowsError(0x8000FFFF, "灾难性故障")`——把数据挪到 exe 旁边
+顺带把这个问题一起解决了。实测证据与三组对照见 [`SIDECAR.md`](./SIDECAR.md) 的 3.2 / 3.3。
+
+dev 形态下 exe 在 `src-tauri/target/debug/`，所以数据落在
+`src-tauri/target/debug/git-nest-data/`（`target/` 已在 `.gitignore` 里）。
+
 ## 界面怎么知道 API 在哪（打包形态下唯一挡住「能用」的事）
 
 浏览器里开发时，`/api` 是相对路径、由 vite 代理转到 36379——**代理是 dev server 的功能**。

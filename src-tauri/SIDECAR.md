@@ -117,10 +117,119 @@ v2 的 `resources` 到底支持哪种映射形态——而 (a) 改动面最小�
 | `externalBin` | 可执行文件所在目录 | `<File Name="git-nest-server.exe">`——**去掉** `-<triple>` 后缀 |
 | `resources` | `<resource_dir>` 下**保留** glob 的目录结构 | 原名不动 |
 
-**但 release 二进制在本会话里起不到能跑 `setup` 的那一步**：
-`Failed to setup app: 拒绝访问。 (os error 5)`（`tauri-2.12.3/src/app.rs:1444`）——
-WebView2 建窗口被拒，本会话没有交互式桌面会话。所以「壳真的把 sidecar 拉起来了」
-这一条**仍然没有验到**，见下面的差距清单第 1 条。
+**当初以为是「本会话没有交互式桌面会话」，那个判断是错的** ✗ —— 真正的根因见下一节，
+而且它已经被修掉了，**窗口现在起得来**。
+
+### 3.2 根因与修复：WebView2 的用户数据目录（**实测已解决**）
+
+**谁发现的**：用户问了一句「是不是有数据放在 C 盘、能不能放到 exe 所在目录」，
+一句话点破了绕了半天的 `0x8000FFFF`。
+
+**三组对照（上游跑的）**：
+
+| 组 | WebView2 用户数据目录 | 结果 |
+|---|---|---|
+| ① | 默认（`%LOCALAPPDATA%\dev.git-nest.desktop\EBWebView`，**C 盘**） | `exit=101`，`failed to create webview: WindowsError(0x8000FFFF, "灾难性故障")`（`E_UNEXPECTED`） |
+| ② | `WEBVIEW2_USER_DATA_FOLDER = <exe 目录>\EBWebView`（**D 盘**） | ★ 进程不崩、`msedgewebview2.exe` 子进程起来、exe 旁边真的建出了 `EBWebView/` |
+| ③ | ② + `GIT_NEST_DB` 也放 D 盘 | 同样活着 |
+
+**之前那条「换到 `%TEMP%` 也没用」的结论也是错的** ✗ —— `%TEMP%` 也在 C 盘，
+那次没把「换目录」和「换卷」区分开。所以这不是「换了个目录」，是**换了卷**。
+
+**我在自己会话里复现了**（debug 二进制，`cargo build` 后直接跑）：
+
+```
+启动前数据目录存在? False
+spawned pid=11856
+12 秒后主进程还活着? True
+--- msedgewebview2 子进程数（>0 = webview 真的建起来了）---
+12
+--- 数据目录是否建在 exe 旁边 ---
+EBWebView
+--- EBWebView 里有没有东西 ---
+172
+--- 壳的 stderr ---
+[git-nest] 数据根：D:\Git\personal\git-nest\src-tauri\target\debug\git-nest-data
+[git-nest] WEBVIEW2_USER_DATA_FOLDER = D:\Git\personal\git-nest\src-tauri\target\debug\git-nest-data\EBWebView
+[git-nest] 已建主窗口，并注入 API 基地址 http://127.0.0.1:36379
+[git-nest] dev 形态：服务由 `pnpm dev` 提供（/api 走 vite 代理），壳不拉 sidecar
+```
+
+对照着看：改之前同样的跑法是**立刻** `exit=101` + `Failed to setup app`；
+现在进程活着、12 个 webview 子进程、`EBWebView/` 里落了 172 个文件。
+最后一行也顺带证明**第三行的注入确实执行了**（它在 `build()` 成功之后才打印）。
+
+### 3.3 数据根：**永远在 exe 旁边**（用户定死的规则）
+
+```
+<exe 所在目录>\git-nest-data\
+  git-nest.db      ← 清单数据库（传给 sidecar 的 GIT_NEST_DB）
+  EBWebView\       ← WebView2 的用户数据（WEBVIEW2_USER_DATA_FOLDER）
+```
+
+- **`GIT_NEST_DATA_DIR`** 是唯一的**显式覆盖**（「我知道自己在做什么」的逃生口），优先级最高。
+- **没有「退回系统数据目录」那一档** ✗ —— 早先那版是「exe 目录不可写 → 悄悄退到
+  `%LOCALAPPDATA%`」，**那个行为是错的**：它正是用户要消除的东西（数据跑到用户没指定的
+  地方），而且在这台机器上还会直接把窗口搞死（C 盘那个位置 WebView2 建不起 environment）。
+- **写不进去就大声失败**：说清想写哪儿、为什么写不了、三条出路
+  （换可写的安装目录 / 设 `GIT_NEST_DATA_DIR` / 用便携版），然后中止启动。
+  **绝不悄悄换个地方写。**
+- 判据是**真的写一个文件再删掉**，不是看权限位或 `create_dir_all` 是否成功：
+  目录已存在但只读时 `create_dir_all` 会成功返回，Windows 上「属性里看着可写、实际 ACL 拒绝」
+  很常见（Program Files 就是）。
+- 决定数据根的 `choose_data_root()` 是**纯函数**（不碰文件系统、不读环境变量），
+  所以有 6 条 Rust 单测钉着（`cargo test`）：默认在 exe 旁边 / 显式覆盖优先 /
+  不可写时大声失败且给出三条出路 / 拿不到 exe 目录时给逃生口 / 探测真的会失败（反向验证）。
+
+### 3.4 默认安装位置必须是**可写的**（否则上面那条会变成「装完打不开」）
+
+`C:\Program Files\...` 对非提权进程是只读的 → 数据写不进去 → 按 3.3 那个规则就是启动失败。
+所以安装方式必须跟着改：
+
+**NSIS（`git-nest_0.1.0_x64-setup.exe`）** —— 已配成每用户：
+
+```json
+"bundle": { "windows": { "nsis": { "installMode": "currentUser" } } }
+```
+
+依据是**我们实际用的那个 CLI 版本的内嵌 schema**（`@tauri-apps/cli` 2.12.2 的
+`cli.win32-x64-msvc.node` 里那段 `"NSISInstallerMode"`）——注意**不是**
+`src-tauri/gen/schemas/desktop-schema.json`，那个文件里**根本没有** NSIS/WiX 的类型
+（我 grep 过：没有 `installMode`/`currentUser`/`NsisConfig`）。schema 原文：
+
+```
+"installMode": {
+  "description": "Whether the installation will be for all users or just the current user.",
+  "default": "currentUser",
+  "allOf": [{ "$ref": "#/definitions/NSISInstallerMode" }]
+},
+...
+"NSISInstallerMode": {
+  "description": "Install Modes for the NSIS installer.",
+  "oneOf": [
+    { "enum": ["currentUser"], ... "Install the app by default in a directory that
+       doesn't require Administrator access. Installer metadata will be saved under the HKCU registry path." },
+    { "enum": ["perMachine"], ... },
+    { "enum": ["both"], ... }
+  ]
+}
+```
+
+也就是说 **`currentUser` 本来就是默认值**（我仍然显式写出来：默认值会随版本变，
+写出来才是一份「我们要求它可写」的声明），装到 `%LOCALAPPDATA%\Programs\git-nest\`，
+不需要管理员、不需要 UAC。
+
+**MSI（`git-nest_0.1.0_x64_en-US.msi`）—— 这一支没法做成每用户** ✗。
+我核过内嵌 schema：`WixConfig` 的字段里**没有** `installMode` 或任何 scope 选项
+（字段是 `version`/`upgradeCode`/`language`/`template`/`fragmentPaths`/`items`/
+`componentGroupRefs`/`…Refs`/`enableElevatedUpdateTask`/`bannerPath`/`dialogImagePath`/
+`fipsCompliant`/`additionalProperties`/`localePath` —— `installMode` 只出现在 `NsisConfig` 里）。
+所以 **MSI 是 per-machine、默认装到 `Program Files`**，那种情况下用户必须二选一：
+
+1. **在安装向导里改目标目录**（MSI 允许改）到一个可写的位置；或
+2. **设 `GIT_NEST_DATA_DIR`** 指到一个可写的位置。
+
+**不要**为了 MSI 把数据偷偷挪走 ✗ —— 那会把「数据在哪」变成用户猜不到的事。
 
 ### 4. 壳这一侧已经接好（但**没能**真机验证）
 
@@ -129,7 +238,7 @@ WebView2 建窗口被拒，本会话没有交互式桌面会话。所以「壳�
 - `tauri-plugin-shell = "2"`（v2 用插件，v1 的 allowlist 已不存在）
 - `src/lib.rs` 的 `spawn_api_server()`：只 **release** 拉 sidecar（dev 下前端走 vite
   代理、服务由 `pnpm dev` 提供，壳再拉一个会 EADDRINUSE）；传 `GIT_NEST_PORT`
-  （从 `packages/core` 生成）、`GIT_NEST_DB`（`app_data_dir()/git-nest.db`）、
+  （从 `packages/core` 生成）、`GIT_NEST_DB`（`<数据根>/git-nest.db`，见 3.3）、
   `GIT_NEST_CORS`（按平台的 webview 来源）；排空子进程 stdout/stderr；
   `RunEvent::ExitRequested` 时杀掉子进程。
 - capability 里**没有**声明 shell 权限：拉起 sidecar 用的是 `tauri-plugin-shell` 的
@@ -160,15 +269,12 @@ WebView2 建窗口被拒，本会话没有交互式桌面会话。所以「壳�
 
 ## 还差什么（逐条，别把这部分当已完成）
 
-1. **壳真的把 sidecar 拉起来了吗——仍然没验到** ✗（本轮最实质的缺口）。
-   `tauri build --no-bundle` 过了，落点也对上了（见下），release 二进制也**能启动**，
-   但**它在本会话里起不到能跑 `setup` 的那一步**：直接崩在
-   `Failed to setup app: 拒绝访问。 (os error 5)`
-   （`tauri-2.12.3/src/app.rs:1444`）——这是 **WebView2 建窗口被拒**，
-   属于本会话没有交互式桌面会话的环境限制，不是代码问题。
-   所以 `spawn_api_server()` 在 release 下的整条路径（`resource_dir()` 解析、
-   `current_exe()` 旁边的 exe、`GIT_NEST_CORS`、`app_data_dir()` 落库）**都还没真机跑过**。
-   要真验到，得在一个有桌面会话的机器上跑 `src-tauri/target/release/git-nest.exe`。
+1. **壳真的把 sidecar 拉起来了吗——仍然没验到** ✗（窗口本身现在已经验到了，见 3.2）。
+   `tauri build --no-bundle` 过了、debug 二进制的窗口也起来了（12 个 webview 子进程），
+   但**release 形态下 sidecar 那一整条路径**（`resource_dir()` 解析、
+   `current_exe()` 旁边的 exe、`GIT_NEST_CORS`、数据根落库）**还没真机跑过**：
+   debug 按设计不拉 sidecar。要真验到，得在有桌面会话的机器上跑
+   `src-tauri/target/release/git-nest.exe`（或用装出来的 MSI/NSIS）。
 
    **已经验到的替代证据**（比 `cargo check` 强，比真机弱）：
    - `target/release/git-nest-server.exe` 存在（Tauri 把 `-<triple>` 后缀去掉了，

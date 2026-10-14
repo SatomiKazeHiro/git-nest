@@ -22,6 +22,10 @@ pnpm dev            # 同时起服务端与界面
 
 数据存在 `data/git-nest.db`（本机 SQLite，不进版本库）。
 
+> 桌面壳（`src-tauri/`）打包后数据**不在**这里，而在
+> `<exe 所在目录>/git-nest-data/`（`git-nest.db` + WebView2 的用户数据）。
+> 理由、覆盖方式与安装位置的要求见 [`src-tauri/README.md`](src-tauri/README.md)。
+
 ## 常用脚本
 
 ```bash

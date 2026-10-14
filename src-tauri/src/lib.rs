@@ -34,11 +34,154 @@ mod ports {
     include!(concat!(env!("OUT_DIR"), "/ports.rs"));
 }
 
+// ============================================================================
+// 数据根：应用自己的数据（数据库 + WebView2 的用户数据）放哪
+// ============================================================================
+
+/// 显式覆盖数据根的环境变量。
+const DATA_DIR_ENV: &str = "GIT_NEST_DATA_DIR";
+
+/// 数据根里的子目录名（数据根本身是 exe 旁边的 `git-nest-data/` 或系统的本地数据目录）。
+const DATA_DIR_NAME: &str = "git-nest-data";
+
+/// WebView2 读的环境变量名。设它 = 把 WebView2 的用户数据目录从
+/// `%LOCALAPPDATA%\<identifier>\EBWebView` 挪到我们指定的地方。
+const WEBVIEW2_DATA_ENV: &str = "WEBVIEW2_USER_DATA_FOLDER";
+
+/// **纯决策**：数据根选哪个。不碰文件系统、不读环境变量——所以能被穷举测试。
+///
+/// ## 规则（用户定的，只有一个来源 + 一个显式覆盖）
+///
+/// **数据永远在 exe 旁边**：`<exe 所在目录>\git-nest-data\`。
+/// 便携版 = 把整个目录拷走，数据跟着走；安装版 = 装在哪个目录，数据就在哪个目录。
+/// 这是用户的明确要求：「未来软件是安装到某目录或者使用便携版在某个目录下，
+/// 那么产生的数据就应该和这个 .exe 是一样的（同一）目录中的」。
+///
+/// `GIT_NEST_DATA_DIR` 是**显式覆盖**（「我知道自己在做什么」的逃生口），
+/// 优先级最高。
+///
+/// ## 这里刻意**没有**「退回系统数据目录」那一档
+///
+/// 早先的版本是「exe 目录不可写 → 悄悄退到 `%LOCALAPPDATA%`」。**那个行为是错的**：
+/// 它正是用户要消除的东西——数据跑到用户没指定的地方去（这台机器上还直接导致了
+/// 另一件事：C 盘那个位置 WebView2 建不起 environment，窗口根本起不来）。
+///
+/// 所以现在：**写不进去就是失败**，并且失败必须**大声且可操作**——
+/// 说清想写哪儿、为什么写不了、怎么办（换安装目录 / 设 `GIT_NEST_DATA_DIR`）。
+/// 绝不悄悄换个地方写。
+fn choose_data_root(
+    explicit: Option<PathBuf>,
+    exe_dir: Option<&std::path::Path>,
+    probe: impl FnOnce(&std::path::Path) -> Result<(), String>,
+) -> Result<PathBuf, String> {
+    let (root, decided_by) = match explicit {
+        Some(dir) => (dir, DATA_DIR_ENV),
+        None => {
+            let dir = exe_dir.ok_or_else(|| {
+                "拿不到 exe 所在目录，没法确定数据该放哪。\
+                 可以设 GIT_NEST_DATA_DIR 显式指定一个位置。"
+                    .to_string()
+            })?;
+            (dir.join(DATA_DIR_NAME), "exe 所在目录")
+        }
+    };
+
+    probe(&root).map_err(|reason| {
+        format!(
+            "数据要写到 {}（由 {decided_by} 决定），但那里写不进去：{reason}。\
+             怎么办（任选其一）：① 换一个可写的安装目录（NSIS 安装包默认装到\
+             %LOCALAPPDATA%\\Programs 下，那里可写；MSI 装到 Program Files，那里对普通用户只读）；\
+             ② 设环境变量 {DATA_DIR_ENV} 指到一个可写的位置；\
+             ③ 用便携版，把整个目录放到可写的地方。",
+            root.display()
+        )
+    })?;
+
+    Ok(root)
+}
+
+/// 探测一个目录**真的**能当数据根用：建出来 + 写一个文件再删掉。
+///
+/// 为什么要写一个真文件而不是只看权限位或 `create_dir_all` 是否成功：
+/// - 目录**已经存在但只读**时 `create_dir_all` 会成功返回（它什么都不用做）；
+/// - Windows 上「属性里看着可写、实际 ACL 拒绝」很常见（Program Files 就是）。
+///
+/// 所以判据必须是**真的写进去一次**。
+fn probe_writable_dir(dir: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("建目录失败：{e}"))?;
+    let marker = dir.join(".git-nest-writable");
+    std::fs::write(&marker, b"probe").map_err(|e| format!("写入探测文件失败：{e}"))?;
+    // 删不掉不影响「能写」这个结论（比如被杀软锁住），所以这里不把失败当错误
+    let _ = std::fs::remove_file(&marker);
+    Ok(())
+}
+
+/// **读写环境**：把 `choose_data_root` 需要的现实值取出来，并记日志。
+///
+/// 失败时**大声**：`eprintln!` 一行（`log_line`）说清原因与怎么办。
+/// release 下没有控制台，所以那行看不到——但界面会表现为「起不来 / 连不上后端」，
+/// 而 `SIDECAR.md` 与 `README.md` 里写了这条报错长什么样、怎么解决。
+fn data_root() -> Result<PathBuf, String> {
+    let explicit = std::env::var_os(DATA_DIR_ENV).map(PathBuf::from);
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(std::path::Path::to_path_buf));
+
+    let root = choose_data_root(explicit, exe_dir.as_deref(), probe_writable_dir)?;
+    eprintln!("[git-nest] 数据根：{}", root.display());
+    Ok(root)
+}
+
+/// WebView2 的用户数据目录。**必须在建窗之前**把它设为进程环境变量。
+///
+/// ## 为什么这件事是必须的（实测，不是预防性措施）
+///
+/// 这台机器上 WebView2 的默认用户数据目录在 `%LOCALAPPDATA%`（C 盘），
+/// 而那里的 environment **建不起来**：窗口创建直接失败并 panic
+/// （`failed to create webview: WindowsError(0x8000FFFF, "灾难性故障")`，
+/// 也就是 `E_UNEXPECTED`）。把 `WEBVIEW2_USER_DATA_FOLDER` 指到 D 盘就正常。
+///
+/// 顺带一提：`%TEMP%` 也不行——它也在 C 盘。所以这不是「换了个目录」，
+/// 而是「换了**卷**」，这也是为什么探测必须落在真实路径上。
+///
+/// ## 为什么要用进程级环境变量
+///
+/// WebView2 读这个变量是在**创建 environment 的那一刻**（= 建窗那一刻），
+/// 而它没有别的传参入口。所以：设一次、且在 `create_main_window()` **之前**设。
+/// 这里没有别的取巧方式（不是 Tauri 的 API，是 WebView2 自己的约定）。
+///
+/// 失败**不是致命的**：设不上就退回 WebView2 的默认位置——在能用的机器上一切照旧，
+/// 在这台机器上会复现那个 panic。所以失败要留一行日志，别让人以为是别的原因。
+fn prepare_webview2_data_dir(app: &tauri::AppHandle, root: &std::path::Path) {
+    let dir = root.join("EBWebView");
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        log_line(
+            app,
+            &format!("建 WebView2 数据目录失败（{}）：{e}", dir.display()),
+        );
+        return;
+    }
+    // 这是进程级的环境变量。Rust 2021 里 set_var 是安全函数；
+    // 它唯一的风险是「别的线程正在读环境变量」——而我们此刻还在 setup 的最前面，
+    // 还没有任何自建的线程（WebView2 与 sidecar 都还没起）。
+    std::env::set_var(WEBVIEW2_DATA_ENV, &dir);
+    log_line(
+        app,
+        &format!("{WEBVIEW2_DATA_ENV} = {}", dir.display()),
+    );
+}
+
 /// 拉起 Node 服务子进程。
 ///
 /// 返回 `None` 表示「这次不拉」（dev 形态下走 vite 代理，服务由 pnpm dev 提供），
 /// 让调用方能把「不拉」和「拉了但退出码非零」分开显示，而不是混成一句日志。
-fn spawn_api_server(app: &tauri::AppHandle) -> Option<CommandChild> {
+///
+/// `data_root` 是数据根（exe 旁边的 `git-nest-data\`，或 `GIT_NEST_DATA_DIR`）。
+/// 数据库就落在它里面。
+fn spawn_api_server(
+    app: &tauri::AppHandle,
+    data_root: &std::path::Path,
+) -> Option<CommandChild> {
     // dev 形态：前端跑在 vite 上（`build.devUrl`），`/api` 由 vite 代理打到
     // 36379——那个服务由 `pnpm dev` 提供。这里再拉一个 sidecar 会和它抢端口
     // （EADDRINUSE），所以 dev 下不拉。
@@ -84,24 +227,16 @@ fn spawn_api_server(app: &tauri::AppHandle) -> Option<CommandChild> {
         }
     };
 
-    // 数据库路径：跟着「应用数据目录」走，不跟着安装目录。
+    // 数据库落在**数据根**里（`<exe 目录>/git-nest-data/git-nest.db`，或 GIT_NEST_DATA_DIR 指定的位置）。
     //
-    // 理由：安装目录在 Windows/macOS 上是只读的，而且卸载/升级会把它清掉——
-    // 把用户唯一的那份清单（还有每个仓库的最新状态）放在那里等于随时可能丢。
-    // dev（仓库里跑）沿用的是 apps/server 自己的默认值 `data/git-nest.db`，
-    // 这条只覆盖 release。
+    // 数据根已经在 setup 里探测过可写（不可写就直接中止启动了），所以这里**没有**
+    // 「拿不到就换别处」的分支——那正是用户要消除的行为（数据跑到没指定的地方）。
     //
-    // 换成「跟着仓库走」也是一种选择，但那要求用户把整个代码仓库一起分发，
-    // 对一个装完就能用的软件不成立。
-    let db = match app.path().app_data_dir() {
-        Ok(dir) => Some(dir.join("git-nest.db")),
-        Err(e) => {
-            // 拿不到就用 apps/server 自己的默认值（跟着启动目录走）。
-            // 比「因为拿不到目录就不起服务」好：用户至少能用，只是库的位置不理想。
-            log_line(app, &format!("拿不到应用数据目录（{e}），数据库改用默认路径"));
-            None
-        }
-    };
+    // dev 形态（`cfg!(debug_assertions)`）在上面就早返回了、根本不拉 sidecar，
+    // 所以这里只影响打包形态；dev 下数据库仍走 apps/server 自己的默认值
+    // （仓库里的 `data/git-nest.db`），这一点**刻意不改**：现有开发流程与测试
+    // 都依赖那个位置。
+    let db = data_root.join("git-nest.db");
 
     let mut command = match app.shell().sidecar("git-nest-server") {
         Ok(command) => command,
@@ -118,21 +253,33 @@ fn spawn_api_server(app: &tauri::AppHandle) -> Option<CommandChild> {
         .env("GIT_NEST_PORT", ports::API_PORT.to_string())
         // 打包形态下页面的来源**不是** localhost:36378，所以显式告诉服务端
         // 「这次的合法来源是谁」，不依赖服务端默认值里那份清单。
-        .env("GIT_NEST_CORS", webview_origin());
-    if let Some(db) = db {
-        command = command.env("GIT_NEST_DB", db.to_string_lossy().to_string());
-    }
+        .env("GIT_NEST_CORS", webview_origin())
+        .env("GIT_NEST_DB", db.to_string_lossy().to_string());
 
+    let label = format!(
+        "入口 {}，随包的运行时 {}，数据库 {}",
+        launcher.display(),
+        runtime.display(),
+        db.display()
+    );
+    spawn_sidecar(app, command, &label)
+}
+
+/// 真正 spawn，并把子进程的 stdout/stderr 排空。
+///
+/// 抽出来是因为「拿不到数据根」那条分支也要 spawn（只是不传 `GIT_NEST_DB`），
+/// 排空管道那段逻辑不该写两遍——**管道缓冲区满了之后 Node 会阻塞在写日志上**，
+/// 表现出来是「服务莫名其妙卡住」，少写一份就等于少一个地方会踩这个坑。
+fn spawn_sidecar(
+    app: &tauri::AppHandle,
+    command: tauri_plugin_shell::process::Command,
+    label: &str,
+) -> Option<CommandChild> {
     match command.spawn() {
         Ok((mut events, child)) => {
             log_line(
                 app,
-                &format!(
-                    "已拉起 sidecar（入口 {}，用随包的 {}），API 端口 {}",
-                    launcher.display(),
-                    runtime.display(),
-                    ports::API_PORT
-                ),
+                &format!("已拉起 sidecar（{label}），API 端口 {}", ports::API_PORT),
             );
             // 子进程的 stdout/stderr 必须有人读：管道缓冲区满了之后 Node 会阻塞在写日志上，
             // 表现出来是「服务莫名其妙卡住」。读出来并转发到壳的 stdout。
@@ -308,14 +455,32 @@ pub fn run() {
         // v2 的插件式 shell：sidecar 走它（v1 的 allowlist 在 v2 已经没有了）。
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            // 先建窗口（它负责把 API 地址注入页面），再拉服务。
-            // 这个顺序是刻意的但**不是必须的**：页面里那些请求要等界面挂载之后才发，
-            // 而注入发生在页面加载前，所以两者不会互相等。先建窗口只是让
-            // 「窗口没起来」这种更早的失败更早暴露。
-            let window = create_main_window(app.handle())?;
+            let handle = app.handle();
+
+            // 第一步：定数据根（exe 旁边的 `git-nest-data\`，或 GIT_NEST_DATA_DIR），
+            // 并把 WebView2 的用户数据目录指过去。
+            //
+            // **顺序是硬性的**：`WEBVIEW2_USER_DATA_FOLDER` 必须在
+            // `create_main_window()` **之前**设好——WebView2 是在创建 environment
+            // （= 建窗那一刻）时读它的。放在建窗之后设等于没设。
+            let root = match data_root() {
+                Ok(root) => root,
+                Err(reason) => {
+                    // **大声失败**：不退回别处（那正是用户要消除的行为）。
+                    // 这里 panic 是刻意的——继续跑下去只会得到一个
+                    // 「窗口起来了但什么都没法用」的状态，比直接说清原因更难查。
+                    eprintln!("[git-nest] 无法确定数据目录，启动中止。{reason}");
+                    panic!("无法确定数据目录：{reason}");
+                }
+            };
+            prepare_webview2_data_dir(handle, &root);
+
+            // 第二步：建窗口（它负责把 API 基地址注入页面）。
+            let window = create_main_window(handle)?;
             let _ = window.set_focus();
 
-            let child = spawn_api_server(app.handle());
+            // 第三步：拉服务（release 形态）。数据库落在数据根里。
+            let child = spawn_api_server(handle, &root);
             // 谁拉的谁负责收：把子进程句柄放进状态，退出时统一杀（见下面 RunEvent）。
             // 不这么做的话窗口关了 Node 还在跑，下次启动就是 EADDRINUSE。
             app.manage(ApiServer(Mutex::new(child)));
@@ -346,3 +511,102 @@ pub fn run() {
 /// 而 Tauri 的 `State` 只能给出共享引用。用 `Mutex<Option<_>>` 把「取出并消耗」表达出来，
 /// 而不是去 `clone` 一个句柄（那会把「谁负责杀」这件事变模糊）。
 struct ApiServer(Mutex<Option<CommandChild>>);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    fn decide(
+        explicit: Option<&str>,
+        exe_dir: Option<&str>,
+        writable: bool,
+    ) -> Result<PathBuf, String> {
+        choose_data_root(
+            explicit.map(PathBuf::from),
+            exe_dir.map(Path::new),
+            |_| {
+                if writable {
+                    Ok(())
+                } else {
+                    Err("拒绝访问 (os error 5)".to_string())
+                }
+            },
+        )
+    }
+
+    #[test]
+    fn 默认数据根就是_exe_旁边的_git_nest_data() {
+        let root = decide(None, Some("/exe/dir"), true).unwrap();
+        assert_eq!(root, PathBuf::from("/exe/dir/git-nest-data"));
+    }
+
+    #[test]
+    fn 显式覆盖优先于_exe_目录() {
+        // 即使 exe 目录可写，也听 GIT_NEST_DATA_DIR 的——「有就用，别猜」
+        let root = decide(Some("/custom/data"), Some("/exe/dir"), true).unwrap();
+        assert_eq!(root, PathBuf::from("/custom/data"));
+    }
+
+    #[test]
+    fn exe_目录不可写时大声失败_不退回别处() {
+        // 这一条钉的是**规则本身**：装到 Program Files（只读）时**不许**悄悄换地方写。
+        // 原来那条「退回 %LOCALAPPDATA%」正是用户要消除的行为。
+        let err = decide(None, Some("/exe/dir"), false).unwrap_err();
+        // 用 Path::join 拼期望值，别写字面量：Windows 上是反斜杠，
+        // 第一版写 "/exe/dir/git-nest-data" 就在这里红了
+        let expected = Path::new("/exe/dir").join(DATA_DIR_NAME);
+        assert!(
+            err.contains(&expected.display().to_string()),
+            "要说清想写哪儿（{}）：{err}",
+            expected.display()
+        );
+        assert!(err.contains("os error 5"), "要带上底层原因：{err}");
+        // 三条出路都要给出来，否则用户拿到报错也不知道怎么办
+        assert!(err.contains(DATA_DIR_ENV), "要给出覆盖变量：{err}");
+        assert!(err.contains("安装目录"), "要给出换安装目录这条路：{err}");
+        assert!(err.contains("便携"), "要给出便携版这条路：{err}");
+    }
+
+    #[test]
+    fn 显式覆盖不可写时也不能退回() {
+        let err = decide(Some("/custom/data"), Some("/exe/dir"), false).unwrap_err();
+        assert!(err.contains("/custom/data"), "{err}");
+        // 明确点出是**谁**指定的，免得用户以为是自动选的
+        assert!(err.contains(DATA_DIR_ENV), "{err}");
+    }
+
+    #[test]
+    fn 拿不到_exe_目录时报错并给出逃生口() {
+        let err = decide(None, None, true).unwrap_err();
+        assert!(err.contains(DATA_DIR_ENV), "要给出覆盖变量：{err}");
+    }
+
+    #[test]
+    fn probe_真的会去写文件_而不是只看目录存不存在() {
+        // **刻意不用 `std::env::temp_dir()`**：那在本机（以及这台机器的沙箱里）是 C 盘，
+        // 而写 C 盘会直接 `拒绝访问 (os error 5)`——正好和这个功能要解决的根因同类。
+        // 用 crate 目录（D 盘）下的 target/：cargo 刚在那里建过东西，一定可写，且已被 gitignore。
+        let base = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("probe-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        // 目录不存在 → 它能建出来并写进去。
+        // 断言里带上真实错误：只写 `is_ok()` 时失败信息是空的，查不出原因
+        probe_writable_dir(&base).unwrap_or_else(|e| panic!("探测应当成功，却失败：{e}"));
+        assert!(base.is_dir(), "探测应该把目录建出来");
+        // 探测文件不该留下垃圾
+        assert!(!base.join(".git-nest-writable").exists(), "探测文件应被删掉");
+
+        // 反向验证：探测**真的**会失败，而不是恒真。
+        // 拿一个已经存在的**文件**当目录用 → create_dir_all 必然失败。
+        let file = base.join("not-a-dir");
+        std::fs::write(&file, b"x").unwrap();
+        assert!(
+            probe_writable_dir(&file).is_err(),
+            "对文件路径的探测必须失败，否则这个探测证明不了任何事"
+        );
+
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+}

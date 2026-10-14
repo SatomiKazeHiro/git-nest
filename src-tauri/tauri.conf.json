@@ -28,6 +28,11 @@
     ],
     "resources": [
       "binaries/node-resources/git-nest-server/**/*"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
   }
 }
