@@ -231,6 +231,88 @@ EBWebView
 
 **不要**为了 MSI 把数据偷偷挪走 ✗ —— 那会把「数据在哪」变成用户猜不到的事。
 
+### 3.5 ★ 装出来的 MSI 报「后端没启动」：Node 解析不了 verbatim 路径（**已修，实测通过**）
+
+**现象**：用户装了 MSI，界面报「后端没启动」。从终端跑那次安装出来的 exe，抓到 stderr：
+
+```
+[git-nest] 已拉起 sidecar（入口 \\?\D:\ToolSoftware\git-nest\binaries\node-resources\git-nest-server\index.mjs，
+           随包的运行时 D:\ToolSoftware\git-nest\git-nest-server.exe，
+           数据库 D:\ToolSoftware\git-nest\git-nest-data\git-nest.db），API 端口 36379   ← 拉起是成功的
+[git-nest] Error: EISDIR: illegal operation on a directory, lstat 'D:'
+[git-nest]     at Object.realpathSync (node:fs:2749:25)
+[git-nest]     at resolveMainPath (node:internal/modules/run_main:39:23)
+[git-nest] sidecar 退出，code=Some(1)
+```
+
+**根因**：交给 Node 的入口脚本路径带了 Windows 扩展长度前缀 `\\?\`。
+`resource_dir()` 在 Windows 上可能给出 verbatim 形式；Rust 自己处理它没问题，
+**但 Node 不行**——它把主模块路径解析成了 `D:` → `EISDIR` → **立刻退出** →
+`git-nest.db` 从未被创建 → 界面报「后端没启动」。
+
+**为什么隔离冒烟没抓到** ✗✓（这条教训最值钱）：冒烟用的是**普通路径**
+（自己在 `%TEMP%` 下拼的），而真实安装形态下 `resource_dir()` 给的是 verbatim 形式
+——**冒烟和真实路径恰好差在最要命的那一处**。
+**教训：冒烟必须复刻安装后的「布局 + 路径来源」，不能只复刻文件内容。**
+
+**改法**：`strip_verbatim_prefix()`（纯函数，大小写不敏感，UNC 也认）：
+
+| 输入 | 输出 |
+|---|---|
+| `\\?\D:\x` | `D:\x` |
+| `\\?\UNC\server\share\x` | `\\server\share\x` |
+| `\\?\unc\…` / `//?/D:/x` | 同样剥掉（大小写与分隔符都认） |
+| 没有前缀 | 原样不动（非 Windows 上 `/` 是合法分隔符，不能改写） |
+
+**一处收口**：所有跨进程边界的路径都走 `path_for_child()` —— **入口脚本**（事故就是它）、
+`GIT_NEST_DB`、以及 `GIT_NEST_DATA_DIR` 的取值。事故日志里 `GIT_NEST_DB` 恰好是干净的，
+但那是运气不是保证，所以一起收掉。
+
+**日志（`tauri-plugin-log`）**：`log_line` 之前只是 `eprintln!`，双击启动时**没有任何线索**
+（这次事故的 `Error: EISDIR…` 是 Node 打的，只有从终端跑才看得到）。现在两个 target：
+
+- `Stderr`（dev / 终端里照样看得到）；
+- `Folder { path: <数据根>\logs, file_name: "git-nest" }` → `<数据根>\logs\git-nest.log`
+  （**跟着数据走**：便携版整个目录拷走，日志一起走）。
+
+sidecar 的 stdout/stderr 也转发进这个日志（所以 Node 的报错也会落盘）。
+数据根定不下来时日志插件还没注册，那一刻走 `panic_on_no_data_root()`：
+stderr + 尽力写一份 `git-nest-startup-error.log`（exe 旁边，再试 `%TEMP%`）。
+
+**实测（安装后布局，本机 release 二进制，终端里跑）**
+
+按安装后的形状在 `D:\Temp\git-nest-e2e\` 拼了一份（**仓库外**，测完删掉）：
+`git-nest.exe` + `git-nest-server.exe` + `binaries\node-resources\git-nest-server\**`
+（**没有**第二份 `node.exe` —— 运行时就是 `git-nest-server.exe` 那一支）。
+
+```
+启动前：数据目录存在? False
+主进程还活着? True
+=== sidecar 进程 ===  git-nest-server  Id=23172
+=== <exe 目录>\git-nest-data\ 内容 ===
+EBWebView   logs   git-nest.db   git-nest.db-shm   git-nest.db-wal
+=== GET /api/projects ===  HTTP 200  {"projects":[],"total":0}
+
+[INFO] 数据根：D:\Temp\git-nest-e2e\git-nest-data
+[INFO] WEBVIEW2_USER_DATA_FOLDER = D:\Temp\git-nest-e2e\git-nest-data\EBWebView
+[INFO] 已建主窗口，并注入 API 基地址 http://127.0.0.1:36379
+[INFO] 已拉起 sidecar（入口 D:\Temp\git-nest-e2e\binaries\node-resources\git-nest-server\index.mjs，…，数据库 D:\Temp\git-nest-e2e\git-nest-data\git-nest.db），API 端口 36379
+[INFO] {"msg":"Server listening at http://127.0.0.1:36379"}
+[INFO] {"msg":"数据库：D:\\Temp\\git-nest-e2e\\git-nest-data\\git-nest.db"}
+[INFO] {"reqId":"req-1","req":{"method":"GET","url":"/api/projects"},"msg":"incoming request"}
+[INFO] {"reqId":"req-1","res":{"statusCode":200},"msg":"request completed"}
+```
+
+- `git-nest.db` 出现在 `<exe 目录>\git-nest-data\` ✓
+- `GET /api/projects` = **HTTP 200** ✓
+- **没有 `EISDIR`** ✓
+- 日志落盘 `<数据根>\logs\git-nest.log`（应用退出后 1657 字节，最后一行是「退出：正在关掉 sidecar」）✓
+- 关窗后 sidecar 被一起收掉 ✓（`RunEvent::ExitRequested` 的 kill 生效）
+
+**另外单独压了一次 verbatim 前缀**（把 `GIT_NEST_DATA_DIR` 故意设成 `\\?\D:\…`）：
+日志里显示的是**剥掉前缀后**的路径，服务起来了、`GET /api/projects` 仍是 **HTTP 200**、
+**没有 EISDIR** ✓ —— 这次修的那个点真的被覆盖到了，不是只靠推断。
+
 ### 4. 壳这一侧已经接好（但**没能**真机验证）
 
 - `tauri.conf.json`：`bundle.externalBin: ["binaries/git-nest-server"]` +
@@ -269,23 +351,18 @@ EBWebView
 
 ## 还差什么（逐条，别把这部分当已完成）
 
-1. **壳真的把 sidecar 拉起来了吗——仍然没验到** ✗（窗口本身现在已经验到了，见 3.2）。
-   `tauri build --no-bundle` 过了、debug 二进制的窗口也起来了（12 个 webview 子进程），
-   但**release 形态下 sidecar 那一整条路径**（`resource_dir()` 解析、
-   `current_exe()` 旁边的 exe、`GIT_NEST_CORS`、数据根落库）**还没真机跑过**：
-   debug 按设计不拉 sidecar。要真验到，得在有桌面会话的机器上跑
-   `src-tauri/target/release/git-nest.exe`（或用装出来的 MSI/NSIS）。
-
-   **已经验到的替代证据**（比 `cargo check` 强，比真机弱）：
-   - `target/release/git-nest-server.exe` 存在（Tauri 把 `-<triple>` 后缀去掉了，
-     与 `sidecar_exe_name()` 拼的名字一致 ✓）；
-   - 资源落点以 **WiX 清单**为准（`target/release/wix/x64/main.wxs`）：
-     `<resource_dir>/binaries/node-resources/git-nest-server/{index.mjs,run.cjs,README.txt,node_modules/}`
-     ——与其路径形态**逐字对上**（见上面 3.1；这一条最初写错过，已修）。
-2. ~~**前端还不知道 API 在哪**~~ → **已做**（见第 3 节；`apps/web/src/lib/api.ts` 的
+1. ~~**壳真的把 sidecar 拉起来了吗**~~ → **已验到** ✓（见 3.5）：release 二进制 +
+   安装后布局（`D:\Temp\git-nest-e2e\`，仓库外），sidecar 起来了、`git-nest.db` 落在
+   `<exe 目录>\git-nest-data\`、`GET /api/projects` = **HTTP 200**、无 `EISDIR`、
+   日志落盘、关窗后 sidecar 被收掉。
+   **仍然没验的**是「真装一次 MSI/NSIS 再跑」这一步：本机装不了（需要交互式安装 + UAC），
+   我验的是**与安装后完全相同的目录布局与路径来源**（这正是 3.5 那条教训要求的）。
+2. ~~**前端还不知道 API 在哪**~~ → **已做**（见第 5 节；`apps/web/src/lib/api.ts` 的
    `apiUrl()` 收口 + 壳的 `initialization_script` 注入）。
-   仍然**没能在打包形态下真机验到**：只能用单测证明「注入后 fetch 与 EventSource 都打到
-   注入地址」，而「壳真的把那个全局量写进了页面」这一步要等有桌面会话的机器。
+   单测覆盖「注入后 fetch 与 EventSource 都打到注入地址」；日志里
+   「已建主窗口，并注入 API 基地址」证明注入那一步执行了——
+   但**「页面里真的读到了那个全局量」**要人眼看 webview（唯一剩下的一格：
+   装出来后 devtools 里 `globalThis.__GIT_NEST_API_BASE__`），我这一格验不了。
 3. **Node 运行时的分发方式只是权宜**：现在是复制**构建机的** `node.exe`（约 80 MB），
    所以产物与构建机同平台，也没有版本校验。出安装包那一轮应换成官方的平台分发包
    （按 target triple 取），并核对 Node 版本（产物 `target: node22`，跟

@@ -26,3 +26,11 @@ tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Tauri v2 的日志插件：写 stderr + 数据根下的 logs/git-nest.log。
+# 为什么需要它：Windows 的 release 没有控制台，资源管理器里双击启动时，
+# 之前只有 eprintln! 的那几行（「已拉起 sidecar」/「sidecar 退出 code=1」）会全部丢掉
+# ——真实的 EISDIR 事故就是这么被藏了一整轮的（那两行还是 Node 打出来的，
+# 现在 sidecar 的 stdout/stderr 也会转发进这份日志）。
+tauri-plugin-log = "2"
+# 壳自己的日志门面（log_line 走它）。范围写小，跟别的依赖保持一致。
+log = "0.4"

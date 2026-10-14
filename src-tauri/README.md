@@ -116,13 +116,27 @@ connect-src 'self' ipc: http://ipc.localhost http://localhost http://127.0.0.1
 <exe 所在目录>\git-nest-data\
   git-nest.db      ← 清单数据库
   EBWebView\       ← WebView2 的用户数据（Chromium 那套缓存/存储）
+  logs\
+    git-nest.log   ← 壳与 sidecar 的日志（见下）
 ```
 
 - 便携版 = 把整个目录拷走，数据跟着走 ✓
 - 安装版 = **装在哪个目录，数据就在哪个目录** ✓
 - **`GIT_NEST_DATA_DIR`** 是唯一的**显式覆盖**（逃生口），优先级最高
 - **写不进去就大声失败并中止启动** ✗（不再有「悄悄退回 `%LOCALAPPDATA%`」那一档）——
-  报错里会写清想写哪儿、为什么写不了、三条出路（换安装目录 / 设 `GIT_NEST_DATA_DIR` / 用便携版）
+  报错里会写清想写哪儿、为什么写不了、三条出路（换安装目录 / 设 `GIT_NEST_DATA_DIR` / 用便携版）；
+  那一刻日志系统还没起来，所以它同时会尽力落一份
+  `<exe 目录>\git-nest-startup-error.log`（写不成再试 `%TEMP%`）
+
+### 出问题时先看日志
+
+`<数据根>\logs\git-nest.log`。**用户在资源管理器里双击启动时没有控制台**，
+这份文件是唯一的线索来源；它同时收壳自己的消息和 **sidecar（Node）的 stdout/stderr**。
+
+这条是付过代价的：装了 MSI 之后界面报「后端没启动」，而真正说明原因的那几行
+（`Error: EISDIR: illegal operation on a directory, lstat 'D:'`）是 **Node** 打出来的
+——当时壳只会 `eprintln!`，双击启动就等于什么都没有，只有从终端跑才看得见。
+现在两处都写进这个文件。
 
 **为什么需要一个可写的安装位置**：这条规则意味着 exe 目录必须可写。
 `C:\Program Files\...` 对非提权进程是**只读**的，所以：

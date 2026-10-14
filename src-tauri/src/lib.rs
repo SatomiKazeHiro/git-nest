@@ -116,20 +116,87 @@ fn probe_writable_dir(dir: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
-/// **读写环境**：把 `choose_data_root` 需要的现实值取出来，并记日志。
+// ============================================================================
+// 交给 Node 的路径：必须剥掉 Windows 的扩展长度前缀
+// ============================================================================
+
+/// 把 Windows 的 verbatim（扩展长度）前缀剥掉，得到一个普通路径字符串。
 ///
-/// 失败时**大声**：`eprintln!` 一行（`log_line`）说清原因与怎么办。
-/// release 下没有控制台，所以那行看不到——但界面会表现为「起不来 / 连不上后端」，
-/// 而 `SIDECAR.md` 与 `README.md` 里写了这条报错长什么样、怎么解决。
+/// ## 为什么必须有这个函数（实测踩过）
+///
+/// `resource_dir()` 在 Windows 上可能给出 `\\?\D:\...` 这种 verbatim 形式
+/// （`\\?\` 前缀让 Win32 API 绕过 MAX_PATH 与路径规范化）。Rust 自己处理它没问题，
+/// **但 Node 不行**：把它当「主模块」解析时（`node:internal/modules/run_main` 的
+/// `resolveMainPath` → `fs.realpathSync`）会把它拆成 `D:`，于是：
+///
+/// ```text
+/// Error: EISDIR: illegal operation on a directory, lstat 'D:'
+///     at Object.realpathSync (node:fs:2749:25)
+/// sidecar 退出，code=Some(1)
+/// ```
+///
+/// 后果是**装出来的应用界面永远显示「后端没启动」**，而 `git-nest.db` 从未被创建
+/// ——因为服务进程一启动就死了。
+///
+/// ## 为什么冒烟没抓到
+///
+/// 隔离冒烟用的是**普通路径**（`%TEMP%` 下自己拼的），而真实安装形态下
+/// `resource_dir()` 给的是 verbatim 形式——**两者恰好差在最要命的那一处**。
+/// 教训：冒烟必须复刻**安装后的布局与路径来源**，不能只复刻文件内容。
+///
+/// 映射规则（两处都要认，UNC 那个不能漏）：
+/// - `\\?\D:\x` → `D:\x`
+/// - `\\?\UNC\server\share\x` → `\\server\share\x`
+/// - 没有前缀 → 原样返回
+///
+/// 前缀判定**大小写不敏感**：Windows 路径不区分大小写，`\\?\` 也可能被写成 `\\?\`
+/// 之外的形态（比如 `//?/`），所以统一先把 `/` 也当分隔符看待。
+fn strip_verbatim_prefix(path: &str) -> String {
+    // 同时认 `/` 与 `\`：Windows 上两者都能当分隔符
+    let normalized_seps = path.replace('/', "\\");
+    let lower = normalized_seps.to_ascii_lowercase();
+
+    const VERBATIM: &str = "\\\\?\\";
+    if !lower.starts_with(VERBATIM) {
+        // 没有前缀就原样返回**原字符串**（不做分隔符替换：非 Windows 上
+        // `/` 是合法分隔符，替换会改坏它）
+        return path.to_string();
+    }
+
+    let rest = &normalized_seps[VERBATIM.len()..];
+    // UNC：`\\?\UNC\server\share` 去掉 `UNC\` 再补回两个反斜杠
+    const UNC: &str = "UNC\\";
+    if rest.len() >= UNC.len() && rest[..UNC.len()].eq_ignore_ascii_case(UNC) {
+        return format!("\\\\{}", &rest[UNC.len()..]);
+    }
+    rest.to_string()
+}
+
+/// 交给子进程（Node）用的路径字符串：剥掉 verbatim 前缀。
+///
+/// 所有要跨进程边界的路径都必须走它——**入口脚本**（那次事故就是它）、
+/// `GIT_NEST_DB`、子进程的工作目录。日志里那次 `GIT_NEST_DB` 恰好是干净的，
+/// 但那是运气，不是保证：同一个 `resource_dir()`/`app_data_dir()` 出来的东西
+/// 随时可能带上前缀。**一处收口，别到处各剥一次。**
+fn path_for_child(path: &std::path::Path) -> String {
+    strip_verbatim_prefix(&path.to_string_lossy())
+}
+
+/// **读写环境**：把 `choose_data_root` 需要的现实值取出来。
+///
+/// 失败时把原因**返回**给调用方（由它决定怎么大声说出来）；成功时也交给调用方
+/// 去记日志——因为日志系统本身要等数据根定下来才能配置（日志文件就写在数据根里）。
 fn data_root() -> Result<PathBuf, String> {
-    let explicit = std::env::var_os(DATA_DIR_ENV).map(PathBuf::from);
+    let explicit = std::env::var_os(DATA_DIR_ENV)
+        .map(PathBuf::from)
+        // 覆盖值也可能是 verbatim 形式（用户从别处复制来的路径），同样规范化：
+        // 这个路径会一路传到 Node 的 GIT_NEST_DB
+        .map(|p| PathBuf::from(strip_verbatim_prefix(&p.to_string_lossy())));
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(std::path::Path::to_path_buf));
 
-    let root = choose_data_root(explicit, exe_dir.as_deref(), probe_writable_dir)?;
-    eprintln!("[git-nest] 数据根：{}", root.display());
-    Ok(root)
+    choose_data_root(explicit, exe_dir.as_deref(), probe_writable_dir)
 }
 
 /// WebView2 的用户数据目录。**必须在建窗之前**把它设为进程环境变量。
@@ -152,23 +219,20 @@ fn data_root() -> Result<PathBuf, String> {
 ///
 /// 失败**不是致命的**：设不上就退回 WebView2 的默认位置——在能用的机器上一切照旧，
 /// 在这台机器上会复现那个 panic。所以失败要留一行日志，别让人以为是别的原因。
-fn prepare_webview2_data_dir(app: &tauri::AppHandle, root: &std::path::Path) {
+fn prepare_webview2_data_dir(root: &std::path::Path) {
     let dir = root.join("EBWebView");
     if let Err(e) = std::fs::create_dir_all(&dir) {
-        log_line(
-            app,
-            &format!("建 WebView2 数据目录失败（{}）：{e}", dir.display()),
-        );
+        log_line(&format!(
+            "建 WebView2 数据目录失败（{}）：{e}",
+            dir.display()
+        ));
         return;
     }
     // 这是进程级的环境变量。Rust 2021 里 set_var 是安全函数；
     // 它唯一的风险是「别的线程正在读环境变量」——而我们此刻还在 setup 的最前面，
     // 还没有任何自建的线程（WebView2 与 sidecar 都还没起）。
     std::env::set_var(WEBVIEW2_DATA_ENV, &dir);
-    log_line(
-        app,
-        &format!("{WEBVIEW2_DATA_ENV} = {}", dir.display()),
-    );
+    log_line(&format!("{WEBVIEW2_DATA_ENV} = {}", dir.display()));
 }
 
 /// 拉起 Node 服务子进程。
@@ -188,15 +252,12 @@ fn spawn_api_server(
     //
     // release 形态：前端是打包进二进制的静态文件，没有 vite 代理，服务必须由壳自己起。
     if cfg!(debug_assertions) {
-        log_line(app, "dev 形态：服务由 `pnpm dev` 提供（/api 走 vite 代理），壳不拉 sidecar");
+        log_line("dev 形态：服务由 `pnpm dev` 提供（/api 走 vite 代理），壳不拉 sidecar");
         return None;
     }
 
     let Some(launcher) = launcher_path(app) else {
-        log_line(
-            app,
-            "没找到 sidecar 启动脚本——多半是打包时漏了 bundle.resources，服务不会起来",
-        );
+        log_line("没找到 sidecar 启动脚本——多半是打包时漏了 bundle.resources，服务不会起来");
         return None;
     };
     /*
@@ -215,14 +276,14 @@ fn spawn_api_server(
     let runtime = match runtime {
         Some(path) if path.exists() => path,
         Some(path) => {
-            log_line(
-                app,
-                &format!("随包的 Node 运行时不在（{}），服务不会起来", path.display()),
-            );
+            log_line(&format!(
+                "随包的 Node 运行时不在（{}），服务不会起来",
+                path.display()
+            ));
             return None;
         }
         None => {
-            log_line(app, "拿不到可执行文件所在目录，服务不会起来");
+            log_line("拿不到可执行文件所在目录，服务不会起来");
             return None;
         }
     };
@@ -241,7 +302,7 @@ fn spawn_api_server(
     let mut command = match app.shell().sidecar("git-nest-server") {
         Ok(command) => command,
         Err(e) => {
-            log_line(app, &format!("sidecar 命令构造失败：{e}"));
+            log_line(&format!("sidecar 命令构造失败：{e}"));
             return None;
         }
     };
@@ -249,51 +310,58 @@ fn spawn_api_server(
         // 第一个参数是「入口脚本」，它和 node 一起构成这次 sidecar 的启动。
         // Tauri 把 externalBin 那支 exe 复制到目标目录、把资源解到资源目录，
         // 所以脚本路径由 resources 的解析结果给，不能写死相对路径。
-        .args([launcher.to_string_lossy().to_string()])
+        //
+        // **必须走 `path_for_child()`**：这条路径在 Windows 上可能是 verbatim
+        // （`\\?\D:\…`）形式，而 Node 解析不了它 —— 实测报
+        // `EISDIR: illegal operation on a directory, lstat 'D:'` 并立刻退出，
+        // 界面表现为「后端没启动」。详细来龙去脉见 `strip_verbatim_prefix` 的注释。
+        .args([path_for_child(&launcher)])
         .env("GIT_NEST_PORT", ports::API_PORT.to_string())
         // 打包形态下页面的来源**不是** localhost:36378，所以显式告诉服务端
         // 「这次的合法来源是谁」，不依赖服务端默认值里那份清单。
         .env("GIT_NEST_CORS", webview_origin())
-        .env("GIT_NEST_DB", db.to_string_lossy().to_string());
+        // 同理：凡是跨进程的路径都规范化，别指望「恰好是干净的」
+        .env("GIT_NEST_DB", path_for_child(&db));
 
     let label = format!(
         "入口 {}，随包的运行时 {}，数据库 {}",
-        launcher.display(),
+        path_for_child(&launcher),
         runtime.display(),
         db.display()
     );
-    spawn_sidecar(app, command, &label)
+    spawn_sidecar(command, &label)
 }
 
-/// 真正 spawn，并把子进程的 stdout/stderr 排空。
+/// 真正 spawn，并把子进程的 stdout/stderr 排空后**转发进壳自己的日志**。
 ///
-/// 抽出来是因为「拿不到数据根」那条分支也要 spawn（只是不传 `GIT_NEST_DB`），
-/// 排空管道那段逻辑不该写两遍——**管道缓冲区满了之后 Node 会阻塞在写日志上**，
-/// 表现出来是「服务莫名其妙卡住」，少写一份就等于少一个地方会踩这个坑。
+/// 为什么单独一个函数：排空管道这段逻辑**不能省**——管道缓冲区满了之后 Node 会
+/// 阻塞在写日志上，表现出来是「服务莫名其妙卡住」。而且它必须把内容转发到
+/// `log_line`（于是落进 `<数据根>\logs\git-nest.log`）：真实的 `EISDIR` 事故里，
+/// 那两行报错是 **Node** 打出来的，只有靠这条转发才能在双击启动、没有控制台的情况下留痕。
 fn spawn_sidecar(
-    app: &tauri::AppHandle,
     command: tauri_plugin_shell::process::Command,
     label: &str,
 ) -> Option<CommandChild> {
     match command.spawn() {
         Ok((mut events, child)) => {
-            log_line(
-                app,
-                &format!("已拉起 sidecar（{label}），API 端口 {}", ports::API_PORT),
-            );
+            log_line(&format!(
+                "已拉起 sidecar（{label}），API 端口 {}",
+                ports::API_PORT
+            ));
             // 子进程的 stdout/stderr 必须有人读：管道缓冲区满了之后 Node 会阻塞在写日志上，
-            // 表现出来是「服务莫名其妙卡住」。读出来并转发到壳的 stdout。
-            let log_target = app.clone();
+            // 表现出来是「服务莫名其妙卡住」。读出来并写进壳自己的日志
+            // （于是 sidecar 的报错也会落进 `<数据根>\logs\git-nest.log`——
+            //  真实的 EISDIR 事故里，`Error: EISDIR…` 那两行是 Node 打出来的，
+            //  正是靠这条转发才留得下来）。
             tauri::async_runtime::spawn(async move {
                 while let Some(event) = events.recv().await {
                     match event {
                         CommandEvent::Stdout(bytes) | CommandEvent::Stderr(bytes) => {
-                            log_line(&log_target, String::from_utf8_lossy(&bytes).trim_end())
+                            log_line(String::from_utf8_lossy(&bytes).trim_end())
                         }
-                        CommandEvent::Terminated(payload) => log_line(
-                            &log_target,
-                            &format!("sidecar 退出，code={:?}", payload.code),
-                        ),
+                        CommandEvent::Terminated(payload) => {
+                            log_line(&format!("sidecar 退出，code={:?}", payload.code))
+                        }
                         _ => {}
                     }
                 }
@@ -301,7 +369,7 @@ fn spawn_sidecar(
             Some(child)
         }
         Err(e) => {
-            log_line(app, &format!("拉起 sidecar 失败：{e}"));
+            log_line(&format!("拉起 sidecar 失败：{e}"));
             None
         }
     }
@@ -425,13 +493,10 @@ fn create_main_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWin
         .initialization_script(init_script)
         .build()?;
 
-    log_line(
-        app,
-        &format!(
-            "已建主窗口，并注入 API 基地址 http://127.0.0.1:{}",
-            ports::API_PORT
-        ),
-    );
+    log_line(&format!(
+        "已建主窗口，并注入 API 基地址 http://127.0.0.1:{}",
+        ports::API_PORT
+    ));
     Ok(window)
 }
 
@@ -441,50 +506,78 @@ const API_BASE_GLOBAL: &str = "__GIT_NEST_API_BASE__";
 
 /// 壳的日志。
 ///
-/// 为什么是 `eprintln!` 而不是什么日志系统：Tauri v2 **没有** `app.log(...)`
-/// 这个方法（那是 `tauri-plugin-log` 插件的事，而它为这几行诊断再加一个依赖不划算）。
-/// `eprintln!` 走 stderr：dev 下直接出现在终端里（最需要看的时候能看见）；
-/// release 下没有控制台（`windows_subsystem = "windows"`）所以看不到，但那几条
-/// 都是启动诊断——失败时用户看到的是界面上的「连不上后端」，信息并不丢。
-fn log_line(_app: &tauri::AppHandle, message: &str) {
-    eprintln!("[git-nest] {message}");
+/// 走 `log` crate → `tauri-plugin-log`（见 `run()` 里的注册）：
+/// **stderr** 一份（dev / 终端里直接看得到）+ **数据根下 `logs/git-nest.log`** 一份。
+///
+/// 为什么文件那一份是必须的：用户在资源管理器里双击启动时**没有控制台**，
+/// 而 `log_line` 之前是 `eprintln!`（没有插件）——于是「已拉起 sidecar /
+/// 没找到启动脚本 / sidecar 退出 code=1」这些关键线索全部丢掉。
+/// 真实的 `EISDIR` 事故就是这么被藏了一整轮的：装了 MSI、界面报「后端没启动」，
+/// 而唯一能说明原因的那几行只存在于「从终端跑」的那次。
+fn log_line(message: &str) {
+    log::info!("{message}");
 }
 
+/// 日志文件的目录名（在数据根下）。**跟着数据走**：便携版整个目录拷走，日志也一起走。
+const LOG_DIR_NAME: &str = "logs";
+/// 日志文件名（不含扩展名；插件自己补 `.log`）。
+const LOG_FILE_NAME: &str = "git-nest";
+
 pub fn run() {
+    // ---- 第一步（在建 app、建窗之前）：定数据根，并把 WebView2 与日志都指过去 ----
+    //
+    // 为什么这么早：
+    // - `WEBVIEW2_USER_DATA_FOLDER` 必须在**创建 webview**（建窗那一刻）之前设好；
+    // - 日志文件要写在数据根里，所以日志插件的 `targets` 也得等数据根定下来才能配；
+    // - 两者都必须在 `tauri::Builder` 之前算出来，因为插件是构建期注册的。
+    //
+    // 这一步失败就**大声中止**（不退回别处——数据跑到用户没指定的地方正是要消除的行为）。
+    // 此时日志系统还没起来，所以这里只能走 stderr；而 Windows release 没有控制台，
+    // 于是**同时**用一个最小文件落盘兜底（见 `panic_on_no_data_root`）。
+    let root = match data_root() {
+        Ok(root) => root,
+        Err(reason) => panic_on_no_data_root(&reason),
+    };
+
     let app = tauri::Builder::default()
+        // 日志：stderr（dev / 终端里直接看得到）+ 数据根下的文件。
+        // **文件那一份是必须的**：用户在资源管理器里双击启动时没有控制台，
+        // 没有它「已拉起 sidecar / sidecar 退出 code=1」这类关键线索会全部丢掉
+        // （真实的 EISDIR 事故就是这么被藏了一整轮的）。
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .targets([
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stderr),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Folder {
+                        path: root.join(LOG_DIR_NAME),
+                        file_name: Some(LOG_FILE_NAME.to_string()),
+                    }),
+                ])
+                .build(),
+        )
         // v2 的插件式 shell：sidecar 走它（v1 的 allowlist 在 v2 已经没有了）。
         .plugin(tauri_plugin_shell::init())
-        .setup(|app| {
-            let handle = app.handle();
+        .setup({
+            let root = root.clone();
+            move |app| {
+                let handle = app.handle();
+                log::info!("数据根：{}", path_for_child(&root));
 
-            // 第一步：定数据根（exe 旁边的 `git-nest-data\`，或 GIT_NEST_DATA_DIR），
-            // 并把 WebView2 的用户数据目录指过去。
-            //
-            // **顺序是硬性的**：`WEBVIEW2_USER_DATA_FOLDER` 必须在
-            // `create_main_window()` **之前**设好——WebView2 是在创建 environment
-            // （= 建窗那一刻）时读它的。放在建窗之后设等于没设。
-            let root = match data_root() {
-                Ok(root) => root,
-                Err(reason) => {
-                    // **大声失败**：不退回别处（那正是用户要消除的行为）。
-                    // 这里 panic 是刻意的——继续跑下去只会得到一个
-                    // 「窗口起来了但什么都没法用」的状态，比直接说清原因更难查。
-                    eprintln!("[git-nest] 无法确定数据目录，启动中止。{reason}");
-                    panic!("无法确定数据目录：{reason}");
-                }
-            };
-            prepare_webview2_data_dir(handle, &root);
+                // WebView2 的用户数据目录指到数据根下（必须在建窗之前）。
+                prepare_webview2_data_dir(&root);
 
-            // 第二步：建窗口（它负责把 API 基地址注入页面）。
-            let window = create_main_window(handle)?;
-            let _ = window.set_focus();
+                // 第二步：建窗口（它负责把 API 基地址注入页面）。
+                let window = create_main_window(handle)?;
+                let _ = window.set_focus();
 
-            // 第三步：拉服务（release 形态）。数据库落在数据根里。
-            let child = spawn_api_server(handle, &root);
-            // 谁拉的谁负责收：把子进程句柄放进状态，退出时统一杀（见下面 RunEvent）。
-            // 不这么做的话窗口关了 Node 还在跑，下次启动就是 EADDRINUSE。
-            app.manage(ApiServer(Mutex::new(child)));
-            Ok(())
+                // 第三步：拉服务（release 形态）。数据库落在数据根里。
+                let child = spawn_api_server(handle, &root);
+                // 谁拉的谁负责收：把子进程句柄放进状态，退出时统一杀（见下面 RunEvent）。
+                // 不这么做的话窗口关了 Node 还在跑，下次启动就是 EADDRINUSE。
+                app.manage(ApiServer(Mutex::new(child)));
+                Ok(())
+            }
         })
         .build(tauri::generate_context!())
         .expect("Tauri 应用初始化失败");
@@ -496,13 +589,42 @@ pub fn run() {
                 // 所以要 `take()` 出来（拿不到就是已经杀过/没起，都算正常）。
                 let child = state.0.lock().ok().and_then(|mut slot| slot.take());
                 if let Some(child) = child {
-                    log_line(handle, "退出：正在关掉 sidecar");
+                    log::info!("退出：正在关掉 sidecar");
                     // kill 的 Err 只可能是「已经退出了」——那正是我们想要的结果，不必报错。
                     let _ = child.kill();
                 }
             }
         }
     });
+}
+
+/// 数据根定不下来时的**大声失败**：stderr + 尽力写一份文件，然后 panic。
+///
+/// 为什么要写文件：这一刻日志插件还没注册（它本身就依赖数据根），而 Windows 的
+/// release 构建没有控制台——只 `eprintln!` 的话，双击启动的用户**什么也看不到**，
+/// 只会觉得「点了没反应」。所以再尽力往 exe 旁边、以及 `%TEMP%` 各写一份。
+/// 写不成就放弃（已经 `eprintln!` 过了），绝不因为「记录失败」而换个错误死法。
+fn panic_on_no_data_root(reason: &str) -> ! {
+    let message = format!(
+        "无法确定数据目录（数据要放在 exe 旁边的 git-nest-data\\ 里），启动中止。\n{reason}\n"
+    );
+    eprintln!("[git-nest] {message}");
+
+    // 尽力落盘：exe 旁边（可能正是写不了的那个地方，所以再试 TEMP）
+    let mut candidates = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join("git-nest-startup-error.log"));
+        }
+    }
+    candidates.push(std::env::temp_dir().join("git-nest-startup-error.log"));
+    for path in candidates {
+        if std::fs::write(&path, &message).is_ok() {
+            eprintln!("[git-nest] 这条错误也写到了：{}", path.display());
+        }
+    }
+
+    panic!("{message}");
 }
 
 /// 壳拉起来的那个 Node 服务进程的句柄（没拉就是 `None`）。
@@ -583,8 +705,57 @@ mod tests {
     }
 
     #[test]
-    fn probe_真的会去写文件_而不是只看目录存不存在() {
-        // **刻意不用 `std::env::temp_dir()`**：那在本机（以及这台机器的沙箱里）是 C 盘，
+    fn 剥掉_verbatim_前缀_这是真实事故那一串() {
+        // 事故里的原样路径（`resource_dir()` 给出来的形式）：
+        // 交给 Node 之后它把主模块解析成了 `D:` → EISDIR → sidecar 立刻退出。
+        assert_eq!(
+            strip_verbatim_prefix(r"\\?\D:\ToolSoftware\git-nest\binaries\node-resources\git-nest-server\index.mjs"),
+            r"D:\ToolSoftware\git-nest\binaries\node-resources\git-nest-server\index.mjs"
+        );
+    }
+
+    #[test]
+    fn 剥掉_verbatim_前缀_UNC_形式() {
+        // UNC 那个分支不能漏：`\\?\UNC\server\share` 要还原成 `\\server\share`
+        assert_eq!(
+            strip_verbatim_prefix(r"\\?\UNC\server\share\index.mjs"),
+            r"\\server\share\index.mjs"
+        );
+    }
+
+    #[test]
+    fn 没有前缀就原样不动() {
+        assert_eq!(
+            strip_verbatim_prefix(r"D:\plain\path\index.mjs"),
+            r"D:\plain\path\index.mjs"
+        );
+        // 正斜杠在没有前缀时**不能被改写**（非 Windows 上 `/` 是合法分隔符）
+        assert_eq!(
+            strip_verbatim_prefix("/home/me/git-nest/index.mjs"),
+            "/home/me/git-nest/index.mjs"
+        );
+    }
+
+    #[test]
+    fn 前缀判定大小写不敏感() {
+        // Windows 路径不区分大小写，`UNC` 段也一样
+        assert_eq!(strip_verbatim_prefix(r"\\?\unc\server\share\x"), r"\\server\share\x");
+        // 前缀本身的字符大小写（`\\?\` 没有字母，但反斜杠/正斜杠混写要认）
+        assert_eq!(strip_verbatim_prefix(r"//?/D:/x/y"), r"D:\x\y");
+    }
+
+    #[test]
+    fn 交给子进程的路径统一走规范化() {
+        // `path_for_child` 是唯一的出口：入口脚本、GIT_NEST_DB、工作目录都用它
+        assert_eq!(
+            path_for_child(Path::new(r"\\?\D:\a\b.mjs")),
+            r"D:\a\b.mjs"
+        );
+        assert_eq!(path_for_child(Path::new(r"D:\a\b.mjs")), r"D:\a\b.mjs");
+    }
+
+    #[test]
+    fn probe_真的会去写文件_而不是只看目录存不存在() {        // **刻意不用 `std::env::temp_dir()`**：那在本机（以及这台机器的沙箱里）是 C 盘，
         // 而写 C 盘会直接 `拒绝访问 (os error 5)`——正好和这个功能要解决的根因同类。
         // 用 crate 目录（D 盘）下的 target/：cargo 刚在那里建过东西，一定可写，且已被 gitignore。
         let base = Path::new(env!("CARGO_MANIFEST_DIR"))
