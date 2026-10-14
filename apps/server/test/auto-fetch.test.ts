@@ -167,7 +167,20 @@ describe('GET /api/commands', () => {
     expect(after.json().total).toBe(0)
   })
 
-  it('POST /api/auto-fetch 手动跑一轮（定时器最快也要等 30 秒）', async () => {
+  /*
+    这一条**天然更慢**，所以要显式给更长的超时（30s），而不是去调全局 `testTimeout`。
+
+    为什么慢：它真的会跑 git 子进程（fetch 一个本地 fixture 仓库），而 Windows 上
+    `execFile` 起一次 git.exe 就有约 20ms 的 CreateProcess 地板、整条链路实测 1.3s 上下；
+    机器一忙（比如同时在编译 Rust）它就撞上 vitest 默认的 5000ms —— 报的是
+    `Test timed out in 5000ms`，看起来像逻辑坏了，其实只是被抢了 CPU。
+
+    为什么不用全局超时兜底：全局放大会**掩盖别处真正的慢**（一个真的死循环也会变得「不超时」）。
+    只有这一条知道自己为什么慢，所以只有这一条自己申明。
+
+    **断言与语义一个字没改**——只加了超时。
+  */
+  it('POST /api/auto-fetch 手动跑一轮（定时器最快也要等 30 秒）', { timeout: 30_000 }, async () => {
     const res = await app.inject({ method: 'POST', url: '/api/auto-fetch' })
     expect(res.statusCode).toBe(200)
     expect(res.json().summary).toMatchObject({ checked: expect.any(Number) })
