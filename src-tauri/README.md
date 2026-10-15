@@ -11,6 +11,8 @@
 | `pnpm desktop:sidecar` | 把 `apps/server` 打成可分发的 sidecar 产物 | 无 |
 | `pnpm desktop:check` | `cargo check`（壳能不能编译） | Rust 工具链 |
 | `pnpm desktop:dev` | 起窗口，指向本机 vite 上的界面 | **先起 `pnpm dev`** |
+| `pnpm desktop:release` | 编 release + 铺资源，**不打安装包**；产物直接可跑 | 无 |
+| `pnpm desktop:build` | 同上，**并出 MSI/NSIS 安装包**（交付时才需要） | 无 |
 
 ### 人能看见的那一步
 
@@ -25,6 +27,56 @@ pnpm desktop:dev
 应该看到：一个标题为 `git-nest` 的窗口（1280×840，居中）打开，里面是**真实界面**
 （左栏分类、项目列表、顶部标题栏），和你在浏览器里看到的一样。
 两条命令都别关：终端 1 提供界面与 API，终端 2 提供窗口。
+
+### 不安装也能测 release（日常就用这层）
+
+```bash
+pnpm desktop:release
+# 然后直接跑（双击也行）：
+src-tauri\target\release\git-nest.exe
+```
+
+**为什么这样跑就等于「装完跑」**：`target/release/` 的布局**就是安装后的布局** ——
+`git-nest.exe` + `git-nest-server.exe`（随包的 Node 运行时）+ `binaries/node-resources/**`
+（服务本体与原生模块）。安装器做的事只是把这份布局复制到目标目录，所以差别只剩
+「装到哪、按什么权限落位」。
+
+`--no-bundle` 是关键：它只编 release + 铺资源，**不跑 NSIS/WiX** ——
+打包慢，而且与「应用能不能用」无关，属于交付那一步的事。
+
+release 档与 dev 档的**关键区别**（这也是必须单独测它的原因）：
+
+| | dev（`desktop:dev`） | release（`desktop:release`） |
+|---|---|---|
+| 界面从哪来 | vite（36378，有 HMR） | **编译期内嵌**进二进制（不需要 `pnpm dev`） |
+| 服务谁提供 | `pnpm dev`（壳**不拉** sidecar） | **壳自己拉 sidecar** |
+| 数据放哪 | `target/debug/git-nest-data/` | `target/release/git-nest-data/` |
+| 日志 | `target/debug/…/logs/git-nest.log` | `target/release/…/logs/git-nest.log` |
+
+**注意界面是编译期内嵌的**，所以 `desktop:release` 里 `pnpm -C apps/web build` 必须在
+`tauri build` **之前**跑完。顺序错了会把**旧的 `apps/web/dist`** 嵌进去，
+表现成「改了界面却没生效」——很难往「构建顺序」上想。
+
+**最快判据（不用盯屏幕）**：
+
+```powershell
+Get-Content src-tauri\target\release\git-nest-data\logs\git-nest.log -Tail 30
+```
+
+有 `incoming request`（跟着一条 `request completed` + `statusCode:200`）= **前端真的
+打到了 sidecar**，整条链路通了。没有它、或看到 sidecar 退出/端口占用，就是那条路断了。
+这比「看窗口里有没有内容」快得多，也不需要人看。
+
+### 三层的分工（别混用）
+
+| 改什么 | 用哪条 | 代价 | 测不到什么 |
+|---|---|---|---|
+| 界面 | `pnpm desktop:dev` | 快，有 HMR | **不走 sidecar** ✗ —— 服务是 `pnpm dev` 提供的 |
+| 壳 / sidecar / 注入 / CSP / 数据目录 | `pnpm desktop:release` + 跑那个 exe | 一轮几十秒 | 打包器本身、安装位置与权限 |
+| 安装包 | `pnpm desktop:build` 后真的装一次 | 最慢 | —— |
+
+**安装只留到最后一步**：它额外验的只有「打包器本身」和「文件有没有按
+per-machine / per-user 规则落对位置」，与「应用能不能用」无关。
 
 ### 为什么 dev 要两条命令
 

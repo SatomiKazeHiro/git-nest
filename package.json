@@ -20,6 +20,7 @@
     "desktop:gen": "node scripts/gen-tauri-dev-config.mjs",
     "desktop:icons": "node scripts/gen-tauri-icons.mjs",
     "desktop:sidecar": "node scripts/build-sidecar.mjs",
+    "desktop:release": "pnpm desktop:gen && pnpm desktop:sidecar && pnpm -C apps/web build && tauri build --no-bundle --config src-tauri/gen/app.config.json",
     "desktop:dev": "pnpm desktop:gen && pnpm desktop:sidecar && tauri dev --config src-tauri/gen/app.config.json",
     "desktop:build": "pnpm desktop:gen && pnpm desktop:sidecar && tauri build --config src-tauri/gen/app.config.json",
     "desktop:check": "pnpm desktop:gen && pnpm desktop:sidecar && cargo check --manifest-path src-tauri/Cargo.toml"
