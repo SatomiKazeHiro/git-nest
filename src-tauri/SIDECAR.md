@@ -370,7 +370,7 @@ EBWebView   logs   git-nest.db   git-nest.db-shm   git-nest.db-wal
 4. **`better-sqlite3` 的 `.node` 是构建机上的 prebuild**：只对本机平台有效。
    跨平台打包要在对应平台装依赖（或换成 prebuild 下载对应 ABI/平台的那一份）。
 5. **`run.cjs` 的兜底没测过**：它把启动失败打成一行中文日志再 `exit(1)`。真机没跑过。
-6. **服务端没有「我起来了」的信号**（`docs/TAURI-PACKAGING.md` 的 D6）：现在壳拉起来
+6. **服务端没有「我起来了」的信号**：现在壳拉起来
    就不管了，不轮询端口。窗口可能先于服务可用而显示「连不上后端」。
    第一段没做，因为需要动 `apps/server`（加一个就绪输出或健康轮询），
    而那属于「改服务端」，先不动。
