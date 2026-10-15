@@ -1,93 +1,42 @@
 # 类型角标的图标
 
 这里放**项目类型角标**用的图标。清单页里每个项目那一格（默认的文件夹图）右下角
-会压一个 16×16 的白圆，圆里放这里的 12×12 图标。
+会压一个 16×16 的白圆，圆里放这里的 12×12 图标（`features/projects/ProjectTypeBadge.tsx`）。
 
-- 文件名必须是 **`<type>.svg`**，`<type>` 与
-  `packages/core/src/git/project-type.ts` 里规则表的 `type` **逐字相同**。
-- 命名规则：**全小写、不带空格、不带点**；需要分词用连字符（`react-native`）。
+## 命名：**建议**小写、无空格，但不是硬性要求
+
+- 文件名就是 `<type>.svg`，`<type>` 是规则表 `TYPE_RULES`
+  （`packages/core/src/git/project-type.ts`）里的那个 slug。
+- **不要求与 slug 逐字相同**：匹配时会归一化（小写 + 去掉一切非字母数字），
+  所以 `Vue.svg`、`React Native.svg` 与 `vue`、`react-native` 都对得上；
+  只有两个走别名表——`Chrome Extension.svg` / `VS Code Extension.svg` 对应
+  `chrome` / `vscode`（`features/projects/typeIcons.ts` 的 `normalizeIconName`
+  与 `ALIASES`，有单测钉着）。目录里现存的三张带空格的文件名就是这么来的。
+- **大小写不敏感**：`.svg` 与 `.SVG` 都收（Windows 上很容易存成大写）。
 - 图形请用**纯形状**（原始多边形那种），**不要自带圆形 / 方形底**——
   白圆底由界面提供，自带底会叠成两层。
 
-加一个新类型 = 在规则表里加一条规则 + 在这里放一个同名 svg。**不需要改其它代码**：
-图标是构建期用 `import.meta.glob` 收进来的（见 `apps/web/src/features/projects/typeIcons.ts`），
+## 加一个新类型要动**三处**，不是「加一条规则 + 放一个 svg」
+
+1. `TYPE_RULES`（`packages/core/src/git/project-type.ts`）——怎么认出来；
+2. `PROJECT_TYPES`（`packages/core/src/project-types.ts`）——显示名与分组。
+   两者必须一致：`packages/core/test/git/project-type.test.ts` 有一条
+   「规则表与展示目录必须一致」钉着，漏一处直接红；
+3. 再在这里放一个同名 svg。
+
+图标是构建期用 `import.meta.glob` 收进来的（`features/projects/typeIcons.ts`），
 某个 `<type>.svg` 不存在时那一格就**不画角标**（不留空圈）。
 
-## 第一批（建议先收集，49 个）
+## 现在的收集情况
 
-**平台 / 形态（11）**
+目录里已就位 63 张。按 `PROJECT_TYPES` 的 `firstBatch` 分：**第一批只剩 `nuxt` 一个没图**，
+其余 15 个缺的都是第二批的——
 
-- [ ] `tauri`
-- [ ] `electron`
-- [ ] `flutter`
-- [ ] `react-native`
-- [ ] `android`
-- [ ] `ios`
-- [ ] `unity`
-- [ ] `godot`
-- [ ] `chrome`（浏览器扩展）
-- [ ] `vscode`（VS Code 扩展）
-- [ ] `wordpress`
+`nuxt` · `gin` · `echo` · `fiber` · `axum` · `actix` · `fastify` · `symfony` ·
+`streamlit` · `dart` · `elixir` · `scala` · `haskell` · `sphinx` · `docusaurus` ·
+`vitepress`
 
-**前端框架（8）**
-
-- [ ] `vue`
-- [ ] `react`
-- [ ] `nextjs`
-- [ ] `nuxt`
-- [ ] `svelte`
-- [ ] `angular`
-- [ ] `astro`
-- [ ] `solid`
-
-**后端框架（10）**
-
-- [ ] `nestjs`
-- [ ] `express`
-- [ ] `spring`（Spring Boot）
-- [ ] `aspnet`（ASP.NET Core）
-- [ ] `django`
-- [ ] `flask`
-- [ ] `fastapi`
-- [ ] `rails`
-- [ ] `laravel`
-- [ ] `phoenix`
-
-**语言 / 运行时（12）**
-
-- [ ] `typescript`
-- [ ] `javascript`
-- [ ] `python`
-- [ ] `rust`
-- [ ] `go`
-- [ ] `java`
-- [ ] `kotlin`
-- [ ] `csharp`
-- [ ] `cpp`
-- [ ] `php`
-- [ ] `ruby`
-- [ ] `swift`
-
-**领域（8）**
-
-- [ ] `jupyter`
-- [ ] `pytorch`
-- [ ] `terraform`
-- [ ] `docker`
-- [ ] `kubernetes`
-- [ ] `latex`
-- [ ] `platformio`（嵌入式）
-- [ ] `solidity`
-
-## 第二批（有就更好，29 个）
-
-**平台**：`wails` · `unreal` · `expo` · `obsidian`
-
-**框架**：`gin` · `echo` · `fiber` · `axum` · `actix` · `fastify` · `symfony` · `streamlit`
-
-**语言**：`dart` · `elixir` · `scala` · `haskell` · `ocaml` · `erlang` · `zig` · `julia` · `r` · `lua` · `perl`
-
-**领域**：`arduino` · `mkdocs` · `sphinx` · `docusaurus` · `vitepress`
+缺图不是缺陷：没有那张图就不画角标，和认不出来是同一种表现。
 
 ## 认不出来的情况
 
