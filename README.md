@@ -67,6 +67,7 @@ sidecar、数据放哪、日志在哪），以及其余脚本（`desktop:gen` / 
 ## 文档
 
 - [`docs/DESIGN.md`](docs/DESIGN.md)——**设计原则与界面约定**（这份是"为什么这么做"的正本，README 不复制它）
+- [`docs/ARCHITECTURE-REVIEW.md`](docs/ARCHITECTURE-REVIEW.md)——**架构评审**（解耦 / 边界 / 语义的候选清单、证据与执行顺序）
 - [`docs/DETAIL-OVERLAY.md`](docs/DETAIL-OVERLAY.md)——详情浮层的**方案备案**（随时可做，触发条件见文内）
 - [`docs/LIST-SCALE.md`](docs/LIST-SCALE.md)——列表规模那一轮（分页 / 虚拟化）的**方案备案**
 - [`src-tauri/README.md`](src-tauri/README.md)——桌面壳的**现状正本**（命令、CSP、数据目录、安装位置）
