@@ -12,6 +12,9 @@ export type {
   ScannedRepo,
   ScanResult,
 } from './types.ts'
+/* 运行期权威数组（不是类型）：让「集合相等」类的用例能枚举取值，也让它们成为
+   server / web 唯一的那一份。类型仍从它们推出来，见 `types.ts` / `fetch.ts`。 */
+export { UPDATE_STATUSES, GIT_ERROR_KINDS } from './types.ts'
 export { Scheduler, defaultScheduler, type SchedulerOptions } from './scheduler.ts'
 export {
   runGit,
@@ -35,6 +38,7 @@ export {
   withOtherRouteHint,
   composeFetchFailure,
   FETCH_REFSPEC,
+  REMOTE_TRANSPORTS,
   type FetchAttempt,
   type FetchExecutor,
   type FetchRemoteOptions,

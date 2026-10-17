@@ -4,33 +4,50 @@ import type { UpdateRecommendation } from '../types.ts'
 
 export type { UpdateRecommendation, UpdateVerdict } from '../types.ts'
 
-export type UpdateStatus =
-  | 'up_to_date'
-  | 'behind'
-  | 'ahead'
-  | 'diverged'
-  | 'dirty'
-  | 'no_upstream'
+/**
+ * 十三种状态。**运行时数组是权威，类型从它推出来。**
+ *
+ * 为什么要一个数组而不只是联合类型：`UpdateStatus` 是跨层共享的词表——web 的措辞表、
+ * server 的「哪次检查算合格」、前端的灰色降级都按它分支。只有类型的话，
+ * 「新增一个状态之后哪些地方该跟着改」没有任何运行期的东西可以断言，于是漏改一处
+ * 只表现为界面少一句话，编译绿、测试绿。有了这个数组，一条「集合相等」的用例就能钉住它。
+ */
+export const UPDATE_STATUSES = [
+  'up_to_date',
+  'behind',
+  'ahead',
+  'diverged',
+  'dirty',
+  'no_upstream',
   /** 上游分支已被远程删掉（git 的 upstream:track 报 [gone]） */
-  | 'gone'
-  | 'detached'
-  | 'no_remote'
-  | 'error'
-  | 'missing'
-  | 'not_a_repo'
-  | 'no_commits'
+  'gone',
+  'detached',
+  'no_remote',
+  'error',
+  'missing',
+  'not_a_repo',
+  'no_commits',
+] as const
 
-/** 失败归因，决定 UI 给什么可操作的提示。 */
-export type GitErrorKind =
-  | 'missing'
-  | 'not_a_repo'
+export type UpdateStatus = (typeof UPDATE_STATUSES)[number]
+
+/**
+ * 失败归因，决定 UI 给什么可操作的提示。
+ *
+ * 同上：运行时数组是权威。server 曾经手抄这九个字面量当 JSON 解码的白名单
+ * （见 `repos/projects.ts`），于是加一个 kind 之后旧记录会被判成「没有原因」，
+ * 界面只说「没有原因」——现在两边共用这一个数组。
+ */
+export const GIT_ERROR_KINDS = [
+  'missing',
+  'not_a_repo',
   /** Windows 路径超过 MAX_PATH，git 进不去 */
-  | 'path_too_long'
-  | 'timeout'
-  | 'auth'
-  | 'network'
-  | 'locked'
-  | 'unknown'
+  'path_too_long',
+  'timeout',
+  'auth',
+  'network',
+  'locked',
+  'unknown',
   /**
    * 「取远程事实」这条路本身失败了。
    *
@@ -39,7 +56,10 @@ export type GitErrorKind =
    * 与传输方式毫无关系；把它们当成网络问题，就会为了一个跟网络无关的原因
    * 白跑第二次 fetch。
    */
-  | 'fetch_failed'
+  'fetch_failed',
+] as const
+
+export type GitErrorKind = (typeof GIT_ERROR_KINDS)[number]
 
 export interface GitError {
   kind: GitErrorKind

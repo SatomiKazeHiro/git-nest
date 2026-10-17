@@ -1,4 +1,4 @@
-import type { RepoStatus, UpdateStatus, UpdateVerdict } from '@git-nest/core'
+import { isRemoteCheckStatus, type RepoStatus, type UpdateStatus, type UpdateVerdict } from '@git-nest/core'
 
 /**
  * 状态这台机器在界面上的**文字与色彩**：一堆纯函数，没有一行 JSX。
@@ -37,15 +37,20 @@ export function freshnessOf({ checkedAt, now = Date.now() }: Freshness): Freshne
   return now - t > STALE_AFTER_MS ? 'stale' : 'fresh'
 }
 
-/**
- * 这些状态是在拿远程做比较，没问过远程就不该说得那么肯定。
- * 其余状态是纯本地事实，任何时候都可信。
- */
-const REMOTE_CLAIMS = new Set<UpdateStatus>(['up_to_date', 'behind', 'ahead', 'diverged'])
+/*
+  这些状态是在拿远程做比较，没问过远程就不该说得那么肯定。
+  其余状态是纯本地事实，任何时候都可信。
+
+  **判据不在这里**：它曾经是本地一份 `REMOTE_CLAIMS = new Set([...四个])`，与 core 的
+  `REMOTE_CHECK_STATUSES`、server 的 `COUNTED` 是同一件事的三份拷贝——三份一样时看不出
+  问题，改一处才会炸（而这四处决定的正是「哪次检查算合格」，也就是界面的新鲜度）。
+  现在直接用 core 的谓词，`tone-vocabulary.test.ts` 钉着"谓词与集合等价"。
+*/
+const isRemoteClaim = isRemoteCheckStatus
 
 /** 远程相关的状态在陈旧时降级为灰色 */
 export function toneFor(status: UpdateStatus, freshness: FreshnessState): string {
-  if (freshness !== 'fresh' && REMOTE_CLAIMS.has(status)) return 'text-ink-3'
+  if (freshness !== 'fresh' && isRemoteClaim(status)) return 'text-ink-3'
   return TONE[status]
 }
 
@@ -57,7 +62,7 @@ export function toneFor(status: UpdateStatus, freshness: FreshnessState): string
  * 不可靠的只是「它现在还是不是这样」。所以数字照给，只标注来源。
  */
 export function textFor(status: UpdateStatus, freshness: FreshnessState): string {
-  if (!REMOTE_CLAIMS.has(status)) return TEXT[status]
+  if (!isRemoteClaim(status)) return TEXT[status]
 
   if (freshness === 'never') {
     if (status === 'up_to_date') return '没查过远程'
@@ -119,7 +124,7 @@ export function statusTone(status: UpdateStatus): string {
 export function statusTitle(s: RepoStatus, freshness?: Freshness): string {
   const state = freshness ? freshnessOf(freshness) : 'never'
   const base = describe(s)
-  if (!REMOTE_CLAIMS.has(s.status)) return base
+  if (!isRemoteClaim(s.status)) return base
 
   const hasCounts = s.upstream !== null && (s.ahead !== null || s.behind !== null)
 

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
-import { builtinCategoryList, type ProjectListItem } from '@git-nest/core'
+import { ATTENTION_VALUES, builtinCategoryList, type ProjectListItem } from '@git-nest/core'
 import { server } from '@/test/mocks/server'
 import { useUiStore } from '@/store/ui'
 import { FilterPanel } from './FilterPanel'
@@ -127,66 +127,90 @@ describe('FilterPanel · 分类项的图标', () => {
 })
 
 /**
- * 「仓库状态」那一组的**完整性**。
+ * 「仓库状态」那一组的**集合守恒**。
  *
  * 由来：`ATTENTION_SQL` 把分叉判成 `decide`，而面板只画了四个桶（没有 `decide`）。
  * 后果不是"少一个选项"，而是两件更糟的事：
  * 1. 分叉的仓库行上挂着「需要确认」药丸，**面板里没有任何入口能筛出它**；
- * 2. 四个桶的计数加起来**小于**「全部仓库」，而它们看着仍像在报告全量。
+ * 2. 各桶计数加起来**小于**「全部仓库」，而它们看着仍像在报告全量。
  *
- * 所以这里钉两件事：五个桶一个不少，且计数加等于总数。
+ * 所以这里**不写死那五个名字**，而是从 core 的 `ATTENTION_VALUES` **枚举**：
+ * 将来再加一个取值，这三条会直接红，而不是等用户在界面上发现少了一档。
+ * 断言的也是结构（数量、可达集合、计数守恒），不是中文标签——标签会改。
  */
 describe('FilterPanel · 仓库状态那一组', () => {
-  const ATTENTIONS = ['ready', 'synced', 'blocked', 'decide', 'unchecked'] as const
-  const LABELS: Record<(typeof ATTENTIONS)[number], string> = {
-    ready: '可更新',
-    synced: '已同步',
-    blocked: '不推荐',
-    decide: '需要确认',
-    unchecked: '待检查',
-  }
-
-  /** 每个桶各一个项目，合计 = 5 */
+  /** 每个桶各一个项目 */
   const onePerBucket = () =>
-    ATTENTIONS.map((attention, i) => ({ ...project(''), id: i + 1, attention }))
+    ATTENTION_VALUES.map((attention, i) => ({ ...project(''), id: i + 1, attention }))
 
   function serveBuckets() {
     server.use(
       http.get('/api/categories', () => HttpResponse.json({ categories: builtinCategoryList() })),
       http.get('/api/projects', () =>
-        HttpResponse.json({ projects: onePerBucket(), total: ATTENTIONS.length }),
+        HttpResponse.json({ projects: onePerBucket(), total: ATTENTION_VALUES.length }),
       ),
     )
   }
 
-  /** 一个条目按钮上的数字（末尾那个）；标签里没有阿拉伯数字，取尾数不会取错 */
-  const countOf = (label: string) => {
-    const text = screen.getByRole('button', { name: new RegExp(label) }).textContent ?? ''
-    return Number(text.replace(/\s/g, '').match(/(\d+)$/)?.[1])
+  /** 「仓库状态」那一段的按钮：第 0 枚是「全部仓库」，其余逐个对应一个 attention 取值 */
+  async function statusGroupButtons() {
+    const heading = await screen.findByRole('heading', { name: '仓库状态' })
+    const section = heading.closest('section')
+    expect(section, '找不到「仓库状态」那一段').not.toBeNull()
+    return within(section as HTMLElement).getAllByRole('button')
   }
 
-  it('五个桶一个不少，且计数加等于「全部仓库」', async () => {
+  /** 条目按钮末尾那个数字就是计数（标签里没有阿拉伯数字，取尾数不会取错） */
+  const countOf = (button: HTMLElement) =>
+    Number((button.textContent ?? '').replace(/\s/g, '').match(/(\d+)$/)?.[1])
+
+  it('桶的数量 = Attention 的取值数 + 「全部仓库」', async () => {
     serveBuckets()
     renderPanel()
 
-    // 这一条就是那个洞的回归闸：`decide` 曾经完全没有入口。
-    expect(await screen.findByRole('button', { name: /需要确认/ })).toBeTruthy()
-
-    let sum = 0
-    for (const a of ATTENTIONS) sum += countOf(LABELS[a])
-    expect(sum).toBe(ATTENTIONS.length)
-    expect(countOf('全部仓库')).toBe(ATTENTIONS.length)
+    const buttons = await statusGroupButtons()
+    expect(
+      buttons.map((b) => b.textContent),
+      '这一组必须与 ATTENTION_VALUES 一一对应：少一个桶 = 那个状态永远筛不出来，且计数不加等于全部',
+    ).toHaveLength(ATTENTION_VALUES.length + 1)
   })
 
-  it('点「需要确认」按 decide 筛；再点一下取消', async () => {
+  it('每个 Attention 取值都能被单独筛到（点一下筛、再点取消）', async () => {
     serveBuckets()
     renderPanel()
 
-    const row = await screen.findByRole('button', { name: /需要确认/ })
-    fireEvent.click(row)
-    expect(useUiStore.getState().filters.attention).toBe('decide')
+    const buttons = await statusGroupButtons()
+    const reachable: string[] = []
 
-    fireEvent.click(row)
-    expect(useUiStore.getState().filters.attention).toBeNull()
+    /*
+      每枚按钮点两下：第一下按这个桶筛，第二下取消（顺带把「点一下筛、再点取消」
+      这条行为也走了一遍）。**不直接改 store** —— 那是在 act 之外触发重渲染，
+      会刷一屏 act 警告，而且测的也不是用户能做的动作。
+    */
+    for (const button of buttons.slice(1)) {
+      fireEvent.click(button)
+      const picked = useUiStore.getState().filters.attention
+      if (picked) reachable.push(picked)
+
+      fireEvent.click(button)
+      expect(useUiStore.getState().filters.attention, '再点一下应当取消').toBeNull()
+    }
+
+    expect(
+      reachable.sort(),
+      '有 Attention 取值在面板里没有入口——它在行上有药丸，却筛不出来',
+    ).toEqual([...ATTENTION_VALUES].sort())
+  })
+
+  it('各桶计数加等于「全部仓库」', async () => {
+    serveBuckets()
+    renderPanel()
+
+    const buttons = await statusGroupButtons()
+    const total = countOf(buttons[0] as HTMLElement)
+    const sum = buttons.slice(1).reduce((acc, b) => acc + countOf(b), 0)
+
+    expect(sum, '各桶计数加不等于总数 = 有状态没被任何桶装着').toBe(total)
+    expect(total).toBe(ATTENTION_VALUES.length)
   })
 })

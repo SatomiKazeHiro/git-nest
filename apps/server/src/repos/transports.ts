@@ -1,3 +1,4 @@
+import { REMOTE_TRANSPORTS } from '@git-nest/core/git'
 import type { RemoteTransport } from '@git-nest/core/git'
 import type { DB } from '../db/index.ts'
 
@@ -18,7 +19,14 @@ import type { DB } from '../db/index.ts'
  * core 会发现记住的那条路与当前地址对不上，直接退回规范顺序。
  */
 
-const VALID: readonly string[] = ['https', 'ssh']
+/**
+ * 合法值的白名单**就是 core 的 `REMOTE_TRANSPORTS`**，不在这里另抄一份。
+ *
+ * `project_transports.transport` 是一个字符串列，库层校验不了类型；原来这份白名单是
+ * 手抄的 `['https', 'ssh']`，于是「加第三种传输方式」时类型会变、白名单不会——
+ * 新值被静默拒收（表现为「记住了但下次没先试那条」）。现在两边同一个数组，
+ * `transport-vocabulary` 那条用例钉着它们相等。
+ */
 
 /**
  * 上次走通的传输方式；没有记录、记录坏了都返回 null
@@ -29,7 +37,9 @@ export function preferredTransport(db: DB, projectId: number): RemoteTransport |
     .prepare('SELECT transport FROM project_transports WHERE project_id = ?')
     .get(projectId) as { transport: string } | undefined
   const value = row?.transport
-  return value && VALID.includes(value) ? (value as RemoteTransport) : null
+  return value && (REMOTE_TRANSPORTS as readonly string[]).includes(value)
+    ? (value as RemoteTransport)
+    : null
 }
 
 /**
@@ -43,7 +53,7 @@ export function rememberTransport(
   projectId: number,
   transport: RemoteTransport,
 ): void {
-  if (!VALID.includes(transport)) return
+  if (!(REMOTE_TRANSPORTS as readonly string[]).includes(transport)) return
   db.prepare(
     `INSERT INTO project_transports (project_id, transport, updated_at)
      VALUES (?, ?, ?)

@@ -21,8 +21,16 @@ import type { GitError, GitErrorKind } from './types.ts'
  * `preferred` 传进来都是 server 的事（`apps/server/src/repos/transports.ts`）。
  */
 
-/** 传输方式。只有这两种能自动互换，别的（本地路径、git://、HTTP 镜像）不碰。 */
-export type RemoteTransport = 'https' | 'ssh'
+/**
+ * 传输方式。只有这两种能自动互换，别的（本地路径、git://、HTTP 镜像）不碰。
+ *
+ * **运行时数组是权威，类型从它推出来**：server 要拿它当 `project_transports` 表的
+ * 合法值白名单（那是个字符串列，库层校验不了类型）。曾经那份白名单是手抄的
+ * `['https', 'ssh']`，加第三种传输方式时类型会变、白名单不会——于是新值被静默拒收。
+ */
+export const REMOTE_TRANSPORTS = ['https', 'ssh'] as const
+
+export type RemoteTransport = (typeof REMOTE_TRANSPORTS)[number]
 
 /**
  * `classifyError` 给的那些种类里，**哪些在「取远程事实」这件事上说得通**。

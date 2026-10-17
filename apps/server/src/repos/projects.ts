@@ -4,6 +4,7 @@ import {
   REMOTE_CHECK_STATUSES,
   ATTENTION_RANK,
   VERDICT_LABEL,
+  GIT_ERROR_KINDS as CORE_GIT_ERROR_KINDS,
   isRemoteCheckStatus,
   recommendationFrom,
   type Attention,
@@ -421,18 +422,14 @@ function lastAttemptsByProject(db: DB, ids: number[]): Map<number, LastUpdateAtt
   return map
 }
 
-/** core 的 `GitErrorKind` 取值。用来挡住库里那些不是 `GitError` 的东西。 */
-const GIT_ERROR_KINDS = new Set<string>([
-  'missing',
-  'not_a_repo',
-  'path_too_long',
-  'timeout',
-  'auth',
-  'network',
-  'locked',
-  'unknown',
-  'fetch_failed',
-])
+/**
+ * core 的 `GitErrorKind` 取值。用来挡住库里那些不是 `GitError` 的东西。
+ *
+ * **直接由 core 的权威数组生成**，不在这里另抄九个字面量：手抄的那份在 core
+ * 加一个 kind 之后会静默落后，于是新 kind 的旧记录被判成「没有原因」，
+ * 界面只说「没有原因」。`git-error-vocabulary` 那条用例钉着两边相等。
+ */
+const GIT_ERROR_KINDS = new Set<string>(CORE_GIT_ERROR_KINDS)
 
 /**
  * 从 `update_checks.detail` 里取回这次尝试的失败原因。

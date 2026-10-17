@@ -23,6 +23,15 @@ export type {
 } from './git/types.ts'
 
 /**
+ * 状态词表的**运行时**版本，权威数组在 `git/types.ts`。
+ *
+ * 前端要它：「词表与界面一一对应」那类用例必须能**枚举取值**，而类型在运行期不存在。
+ * 从浏览器安全的这个 barrel 出去，前端就不必为了一个数组去碰 `@git-nest/core/git`
+ * （那一侧依赖 `node:child_process`）。
+ */
+export { UPDATE_STATUSES, GIT_ERROR_KINDS } from './git/types.ts'
+
+/**
  * 内置分类。**它是迁移的种子与前端兜底的同一来源。**
  *
  * 分类现在是**一份可配置的名单**（服务端的 `categories` 表），不再是编译期的枚举；
