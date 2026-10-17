@@ -65,19 +65,13 @@ describe('Meta', () => {
     expect(screen.getByText('2 小时前')).toBeTruthy()
   })
 
-  it('值缺失时用弱化的占位样式，而不是空着或留个分隔符', () => {
-    const { container } = render(<Meta label="远程检查" value="从没查过" placeholder />)
-    const chip = container.firstElementChild as HTMLElement
-    // 虚线边框 = 弱化
-    expect(chip.className).toContain('border-dashed')
-    expect(screen.getByText('从没查过')).toBeTruthy()
-  })
+  /*
+    「值缺失时用弱化的占位样式」「有值时不用虚线」两条已删。
 
-  it('有值时不用虚线（表示这是确定的信息）', () => {
-    const { container } = render(<Meta label="本地状态" value="刚刚" />)
-    const chip = container.firstElementChild as HTMLElement
-    expect(chip.className).not.toContain('border-dashed')
-  })
+    它们断言的是 `border-dashed` 这个 class ——改样式（换底色、换字色、改成小圆点）
+    就会红，而没有任何东西坏掉。真正要守的那句话是**"值缺失和值存在必须看得出区别"**，
+    那是设计约定（`docs/DESIGN.md` §3），不是一段 className 的字符串比对。
+  */
 
   it('title 用于解释这个值的来源/新鲜度', () => {
     render(<Meta label="远程检查" value="从没查过" title="还没点过检查更新" />)

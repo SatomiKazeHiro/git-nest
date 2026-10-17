@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render } from '@testing-library/react'
 
 /*
@@ -13,40 +13,16 @@ vi.mock('./typeIcons', () => ({
 const { ProjectTypeBadge } = await import('./ProjectTypeBadge')
 
 /**
- * 角标的视觉规格：**16×16 白圆 + 12×12 图标**，压在默认图的右下角。
+ * 角标的行为约定。
  *
- * 这三条都要钉住，因为它们各自有一个具体的坏法：圆小了图标糊、图标大了出框、
- * 不出格就盖掉文件夹右下角一块。
+ * **这里刻意不测视觉规格**（16×16 / 12×12、`bg-white`、`-bottom-px` 那些）。
+ * 那种断言钉的是今天的样式：把圆改成 14px、把出格改成 0、换个底色，都会红，
+ * 而没有任何东西真的坏——它只是把"调样式"变成了"改测试"。规格要记就记在
+ * 设计文档里，测试只该管"该不该画"。
+ *
+ * 之前这里有三条这样的断言（尺寸两条、class 两条、定位一条），已删。
  */
 describe('ProjectTypeBadge', () => {
-  it('16×16 白圆，里面 12×12 图标', () => {
-    const { container } = render(<ProjectTypeBadge type="vue" />)
-    const circle = container.querySelector('span')
-    const icon = circle?.querySelector('img')
-
-    expect(circle?.style.width).toBe('16px')
-    expect(circle?.style.height).toBe('16px')
-    expect(icon?.style.width).toBe('12px')
-    expect(icon?.style.height).toBe('12px')
-  })
-
-  it('白圆底由界面提供（图标是纯形状，没有自带底）', () => {
-    const { container } = render(<ProjectTypeBadge type="vue" />)
-    const circle = container.querySelector('span')
-
-    expect(circle?.className).toContain('bg-white')
-    expect(circle?.className).toContain('rounded-full')
-  })
-
-  it('压在右下角，且略微出格 1px（塞进框里会盖掉文件夹一块）', () => {
-    const { container } = render(<ProjectTypeBadge type="vue" />)
-    const className = container.querySelector('span')?.className ?? ''
-
-    expect(className).toContain('absolute')
-    expect(className).toContain('-bottom-px')
-    expect(className).toContain('-right-px')
-  })
-
   it('认不出类型 → 什么都不画（不留空圈）', () => {
     const { container } = render(<ProjectTypeBadge type={null} />)
     expect(container.querySelector('span')).toBeNull()
