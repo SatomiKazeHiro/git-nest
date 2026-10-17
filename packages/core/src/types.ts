@@ -216,6 +216,15 @@ export interface UpdateCheckSummary {
    * 所以结论只在真正检查过的那一刻产生，之后原样显示，并标出它是什么时候得出的。
    */
   recommendation: UpdateRecommendation | null
+  /**
+   * 上次同步时**要拉进来的前几条**提交（清单行内折叠展开时显示）。
+   *
+   * 只给短 hash + 标题：行内要看的是「要进来的是什么」，不是完整提交对象
+   * （作者、日期在报告页里有）。总数是 `behindCount`——这里只放前几条，
+   * 所以「还有 N 个」必须用 `behindCount - incoming.length` 算，
+   * 别用 `incoming.length` 代替总数（那一份是被截断过的）。
+   */
+  incoming: { shortHash: string; subject: string }[]
 }
 
 /**

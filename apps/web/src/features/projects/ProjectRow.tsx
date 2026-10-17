@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { Link } from 'react-router'
-import { AlertTriangle, Pencil, Trash2 } from 'lucide-react'
+import { AlertTriangle, ChevronDown, Pencil, Trash2 } from 'lucide-react'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
 import { formatRelative } from '@/lib/format'
 import { useUiStore } from '@/store/ui'
@@ -78,10 +79,20 @@ export function ProjectRow({
   onRemove: () => void
 }) {
   const openEdit = useUiStore((s) => s.openEdit)
+  /*
+    行内折叠：**默认收着**。展开的是「上次同步时要拉进来的前几条提交」——
+    它和「上次检查」那一格来自同一条记录（epo_state），所以时间上对得上。
+    展开行的按钮在「差异」格里，不带自己的 onClick 冒泡（整行可点会打开详情栏）。
+  */
+  const [openCommits, setOpenCommits] = useState(false)
+  const commits = p.latestCheck?.incoming ?? []
+  // 「还有 N 个」用 behindCount 算：incoming 是被截断过的那几条
+  const moreCommits = Math.max(0, (p.latestCheck?.behindCount ?? commits.length) - commits.length)
   // 目录没了：置灰但保留入口，让用户能改路径或移除——不自动消失
   const gone = status?.status === 'missing'
 
   return (
+    <>
     <tr
       className={`row-link ${current ? 'row-current' : ''} ${gone ? 'opacity-50' : ''}`}
       title={gone ? '目录不在了。点「编辑资料」可以把它指到新位置。' : undefined}
@@ -176,13 +187,36 @@ export function ProjectRow({
         （5 列：仓库 / 分支 / 状态 / 差异 / 上次检查）。少一列不等于少一句话。
       */}
       <td className="col-delta text-right">
-        <Diff
-          ahead={status?.ahead ?? null}
-          behind={status?.behind ?? null}
-          upstreamGone={status?.upstreamGone ?? false}
-          hasCheck={p.attention !== 'unchecked'}
-          comparable={comparabilityOf(status)}
-        />
+        <span className="inline-flex items-center justify-end gap-1">
+          <Diff
+            ahead={status?.ahead ?? null}
+            behind={status?.behind ?? null}
+            upstreamGone={status?.upstreamGone ?? false}
+            hasCheck={p.attention !== 'unchecked'}
+            comparable={comparabilityOf(status)}
+          />
+          {/*
+            展开「要拉进来的是哪几条」。只有一个**真正有东西可拉**的行才有它：
+            没有提交可看的行给一枚展开钮，等于让人点开一个空抽屉。
+            `aria-expanded` 让读屏知道这是可展开的（展开后那张 `<tr>` 紧随其后）。
+          */}
+          {commits.length > 0 ? (
+            <button
+              type="button"
+              aria-expanded={openCommits}
+              aria-label={openCommits ? `收起 ${p.name} 要拉进来的提交` : `展开 ${p.name} 要拉进来的提交`}
+              title={openCommits ? '收起' : '看看要拉进来的是哪几条'}
+              onClick={() => setOpenCommits((v) => !v)}
+              className="shrink-0 cursor-pointer rounded-[3px] p-0.5 text-ink-3 hover:bg-paper hover:text-ink"
+            >
+              <ChevronDown
+                size={12}
+                aria-hidden
+                className={openCommits ? 'rotate-180 transition-transform' : 'transition-transform'}
+              />
+            </button>
+          ) : null}
+        </span>
       </td>
 
       {/*
@@ -228,5 +262,38 @@ export function ProjectRow({
         </span>
       </td>
     </tr>
+
+    {/*
+      展开的那一行：**上次同步时要拉进来的前几条**。
+      只读、不可点——它是上面那一行的注解，不是另一条记录。
+
+      「还有 N 个」用 `behindCount - incoming.length` 算（`moreCommits`）：
+      `incoming` 是被截断过的那几条，拿它当总数会少报（631 个落后写成「还有 46 个」）。
+    */}
+    {openCommits && commits.length > 0 ? (
+      <tr className="row-detail">
+        <td colSpan={6}>
+          <div className="flex flex-col gap-1">
+            <span className="text-[11.5px] text-ink-3">
+              上次同步时要拉进来的（{formatRelative(p.latestCheck?.checkedAt ?? null)}查的）
+            </span>
+            <ul className="flex flex-col gap-0.5">
+              {commits.map((c) => (
+                <li key={c.shortHash} className="flex gap-2 text-[12.5px]">
+                  <span className="w-20 shrink-0 truncate font-mono text-[11.5px] text-ink-3">
+                    {c.shortHash}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-ink-2">{c.subject}</span>
+                </li>
+              ))}
+            </ul>
+            {moreCommits > 0 ? (
+              <span className="text-[12px] text-ink-3">还有 {moreCommits} 个提交</span>
+            ) : null}
+          </div>
+        </td>
+      </tr>
+    ) : null}
+    </>
   )
 }

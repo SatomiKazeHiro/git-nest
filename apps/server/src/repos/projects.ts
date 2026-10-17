@@ -369,6 +369,8 @@ function latestChecksByProject(db: DB, ids: number[]): Map<number, UpdateCheckSu
       // 现算要先 fetch，而列表页是纯本地的——那会拿旧 refs 冒充结论。
       recommendation:
         state.verdict === null ? null : recommendationFrom(state.verdict, state.canPull),
+      // 行内只显示这几条；总数是 behindCount（它没有被截断）
+      incoming: state.incoming.map((c) => ({ shortHash: c.shortHash, subject: c.subject })),
     })
   }
   return map

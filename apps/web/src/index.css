@@ -564,6 +564,21 @@
 .list-table .col-checked {
   text-overflow: ellipsis;
 }
+/*
+  行内展开那一行（	r.row-detail）。
+
+数据行被 --row-h / 
+owrap / overflow:hidden 钉成单行高密度，展开的那一行
+必须**单独**把这几个约束放开，否则四行提交会被压成一行、还被裁掉。
+它不参与 .row-link 的 hover 与整行点击（那一行的 onClick 只挂在自己的 <tr> 上）。
+*/
+.list-table tr.row-detail > td {
+  height: auto;
+  white-space: normal;
+  overflow: visible;
+  padding: 0.45rem 0.75rem 0.6rem;
+  background-color: color-mix(in oklab, var(--color-bg) 60%, transparent);
+}
 /* 表头铺满底色，滚动时数据不会从它背后透出来 */
 .tr-tint {
   background-color: var(--color-bg);

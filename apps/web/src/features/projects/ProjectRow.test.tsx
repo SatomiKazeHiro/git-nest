@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { render } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { ProjectListItem, RepoStatus } from '@git-nest/core'
 import { formatRelative } from '@/lib/format'
@@ -46,6 +46,7 @@ const project: ProjectListItem = {
     aheadCount: 0,
     behindCount: 0,
     recommendation: null,
+    incoming: [],
   },
   // 这一份是「最近一次尝试」；默认这条夹具里它是成功的，警示那组用例再覆盖它
   lastAttempt: {
@@ -286,5 +287,52 @@ describe('ProjectRow · 仓库那一格的图标', () => {
 
     expect(container.querySelectorAll('img')).toHaveLength(1)
     expect(container.querySelector('span[style*="width: 16px"]')).toBeNull()
+  })
+})
+
+describe('ProjectRow · 行内展开「要拉进来的是哪几条」', () => {
+  /** 落后 6 个，`incoming` 只留前 4 条（总数看 behindCount） */
+  const behindWithCommits = {
+    latestCheck: {
+      checkedAt: '2026-10-05T00:00:00Z',
+      status: 'behind' as const,
+      aheadCount: 0,
+      behindCount: 6,
+      recommendation: null,
+      incoming: [
+        { shortHash: 'aaaaaaa', subject: '第一条' },
+        { shortHash: 'bbbbbbb', subject: '第二条' },
+        { shortHash: 'ccccccc', subject: '第三条' },
+        { shortHash: 'ddddddd', subject: '第四条' },
+      ],
+    },
+    attention: 'ready' as const,
+  }
+
+  it('默认收着：展开钮在，但提交标题看不见', () => {
+    renderRow(status({ behind: 6 }), behindWithCommits)
+
+    const toggle = screen.getByRole('button', { name: /展开.*要拉进来的提交/ })
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByText('第一条')).toBeNull()
+  })
+
+  it('点一下展开：前 4 条逐个列出来，「还有 N 个」用 behindCount 算', () => {
+    renderRow(status({ behind: 6 }), behindWithCommits)
+
+    fireEvent.click(screen.getByRole('button', { name: /展开.*要拉进来的提交/ }))
+
+    expect(screen.getByText('第一条')).toBeTruthy()
+    expect(screen.getByText('ddddddd')).toBeTruthy()
+    /*
+      关键：总数只有一个来源。`incoming` 被截断到 4 条，
+      所以「还有 2 个」＝ behindCount(6) − 4，而不是 incoming.length − 4 = 0。
+    */
+    expect(screen.getByText('还有 2 个提交')).toBeTruthy()
+  })
+
+  it('没有要拉的提交就不给展开钮（不让人点开一个空抽屉）', () => {
+    renderRow(status(), { latestCheck: { ...project.latestCheck!, incoming: [] } })
+    expect(screen.queryByRole('button', { name: /要拉进来的提交/ })).toBeNull()
   })
 })
