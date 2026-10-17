@@ -119,20 +119,57 @@ async function doAutoFetch(db: DB): Promise<AutoFetchSummary> {
   return summary
 }
 
-/** 启动定时自动 fetch。**重复调用只生效一次**（测试里会反复 bindSettings）。 */
+/**
+ * 离下一个整点 / 半点还有多久（毫秒）。
+ *
+ * 对齐的是**本地时间**的 :00 与 :30。实现是 `now % interval` 取补：地球上绝大多数
+ * 时区偏移都是 15 分钟的整数倍，30 分钟一档因此正好落在 :00/:30 上（尼泊尔那种
+ * +5:45 的会歪 15 分钟——那是个可以接受的小偏差，不值得为它引入时区库）。
+ *
+ * 纯函数，所以「对齐」这件事可以被逐条钉住（见 `test/auto-fetch.test.ts`）。
+ * 恰好站在边界上时返回**整整一个间隔**：那一刻这一轮已经该跑了，下一轮在下一档。
+ */
+export function nextAlignedDelay(nowMs: number, intervalMs: number = INTERVAL_MS): number {
+  return intervalMs - (nowMs % intervalMs)
+}
+
+/**
+ * 启动定时同步。**重复调用只生效一次**（测试里会反复 bindSettings）。
+ *
+ * 节奏：启动 30 秒后跑一轮，之后每 :00 / :30 一轮。
+ *
+ * 三条与「用 setInterval 就行」不同的地方：
+ *
+ * 1. **首轮延迟 30 秒**：别和启动抢 I/O（建库、壳的 sidecar、首屏查询都在那一秒）。
+ * 2. **递归 setTimeout 而不是 setInterval**：每轮都以「现在」重新算到下一档的距离，
+ *    于是相位不会随着每轮耗时而漂。
+ * 3. **合盖回来的补偿**：`setTimeout` 在休眠期间不走，醒来那一次会**晚到**——
+ *    晚到也照样跑（这就是补跑），跑完再按当时的时间对齐。
+ *    所以不需要另记「上次跑的时间」，比那套判断少一个可能出错的字段。
+ */
 export function startAutoFetch(db: DB): void {
   if (timer) return
+
   const tick = () => {
     // 不用在这里判「上一轮跑完没有」：`runAutoFetch` 自己会把并发调用合流
     void runAutoFetch(db).catch(() => {
       // doAutoFetch 内部已经逐个兜住了；这里只是不让定时器因为意外而中断
     })
   }
-  timer = setTimeout(() => {
-    tick()
-    timer = setInterval(tick, INTERVAL_MS)
+
+  const scheduleNext = () => {
+    timer = setTimeout(() => {
+      tick()
+      scheduleNext()
+    }, nextAlignedDelay(Date.now()))
     // 定时器不该拖住进程退出
     timer.unref?.()
+  }
+
+  // 首轮：启动 30 秒后
+  timer = setTimeout(() => {
+    tick()
+    scheduleNext()
   }, FIRST_DELAY_MS)
   timer.unref?.()
 }

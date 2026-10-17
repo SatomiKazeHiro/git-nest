@@ -1,4 +1,8 @@
+import { useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { Eraser, FolderSearch, Plus, RefreshCw, Settings } from 'lucide-react'
+import { ApiError, api } from '@/lib/api'
+import { useInvalidate } from '@/lib/invalidate'
 import { Button, Input } from '@/components/ui'
 import { hasFilter, useUiStore } from '@/store/ui'
 import { FilterToggle } from './FilterToggle'
@@ -62,6 +66,8 @@ export function Toolbar({
       ) : null}
       <span className="shrink-0 font-mono text-[12px] text-ink-3">{total} 个项目</span>
       <div className="ml-auto flex shrink-0 items-center gap-2">
+        {/* 主动刷新：**只同步状态，不开弹窗**。这是最常用的一枚——看一眼就走。 */}
+        <RefreshButton />
         {/* 「联网」两个字是必须的：详情页还有一个只读本地的按钮，
             两个都叫「检查更新」的话，用户没法从名字看出哪个会联网。
             这里**不再有「检查中…」态**：进度和报告都在随后打开的弹窗里，
@@ -88,5 +94,65 @@ export function Toolbar({
         </Button>
       </div>
     </div>
+  )
+}
+
+/**
+ * 「刷新」：联网同步一遍状态，**不开弹窗**。
+ *
+ * 它调的是 `POST /api/auto-fetch` —— 和后台每 :00/:30 那一轮**同一个入口**，
+ * 所以拿到的结论与屏幕上原本的数字来自同一条路径（`repo_state`）。
+ *
+ * 三件事必须做对：
+ * - **进行中要看得出来**：15 个仓库大约几秒，没有反馈的话用户会连点三次；
+ * - **结果要说出来**：成功几个、跳过几个（自己写的项目默认不联网）；
+ * - **失败不许沉默**：`ApiError` 的 message 直接摆出来。刷新失败却显示「刷新好了」
+ *   是最坏的一种反馈——排查时什么都看不到（这条在平台模块那边也写着）。
+ */
+function RefreshButton() {
+  const invalidate = useInvalidate()
+  const [done, setDone] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const refresh = useMutation({
+    mutationFn: () =>
+      api.post<{ summary: { checked: number; failed: number; skipped: number } }>(
+        '/auto-fetch',
+        {},
+      ),
+    onSuccess: ({ summary }) => {
+      setError(null)
+      const parts = [`已刷新 ${summary.checked} 个`]
+      if (summary.skipped > 0) parts.push(`跳过 ${summary.skipped} 个（自己的项目）`)
+      if (summary.failed > 0) parts.push(`${summary.failed} 个失败`)
+      setDone(parts.join('，'))
+      // 状态列、检查时间、详情都跟着变
+      invalidate()
+    },
+    onError: (e) => {
+      setDone(null)
+      setError(e instanceof ApiError ? e.message : '刷新失败')
+    },
+  })
+
+  return (
+    <>
+      <Button
+        className="shrink-0"
+        onClick={() => refresh.mutate()}
+        disabled={refresh.isPending}
+        title="联网 fetch 远程引用，重算每个仓库的状态。只动 refs/remotes/*，不碰工作区，也不会打开弹窗"
+      >
+        <RefreshCw size={14} aria-hidden className={refresh.isPending ? 'animate-spin' : ''} />
+        {refresh.isPending ? '刷新中…' : '刷新'}
+      </Button>
+      {error ? (
+        <span role="alert" className="shrink-0 text-[12px] text-signal-bad">
+          {error}
+        </span>
+      ) : done ? (
+        <span className="shrink-0 text-[12px] text-ink-3">{done}</span>
+      ) : null}
+    </>
   )
 }

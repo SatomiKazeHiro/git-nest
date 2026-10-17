@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { buildApp } from '../src/app.ts'
 import { openDatabase, type DB } from '../src/db/index.ts'
-import { runAutoFetch } from '../src/lib/auto-fetch.ts'
+import { nextAlignedDelay, runAutoFetch } from '../src/lib/auto-fetch.ts'
 import { clearCommandLog, recentCommands } from '@git-nest/core/git'
 
 /** 与其它 server 测试同一种做法：真的建 git 仓库，不 mock git。 */
@@ -184,5 +184,33 @@ describe('GET /api/commands', () => {
     const res = await app.inject({ method: 'POST', url: '/api/auto-fetch' })
     expect(res.statusCode).toBe(200)
     expect(res.json().summary).toMatchObject({ checked: expect.any(Number) })
+  })
+})
+
+describe('定时节奏（对齐 :00 / :30）', () => {
+  const T = 30 * 60_000
+
+  it('离下一档还有多久：恰好站在边界上时给整整一个间隔', () => {
+    expect(nextAlignedDelay(0, T)).toBe(T)
+    expect(nextAlignedDelay(T, T)).toBe(T)
+    expect(nextAlignedDelay(T * 7, T)).toBe(T)
+    // 边界前 1ms
+    expect(nextAlignedDelay(T - 1, T)).toBe(1)
+    // 中间
+    expect(nextAlignedDelay(T / 2, T)).toBe(T / 2)
+    expect(nextAlignedDelay(T + 600_000, T)).toBe(T - 600_000)
+  })
+
+  it('落到**本地**的整点 / 半点上', () => {
+    /*
+      对齐的前提：本机时区偏移是 30 分钟的整数倍（地球上绝大多数是 15 的倍数）。
+      这里不写死时间戳，而是直接验「结果换算成本地时间之后，分钟是 0 或 30」。
+    */
+    const now = Date.now()
+    const next = now + nextAlignedDelay(now)
+    const offsetMinutes = new Date(now).getTimezoneOffset() // UTC - 本地，分钟
+    const localMinutes = next / 60_000 - offsetMinutes
+    expect(localMinutes % 30).toBe(0)
+    expect((next / 1000) % 60).toBe(0)
   })
 })
