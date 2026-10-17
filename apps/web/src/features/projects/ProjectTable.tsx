@@ -35,6 +35,8 @@ export function ProjectTable({
   isPending,
   onOpen,
   onRemove,
+  onUpdate,
+  updateOf,
 }: {
   projects: ProjectListItem[] | undefined
   /** 批量状态。**可能缺**（读失败时整列就是空的），所以每一列都要能显示「—」 */
@@ -43,6 +45,10 @@ export function ProjectTable({
   isPending: boolean
   onOpen: (id: number) => void
   onRemove: (project: ProjectListItem) => void
+  /** 行内「更新」（单个仓库，ff-only）。不传 = 这一行不给更新入口 */
+  onUpdate?: (id: number) => void
+  /** 这一行当前的更新状态（一个列表只持有一份任务状态） */
+  updateOf?: (id: number) => { busy: boolean; text?: string; failed?: boolean } | null
 }) {
   const sort = useUiStore((s) => s.filters.sort)
 
@@ -91,6 +97,8 @@ export function ProjectTable({
               current={currentId === p.id}
               onOpen={() => onOpen(p.id)}
               onRemove={() => onRemove(p)}
+              {...(onUpdate ? { onUpdate } : {})}
+              {...(updateOf ? { updateOf } : {})}
             />
           )),
         )}

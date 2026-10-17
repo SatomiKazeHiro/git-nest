@@ -23,15 +23,7 @@ import { FilterToggle } from './FilterToggle'
  * 逐个字段订阅 store，而不是 `useUiStore()` 整店订阅——整店订阅会让任何一处
  * 状态变化（比如详情栏折叠）都重渲染这一行。
  */
-export function Toolbar({
-  total,
-  onCheckUpdates,
-  onScan,
-}: {
-  total: number
-  onCheckUpdates: () => void
-  onScan: () => void
-}) {
+export function Toolbar({ total, onScan }: { total: number; onScan: () => void }) {
   const filters = useUiStore((s) => s.filters)
   const setQuery = useUiStore((s) => s.setQuery)
   const clearFilters = useUiStore((s) => s.clearFilters)
@@ -68,18 +60,6 @@ export function Toolbar({
       <div className="ml-auto flex shrink-0 items-center gap-2">
         {/* 主动刷新：**只同步状态，不开弹窗**。这是最常用的一枚——看一眼就走。 */}
         <RefreshButton />
-        {/* 「联网」两个字是必须的：详情页还有一个只读本地的按钮，
-            两个都叫「检查更新」的话，用户没法从名字看出哪个会联网。
-            这里**不再有「检查中…」态**：进度和报告都在随后打开的弹窗里，
-            按钮照旧的写法（`checking={panelOpen}`）会在检查早已跑完、弹窗还开着时
-            继续显示「检查中…」——那是在骗人。 */}
-        <Button
-          onClick={onCheckUpdates}
-          title="联网 fetch 远程，看每个仓库落后多少、推不推荐更新"
-        >
-          <RefreshCw size={14} aria-hidden />
-          联网检查更新
-        </Button>
         <Button onClick={onScan} title="去设置里扫描一个目录，把本机仓库批量加进清单">
           <FolderSearch size={14} aria-hidden />
           扫描目录

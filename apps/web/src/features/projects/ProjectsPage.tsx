@@ -7,8 +7,9 @@ import { ApiError } from '@/lib/api'
 import { useUiStore } from '@/store/ui'
 import { useProjects } from './queries'
 import { useStatuses } from '@/features/status/queries'
-import { UpdatePanel } from '@/features/updates/UpdatePanel'
 import { detailPath } from './detailPath'
+import { useUpdateTask, isPull } from '@/features/updates/taskStream'
+import { useInvalidate } from '@/lib/invalidate'
 import { Toolbar } from './ListToolbar'
 import { ProjectTable } from './ProjectTable'
 import { RemoveDialog } from './RemoveDialog'
@@ -44,7 +45,6 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
   const filters = useUiStore((s) => s.filters)
   const openScan = useUiStore((s) => s.openScan)
   const [pendingRemoval, setPendingRemoval] = useState<ProjectListItem | null>(null)
-  const [panelOpen, setPanelOpen] = useState(false)
 
   const debouncedQuery = useDebounce(filters.q, { wait: 200 })
   /*
@@ -58,6 +58,25 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
     界面在宣称一个并没有生效的排序。逐字段清单就是这种漏的来源。
   */
   const { data: projects, isPending, error } = useProjects({ ...filters, q: debouncedQuery })
+
+  /*
+    行内「更新」：**单个仓库**，一次 ff-only。
+    弹窗已经删了（docs/软件定位.md §2：更新只是 sync 的一个触发器），
+    所以这个列表自己持有一份任务状态——每个项目在 	ask.items 里都有自己那一条。
+  */
+  const invalidate = useInvalidate()
+  const updater = useUpdateTask(() => invalidate())
+  const updateOf = (id: number) => {
+    const item = updater.task?.items.find((i) => i.projectId === id)
+    if (!item) return null
+    if (item.state === 'pending' || item.state === 'running') return { busy: true, text: '更新中…' }
+    if (item.state === 'failed') return { busy: false, text: item.error ?? '更新失败', failed: true }
+    return {
+      busy: false,
+      failed: false,
+      text: isPull(item.result) ? item.result.summary : '已更新',
+    }
+  }
 
   const {
     data: statuses,
@@ -76,11 +95,7 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
 
   return (
     <div className="pane-list">
-      <Toolbar
-        total={projects?.length ?? 0}
-        onCheckUpdates={() => setPanelOpen(true)}
-        onScan={openScan}
-      />
+      <Toolbar total={projects?.length ?? 0} onScan={openScan} />
 
       {/*
         清单区：**清单表 + 详情并排**，选中项目时右边那一轨才长出来。
@@ -123,6 +138,8 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
             isPending={isPending}
             onOpen={(projectId) => navigate(detailPath(currentId, projectId))}
             onRemove={(p) => setPendingRemoval(p)}
+            onUpdate={(id) => updater.startApply([id])}
+            updateOf={updateOf}
           />
         </div>
 
@@ -131,14 +148,6 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
 
       {pendingRemoval ? (
         <RemoveDialog project={pendingRemoval} onClose={() => setPendingRemoval(null)} />
-      ) : null}
-      {/* 报告是弹窗，不再插进页面流里（插进去会推移清单表，而且和表是同一套盒子语汇，
-          屏幕上就同时出现两张「表」）。 */}
-      {panelOpen ? (
-        <UpdatePanel
-          targets={(projects ?? []).map((p) => ({ id: p.id, name: p.name, isOwn: p.isOwn }))}
-          onClose={() => setPanelOpen(false)}
-        />
       ) : null}
     </div>
   )

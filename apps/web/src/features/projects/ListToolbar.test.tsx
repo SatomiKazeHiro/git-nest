@@ -23,7 +23,7 @@ function renderToolbar() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
-      <Toolbar total={3} onCheckUpdates={() => {}} onScan={() => {}} />
+      <Toolbar total={3} onScan={() => {}} />
     </QueryClientProvider>,
   )
 }

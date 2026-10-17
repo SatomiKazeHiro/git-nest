@@ -70,6 +70,8 @@ export function ProjectRow({
   current,
   onOpen,
   onRemove,
+  onUpdate,
+  updateOf,
 }: {
   project: ProjectListItem
   status: RepoStatus | undefined
@@ -77,6 +79,10 @@ export function ProjectRow({
   current: boolean
   onOpen: () => void
   onRemove: () => void
+  /** 行内「更新」：只更这一个仓库（ff-only）。不传 = 不给更新入口 */
+  onUpdate?: (id: number) => void
+  /** 这一行当前的更新状态；没有就是「没跑过」 */
+  updateOf?: (id: number) => { busy: boolean; text?: string; failed?: boolean } | null
 }) {
   const openEdit = useUiStore((s) => s.openEdit)
   /*
@@ -242,7 +248,21 @@ export function ProjectRow({
         </span>
       </td>
       <td className="col-actions">
-        <span className="row-actions flex justify-end gap-1">
+        <span className="row-actions flex items-center justify-end gap-1">
+          {/*
+            行内「更新」：**只有真的能拉的行才给**（attention = ready，即判决 safe 且落后）。
+            「别拉」「要你决定」那些行了给了按钮也只会失败——那正是弹窗时代那道闸在
+            防止的事，现在它挪到了这里。
+            单仓库更新没有「批量确认」那一步：它只动一个仓库，而且只 ff-only。
+          */}
+          {onUpdate && p.attention === 'ready' ? (
+            <UpdateButton
+              busy={updateOf?.(p.id)?.busy ?? false}
+              text={updateOf?.(p.id)?.text}
+              failed={updateOf?.(p.id)?.failed ?? false}
+              onClick={() => onUpdate(p.id)}
+            />
+          ) : null}
           <button
             onClick={() => openEdit(p.id)}
             title="编辑资料"
@@ -295,5 +315,39 @@ export function ProjectRow({
       </tr>
     ) : null}
     </>
+  )
+}
+
+/**
+ * 行内那枚「更新」。
+ *
+ * 三态就用同一个按钮表达（不再开弹窗）：`更新` → `更新中…` → `已更新 / 失败`。
+ * 失败时把原因放进 `title`：行内放不下整句，但悬停能看到，而且不会再"静默"。
+ */
+function UpdateButton({
+  busy,
+  text,
+  failed,
+  onClick,
+}: {
+  busy: boolean
+  text?: string
+  failed: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={onClick}
+      title={text ?? '把这个仓库快进到远程（只做 fast-forward）'}
+      className={`shrink-0 cursor-pointer rounded-[3px] px-1.5 py-0.5 text-[11.5px] ${
+        failed
+          ? 'text-signal-bad hover:bg-paper'
+          : 'text-accent hover:bg-paper disabled:cursor-not-allowed disabled:text-ink-3'
+      }`}
+    >
+      {busy ? '更新中…' : failed ? '更新失败' : text ? '已更新' : '更新'}
+    </button>
   )
 }

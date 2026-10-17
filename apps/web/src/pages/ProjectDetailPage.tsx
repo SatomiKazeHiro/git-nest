@@ -13,7 +13,8 @@ import { AttentionBadge } from '@/features/status/badges'
 // 判决卡住在状态域（`features/status/StatusPanel`），页面只负责把它摆进来。
 // 那三条状态政策（只有 safe 配绿、不是仓库就不重算、脏标记降级）跟着它一起走。
 import { StatusPanel } from '@/features/status/StatusPanel'
-import { UpdatePanel } from '@/features/updates/UpdatePanel'
+import { useInvalidate } from '@/lib/invalidate'
+import { useUpdateTask } from '@/features/updates/taskStream'
 import { useProject } from '@/features/projects/queries'
 // 「远程」与「记录」都是项目域自己的展示，不属于「详情页」这个组合根
 import { RemoteRow } from '@/features/projects/RemoteRow'
@@ -34,7 +35,22 @@ export function ProjectDetailPage() {
   const navigate = useNavigate()
   // 分类名从配置里读（用户自己加的那些，静态表里没有）
   const categories = useCategories()
-  const [updating, setUpdating] = useState(false)
+  /*
+    联网同步**这一个**仓库：startCheck([id], includeOwn=true)——
+    用户点名要查它，所以显式带上「我自己的」，不被批量默认挡掉。
+    结果不进任何报告面板：状态卡与推荐本身就读 epo_state，失效一次就都新了。
+  */
+  const invalidate = useInvalidate()
+  const { busy: syncBusy, error: syncError, startCheck } = useUpdateTask(() => invalidate())
+  const sync = {
+    busy: syncBusy,
+    error: syncError,
+    run: () => {
+      // 路由里的 id 读不出来就什么都不做（那一页本来也渲染不出内容）
+      if (!Number.isFinite(projectId)) return
+      void startCheck([projectId], true)
+    },
+  }
   /*
     详情栏的两页。**默认落在概览**——打开一个项目最常见的需求是看它现在什么状态，
     而「这个仓库是讲什么的」是第二问。
@@ -106,13 +122,20 @@ export function ProjectDetailPage() {
             <Pencil size={14} aria-hidden />
             编辑资料
           </Button>
+          {/*
+            联网**同步这一个仓库**：弹窗已经删了（更新落到了清单的行内按钮，
+            检查落到了「顶部刷新 + 每 :00/:30 一轮」）。这里保留一个点名的入口，
+            因为详情页是「我只关心这一个」的地方——用户点名要它，就该当场能问。
+            跑完 invalidate() 会让下面的状态卡与推荐自己变新。
+          */}
           <Button
             variant="primary"
-            onClick={() => setUpdating(true)}
-            title="联网 fetch 远程，再分析落后多少、推不推荐更新"
+            onClick={() => sync.run()}
+            disabled={sync.busy}
+            title="联网 fetch 这一个仓库，再算落后多少、推不推荐更新"
           >
-            <RefreshCw size={14} aria-hidden />
-            联网检查更新
+            <RefreshCw size={14} aria-hidden className={sync.busy ? 'animate-spin' : ''} />
+            {sync.busy ? '同步中…' : '联网同步'}
           </Button>
           {/*
             「关闭」：详情是清单里的第二轨，关掉它 = 回清单。
@@ -173,17 +196,8 @@ export function ProjectDetailPage() {
         加入清单于 {formatRelative(project.addedAt)}
       </footer>
 
-      {/* 「编辑资料」弹窗挂在窗口外壳上（整个应用只此一份），这里不再挂。
-          报告是弹窗：插在流里会把上面的判断切开。 */}
-      {updating ? (
-        <UpdatePanel
-          targets={[{ id: project.id, name: project.name, isOwn: project.isOwn }]}
-          /* 用户点名要查这一个：显式带上「我自己的」，不被批量默认挡掉 */
-          includeOwn
-          onClose={() => setUpdating(false)}
-        />
-      ) : null}
-    </div>
+      {/* 「编辑资料」弹窗挂在窗口外壳上（整个应用只此一份），这里不再挂。 */}
+      {sync.error ? <ErrorNote message={sync.error} /> : null}    </div>
   )
 }
 
