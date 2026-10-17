@@ -17,7 +17,7 @@ import {
 } from '@git-nest/core/git'
 import type { DB } from '../db/index.ts'
 import { readSettings } from './settings.ts'
-import { lastUpstreamSha } from '../repos/updates.ts'
+import { upstreamBaseline } from '../repos/repo-state.ts'
 import { preferredTransport, rememberTransport } from '../repos/transports.ts'
 
 export { analyzeUpdates, getLog, getRepoStatus, pullRepo, readReadme }
@@ -87,9 +87,9 @@ export async function repoStatus(
   scheduler.setLimit(current().concurrency)
 
   // 上次检查时上游指向哪 —— full 档算「推不推荐更新」要用它判「作者改写历史」。
-  // 读不出来（没查过、或旧记录没这个字段）就当没有：宁可判不出，不要瞎判。
+  // 读不出来（没同步过、或那次读不到上游）就当没有：宁可判不出，不要瞎判。
   const lastSha =
-    options.projectId !== undefined && db ? lastUpstreamSha(db, options.projectId) : null
+    options.projectId !== undefined && db ? upstreamBaseline(db, options.projectId) : null
   const read = () =>
     getRepoStatus(path, {
       timeoutMs: gitTimeoutMs,

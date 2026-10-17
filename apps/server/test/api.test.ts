@@ -298,13 +298,38 @@ describe('latestCheck 只能由成功的远程检查提供', () => {
    * 清单页反而会显示刚确认过的绿色「已是最新」—— 正是这个软件最要消灭的那种
    * 「没有依据的肯定」。
    */
+  /*
+    往 `repo_state` 写一行（判定与新鲜度都读它）。
+
+    这里**直接写 SQL** 而不是走 `writeRepoState`：个别用例要造「列里是坏 JSON」
+    这种形状（读的人必须扛住），生产的写入器永远不会写出那种东西。
+  */
+  /*
+    合格的（behind / up_to_date…）覆盖结论；不合格的（error / not_a_repo…）
+    **只记尝试**——与 `writeRepoState` 同一条语义。
+  */
+  const QUALIFIED = new Set(['up_to_date', 'behind', 'ahead', 'diverged'])
   const insertCheck = (projectId: number, status: string, checkedAt: string) =>
-    db
-      .prepare(
-        `INSERT INTO update_checks (project_id, checked_at, status, ahead_count, behind_count, detail)
-         VALUES (?, ?, ?, NULL, NULL, NULL)`,
-      )
-      .run(projectId, checkedAt, status)
+    QUALIFIED.has(status)
+      ? db
+          .prepare(
+            `INSERT INTO repo_state (project_id, checked_at, status, ahead, behind, verdict,
+                                     can_pull, upstream_sha, incoming, attempt_at, attempt_status, error)
+             VALUES (?, ?, ?, NULL, NULL, NULL, 0, NULL, '[]', ?, ?, NULL)
+             ON CONFLICT(project_id) DO UPDATE SET
+               checked_at = excluded.checked_at, status = excluded.status,
+               attempt_at = excluded.attempt_at, attempt_status = excluded.attempt_status`,
+          )
+          .run(projectId, checkedAt, status, checkedAt, status)
+      : db
+          .prepare(
+            `INSERT INTO repo_state (project_id, checked_at, status, ahead, behind, verdict,
+                                     can_pull, upstream_sha, incoming, attempt_at, attempt_status, error)
+             VALUES (?, ?, ?, NULL, NULL, NULL, 0, NULL, '[]', ?, ?, NULL)
+             ON CONFLICT(project_id) DO UPDATE SET
+               attempt_at = excluded.attempt_at, attempt_status = excluded.attempt_status`,
+          )
+          .run(projectId, checkedAt, status, checkedAt, status)
 
   it('只有失败记录时 latestCheck 为 null（等于「没查过远程」）', async () => {
     const created = await makeProject('only-failed')
@@ -356,13 +381,46 @@ describe('latestCheck 只能由成功的远程检查提供', () => {
  * latestCheck」这种实现能过第一组，却会把界面变成「刚确认过的旧结论」。
  */
 describe('lastAttempt：最近一次尝试（不管成败）', () => {
-  const insertCheck = (projectId: number, status: string, checkedAt: string, detail: unknown) =>
-    db
-      .prepare(
-        `INSERT INTO update_checks (project_id, checked_at, status, ahead_count, behind_count, detail)
-         VALUES (?, ?, ?, NULL, NULL, ?)`,
-      )
-      .run(projectId, checkedAt, status, detail === null ? null : JSON.stringify(detail))
+  /**
+   * 写一行「当前状态」。
+   *
+   * 合格的（比如 `behind`）覆盖全部结论；不合格的（`error`）**只动尝试与原因**
+   * ——与 `writeRepoState` 同一条语义，这正是下面几条用例要钉的东西。
+   */
+  const insertCheck = (projectId: number, status: string, checkedAt: string, detail: unknown) => {
+    const d = (detail ?? {}) as {
+      verdict?: string
+      canPull?: boolean
+      upstreamSha?: string | null
+      error?: unknown
+    }
+    const qualified = !d.error && (d.verdict !== undefined || status !== 'error')
+    db.prepare(
+      qualified
+        ? `INSERT INTO repo_state (project_id, checked_at, status, ahead, behind, verdict,
+                                   can_pull, upstream_sha, incoming, attempt_at, attempt_status, error)
+           VALUES (@id, @at, @status, NULL, NULL, @verdict, @canPull, @sha, '[]', @at, @status, NULL)
+           ON CONFLICT(project_id) DO UPDATE SET
+             checked_at = excluded.checked_at, status = excluded.status,
+             verdict = excluded.verdict, can_pull = excluded.can_pull,
+             upstream_sha = excluded.upstream_sha, attempt_at = excluded.attempt_at,
+             attempt_status = excluded.attempt_status, error = excluded.error`
+        : `INSERT INTO repo_state (project_id, checked_at, status, ahead, behind, verdict,
+                                   can_pull, upstream_sha, incoming, attempt_at, attempt_status, error)
+           VALUES (@id, @at, @status, NULL, NULL, NULL, 0, NULL, '[]', @at, @status, @error)
+           ON CONFLICT(project_id) DO UPDATE SET
+             attempt_at = excluded.attempt_at, attempt_status = excluded.attempt_status,
+             error = excluded.error`,
+    ).run({
+      id: projectId,
+      at: checkedAt,
+      status,
+      verdict: d.verdict ?? null,
+      canPull: d.canPull === true ? 1 : 0,
+      sha: d.upstreamSha ?? null,
+      error: d.error === undefined ? null : JSON.stringify(d.error),
+    })
+  }
 
   const NETWORK_ERROR = {
     kind: 'network',
@@ -442,9 +500,10 @@ describe('lastAttempt：最近一次尝试（不管成败）', () => {
     const created = await makeProject('broken-detail')
     const id = created.json().project.id
     db.prepare(
-      `INSERT INTO update_checks (project_id, checked_at, status, ahead_count, behind_count, detail)
-       VALUES (?, ?, ?, NULL, NULL, ?)`,
-    ).run(id, new Date().toISOString(), 'error', '{ 这不是 JSON')
+      `INSERT INTO repo_state (project_id, checked_at, status, ahead, behind, verdict,
+                               can_pull, upstream_sha, incoming, attempt_at, attempt_status, error)
+       VALUES (?, ?, 'error', NULL, NULL, NULL, 0, NULL, '[]', ?, 'error', ?)`,
+    ).run(id, new Date().toISOString(), new Date().toISOString(), '{ 这不是 JSON')
 
     const detail = await app.inject({ method: 'GET', url: `/api/projects/${id}` })
     expect(detail.json().project.lastAttempt).toMatchObject({ status: 'error', error: null })

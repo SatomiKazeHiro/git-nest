@@ -7,12 +7,8 @@ import { clearStatusCache, pull, type UpdateReport } from '../lib/git.ts'
 import { syncRepo } from '../lib/sync.ts'
 import { readSettings } from '../lib/settings.ts'
 import { corsHeadersFor } from '../lib/origins.ts'
-import {
-  lastUpstreamSha,
-  lastVerdict,
-  pruneUpdateChecks,
-  recordUpdateCheck,
-} from '../repos/updates.ts'
+import { pruneUpdateChecks } from '../repos/updates.ts'
+import { stateVerdict, upstreamBaseline, writeRepoState } from '../repos/repo-state.ts'
 import {
   createTask,
   eventsSince,
@@ -288,7 +284,7 @@ async function runApply(db: DB, task: Task, targets: Target[]) {
         这一步拦的是「作者 force push 改写了历史」与「作者删库重建」——
         它们的表象恰恰是 `behind`，只看状态是拦不住的。
       */
-      const refuse = refuseReason(lastVerdict(db, target.id))
+      const refuse = refuseReason(stateVerdict(db, target.id))
       if (refuse) {
         markDone(task, target.id, {
           outcome: 'skipped',
@@ -314,32 +310,33 @@ async function runApply(db: DB, task: Task, targets: Target[]) {
       //
       // 第三个参数是项目 id：基线闸那次 fetch 也要按项目换传输方式，
       // 走通的那条同样要记住（与「检查」共用一处口径，见 lib/git.ts）。
-      const result = await pull(target.path, lastUpstreamSha(db, target.id), target.id)
+      const result = await pull(target.path, upstreamBaseline(db, target.id), target.id)
       /*
-        **`skipped` 不写 update_checks**，与上面那道拒绝闸同一条理由（看 `continue` 上面
-        那两行注释）。这里曾经无条件写，于是 `PullResult.status` 这个**闸门原因**被当成
-        了「远程结论」落库，两个后果都是实打实的：
+        ## 拉完立刻再同步一次（`update = sync + ff-only` 的后半句）
 
-        1. `SKIP(..., 'ahead' | 'diverged')` 里的值属于 `REMOTE_CHECK_STATUSES`
-           （`packages/core/src/types.ts`），所以这一行会被当成「最近一次**合格**检查」，
-           把 ahead/behind 覆盖成 null、推荐覆盖成 null → 清单上「上次检查 = 刚刚」
-           却显示「待检查」（`ATTENTION_SQL` 没有 ELSE，落 `unchecked`）。
-        2. 这一行的 detail 里没有 `upstreamSha`，而 `lastUpstreamSha` 只读最新一行的
-           detail → 基线和它一起被清空，下一次检查就判不出「作者改写了历史」。
+        旧实现在这里写一行「ahead/behind 与推荐都是 null」的记录，理由是
+        「pull 之后不重新算推荐」。后果是**更新完的半小时里清单没有数字**：
+        「刚刚拉过」确实不该给旧结论，但也不该给空白——这一刻真正的答案
+        （已是最新、落后 0）**本地就能算**，而 `repo_state` 只用一行表达当前状态，
+        空白看起来就是「没查过」。
 
-        换句话说：一次**没动工作区、也没得出远程结论**的跳过，不该出现在「检查历史」里。
-        `failed` 照写——失败归因本来就要留档，而它不在那四个「合格」状态里。
+        所以：更新完就再 sync 一次（fetch 刚跑过，这次几乎零成本）。
+
+        **`skipped` 仍然什么都不写**：它没联网、没动工作区、也没得出远程结论，
+        写进去只会把「上次检查」换成一次并没发生过的检查（这条踩过，见 git log）。
+        `failed` 写失败原因——失败归因本来就要留档，而 `writeRepoState` 里不合格的
+        尝试只写 `attempt_at`/`error`，不会覆盖上一次的好结论。
       */
-      if (result.outcome !== 'skipped') {
-        recordUpdateCheck(db, target.id, {
-          status: result.status,
+      if (result.outcome === 'updated' || result.outcome === 'already_up_to_date') {
+        await syncRepo(db, target, { label: 'update' })
+      } else if (result.outcome === 'failed') {
+        writeRepoState(db, target.id, {
+          status: 'error',
           ahead: null,
           behind: null,
           incoming: [],
           outgoing: [],
           tags: [],
-          // pull 之后不重新算推荐：这一刻真正的答案是「刚刚拉过了」，
-          // 下一次检查会给出新的结论。这里给 null 比给一条旧结论诚实。
           recommendation: null,
           upstreamSha: null,
           error: result.error,

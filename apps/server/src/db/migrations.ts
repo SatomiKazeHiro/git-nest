@@ -210,6 +210,7 @@ export const migrations = [
         upstream_sha TEXT,                        -- 下次判「作者改写历史」的基线
         incoming     TEXT NOT NULL DEFAULT '[]',  -- 要拉进来的前几条提交（JSON）
         attempt_at   TEXT NOT NULL,               -- 最近一次**尝试**（成功或失败）
+        attempt_status TEXT NOT NULL,             -- 最近一次尝试得出的状态（失败时是 error / no_remote…）
         error        TEXT                         -- 最近一次尝试的失败原因（JSON）；NULL = 没失败
       );
     `,

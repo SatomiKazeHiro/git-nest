@@ -1,9 +1,8 @@
 import type { DB } from '../db/index.ts'
+import { readRepoStates } from './repo-state.ts'
 import {
   DEFAULT_SORT_DIR,
-  REMOTE_CHECK_STATUSES,
   ATTENTION_RANK,
-  VERDICT_LABEL,
   GIT_ERROR_KINDS as CORE_GIT_ERROR_KINDS,
   isRemoteCheckStatus,
   recommendationFrom,
@@ -18,9 +17,6 @@ import {
   type GitError,
   type GitErrorKind,
   type UpdateCheckSummary,
-  type UpdateRecommendation,
-  type UpdateStatus,
-  type UpdateVerdict,
 } from '@git-nest/core'
 
 interface ProjectRow {
@@ -40,39 +36,33 @@ interface ProjectRow {
 type ProjectRowWithAttention = ProjectRow & { attention: Attention }
 
 /**
- * 「哪次检查算数」在 SQL 里的写法，和 `latestChecksByProject` 同一个口径：
- * 只有 `REMOTE_CHECK_STATUSES` 里的状态才算（fetch 失败的、不是仓库/没远程的
- * 都不算——否则断网后点一次检查，界面会显示刚确认过的绿色「已是最新」）。
+ * 逐项目带出**当前状态**那一行（`repo_state`，别名 c）。
  *
- * 字面量内联而不是绑成 `?`：REMOTE_CHECK_STATUSES 是本文件 import 的编译期
- * 常量（不是用户输入），而这段片段要在 JOIN 子查询里复用，按位置绑参容易错位。
+ * 一个项目一行，没有就是「没同步过」——不再需要「从流水里挑最新一次合格检查」
+ * 那种相关子查询。CORS 那次教训之后留一句：**这一个是主体表**，
+ * 见 `docs/软件定位.md` §3。
  */
-const QUALIFIED_STATUS_IN = `(${REMOTE_CHECK_STATUSES.map((s) => `'${s}'`).join(', ')})`
-
-/** 逐项目带出「最近一次**合格**检查」，别名 c */
-const LATEST_CHECK_JOIN = `
-  LEFT JOIN update_checks c ON c.id = (
-    SELECT MAX(id) FROM update_checks
-    WHERE project_id = p.id AND status IN ${QUALIFIED_STATUS_IN}
-  )
-`
+const STATE_JOIN = `LEFT JOIN repo_state c ON c.project_id = p.id`
 
 /**
- * `attention` 的判定。读的是 `recommendationFromDetail` 读的那个 `detail`。
+ * `attention` 的判定。读 `repo_state` 的列（不再是 `detail` 里的 JSON）。
  *
- * 用 `canPull` 而不是 `behind > 0` 判「可更新」：detail 里专门存了 canPull，
- * 注释写着「光凭 verdict 推不出来——『已是最新』也是 safe，但没东西可拉」。
+ * 判据一个字没改，只是数据来源从「历史里挑一条再解 JSON」变成「读这一行」：
+ * - `verdict` 属于「别拉」两种 → blocked；`diverged` → decide；
+ * - `can_pull = 1` → ready（**不能**用 `behind > 0` 代替：「已是最新」也是 safe，
+ *   但没有东西可拉）；
+ * - 其余（含「只失败过、没有结论」的行）→ unchecked。
  *
  * **这里的服务端实现是唯一一份**：列表显示、状态筛选、侧栏计数三处都用它，
  * 前端出现任何「按 verdict 判断该显示什么分类」的代码都是 bug。
  */
 const ATTENTION_SQL = `
   CASE
-    WHEN c.id IS NULL THEN 'unchecked'
-    WHEN json_extract(c.detail, '$.verdict') IN ('rewritten', 'unrelated') THEN 'blocked'
-    WHEN json_extract(c.detail, '$.verdict') = 'diverged' THEN 'decide'
-    WHEN json_extract(c.detail, '$.canPull') = 1 THEN 'ready'
-    WHEN json_extract(c.detail, '$.verdict') = 'safe' THEN 'synced'
+    WHEN c.project_id IS NULL THEN 'unchecked'
+    WHEN c.verdict IN ('rewritten', 'unrelated') THEN 'blocked'
+    WHEN c.verdict = 'diverged' THEN 'decide'
+    WHEN c.can_pull = 1 THEN 'ready'
+    WHEN c.verdict = 'safe' THEN 'synced'
     ELSE 'unchecked'
   END
 `
@@ -186,9 +176,9 @@ export function listProjects(db: DB, opts: ListProjectsOptions = {}): ProjectLis
       }
       case 'checked':
         // 没查过的排最后：它们没有「上次检查」这个值可排
-        return `CASE WHEN c.id IS NULL THEN 1 ELSE 0 END, c.checked_at ${dirOf('checked')}`
+        return `CASE WHEN c.project_id IS NULL THEN 1 ELSE 0 END, c.checked_at ${dirOf('checked')}`
       case 'behind':
-        return `CASE WHEN c.id IS NULL THEN 1 ELSE 0 END, c.behind_count ${dirOf('behind')}`
+        return `CASE WHEN c.project_id IS NULL THEN 1 ELSE 0 END, c.behind ${dirOf('behind')}`
       case 'name':
         // 纯名称序。**不能并进 default** —— default 是「先按分类分组，同类再按
         // sort_order」；用户既然在排序下拉里点了「按名称」，要的就是名称序，
@@ -203,7 +193,7 @@ export function listProjects(db: DB, opts: ListProjectsOptions = {}): ProjectLis
   const rows = db
     .prepare(
       `SELECT p.*, ${ATTENTION_SQL} AS attention FROM projects p
-       ${LATEST_CHECK_JOIN}
+       ${STATE_JOIN}
        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
        ORDER BY ${orderBy}`,
     )
@@ -233,7 +223,7 @@ export function getProject(db: DB, id: number): ProjectDetail | null {
   const row = db
     .prepare(
       `SELECT p.*, ${ATTENTION_SQL} AS attention FROM projects p
-       ${LATEST_CHECK_JOIN}
+       ${STATE_JOIN}
        WHERE p.id = @id`,
     )
     .get({ id }) as ProjectRowWithAttention | undefined
@@ -354,70 +344,53 @@ export function pathExists(db: DB, p: string, exceptId?: number): boolean {
   return map
 }
 
+/**
+ * 「上次检查」这一列读什么：`repo_state` 里那次**合格**同步。
+ *
+ * **仍然要过滤状态**，理由与改造前一模一样：一次 fetch 失败的尝试只写
+ * `attempt_at`/`error`，不该刷新新鲜度——否则断网后点一次检查，界面反而显示
+ * 刚确认过的绿色「已是最新」。过滤取值来自 `REMOTE_CHECK_STATUSES`，与
+ * `writeRepoState` 判「合格」用的是同一份常量。
+ */
 function latestChecksByProject(db: DB, ids: number[]): Map<number, UpdateCheckSummary> {
   const map = new Map<number, UpdateCheckSummary>()
   if (ids.length === 0) return map
-  // 只挑「最近一次真正问到远程结论」的那条：fetch 失败的检查、以及
-  // 「不是仓库 / 没有远程」这类本地状态都不算问过远程，不能拿来刷新新鲜度
-  // ——否则断网后点一次检查，界面反而显示刚确认过的绿色「已是最新」。
-  // 过滤条件用 isRemoteCheckStatus 的同一份取值，避免两处漂移。
-  const qualified = REMOTE_CHECK_STATUSES.map(() => '?').join(', ')
-  const rows = db
-    .prepare(
-      `SELECT project_id AS projectId, checked_at AS checkedAt, status, ahead_count AS aheadCount,
-              behind_count AS behindCount, detail
-       FROM update_checks WHERE id IN (
-         SELECT MAX(id) FROM update_checks
-         WHERE project_id IN (${ids.map(() => '?').join(',')}) AND status IN (${qualified})
-         GROUP BY project_id
-       )`,
-    )
-    .all(...ids, ...REMOTE_CHECK_STATUSES) as (UpdateCheckSummary & {
-    projectId: number
-    detail: string | null
-  })[]
-  for (const r of rows) {
-    const { projectId, detail, ...summary } = r
-    if (!isRemoteCheckStatus(summary.status)) continue
-    // 「推不推荐更新」只在真正检查过的那一刻才产生，所以这里是从历史里**读出来**的，
-    // 不是现算的。现算要先 fetch，而列表页是纯本地的——那会拿旧 refs 冒充结论。
-    map.set(projectId, { ...summary, recommendation: recommendationFromDetail(detail) })
+
+  const rows = readRepoStates(db, ids)
+  for (const [projectId, state] of rows) {
+    // 只失败过、还没成功过的仓库：没有合格结论，这一格就该是「没查过」
+    if (!isRemoteCheckStatus(state.status)) continue
+    map.set(projectId, {
+      checkedAt: state.checkedAt,
+      status: state.status,
+      aheadCount: state.ahead,
+      behindCount: state.behind,
+      // 「推不推荐更新」是那次同步算出来的结论，这里**重建**，不重算：
+      // 现算要先 fetch，而列表页是纯本地的——那会拿旧 refs 冒充结论。
+      recommendation:
+        state.verdict === null ? null : recommendationFrom(state.verdict, state.canPull),
+    })
   }
   return map
 }
 
 /**
- * 每个项目**最新那一行**（不按 status 过滤）：最近一次尝试，成没成、失败的话为什么。
+ * 每个项目**最近一次尝试**（成功或失败）：失败的话为什么。
  *
- * **不能拿它顶替 `latestChecksByProject`**，两者回答的是两个问题：
- * 上面那个过滤到 `REMOTE_CHECK_STATUSES`（只认真的问到过远程结论的那次），
- * 界面上的新鲜度必须用它——失败的检查若能刷新新鲜度，断网后点一次检查，
- * 清单页反而会显示刚确认过的绿色「已是最新」。
- * 这一个反过来：**要的正是那些被过滤掉的失败行**——用户遇到过的真实困惑就是
- * 「一边说 42 分钟前落后 631、一边检查什么都不给」，因为失败的原因存进库之后
- * 没有任何地方读它。
+ * **不能拿它顶替 `latestChecksByProject`**，两者回答两个问题：上面那个只认真的
+ * 问到过远程结论的那次（新鲜度用它），这一个要的正是被过滤掉的失败——用户遇到过
+ * 的真实困惑是「一边说 42 分钟前落后 631、一边检查什么都不给」。
  */
 function lastAttemptsByProject(db: DB, ids: number[]): Map<number, LastUpdateAttempt> {
   const map = new Map<number, LastUpdateAttempt>()
   if (ids.length === 0) return map
-  /*
-    取法与 `latestChecksByProject` 同一个形状（`MAX(id)` 逐项目取最新），
-    只是**不加 status 过滤**。用 id 而不是 `checked_at` 定「最新」：两者都由
-    `recordUpdateCheck` 在同一瞬间写下，而 id 是自增主键，没有并列可言。
-  */
-  const rows = db
-    .prepare(
-      `SELECT project_id AS projectId, checked_at AS checkedAt, status, detail
-       FROM update_checks WHERE id IN (
-         SELECT MAX(id) FROM update_checks
-         WHERE project_id IN (${ids.map(() => '?').join(',')})
-         GROUP BY project_id
-       )`,
-    )
-    .all(...ids) as { projectId: number; checkedAt: string; status: UpdateStatus; detail: string | null }[]
 
-  for (const r of rows) {
-    map.set(r.projectId, { at: r.checkedAt, status: r.status, error: errorFromDetail(r.detail) })
+  for (const [projectId, state] of readRepoStates(db, ids)) {
+    map.set(projectId, {
+      at: state.attemptAt,
+      status: state.attemptStatus,
+      error: errorFromStored(state.error),
+    })
   }
   return map
 }
@@ -432,17 +405,16 @@ function lastAttemptsByProject(db: DB, ids: number[]): Map<number, LastUpdateAtt
 const GIT_ERROR_KINDS = new Set<string>(CORE_GIT_ERROR_KINDS)
 
 /**
- * 从 `update_checks.detail` 里取回这次尝试的失败原因。
+ * 从 `repo_state.error` 里取回这次尝试的失败原因。
  *
- * 守卫是必要的，不是防自己的写入：`detail.error` 的类型在写入侧是 `unknown`
- * （见 `repos/updates.ts` 的 `UpdateCheckDetail`），旧记录里可能只有
- * `{ kind: 'network' }`（测试与早期记录就是这样，没有 `message`）——那读出来
- * 就是一条没有内容的警示。**宁可说「没有原因」，也不要往界面塞半条**。
+ * 守卫是必要的，不是防自己的写入：列里存的是 `GitError` 的 JSON，但早期记录里
+ * 可能只有 `{ kind: 'network' }`（没有 `message`）——那读出来就是一条没有内容的
+ * 警示。**宁可说「没有原因」，也不要往界面塞半条**。
  */
-function errorFromDetail(detail: string | null): GitError | null {
-  if (!detail) return null
+function errorFromStored(stored: string | null): GitError | null {
+  if (!stored) return null
   try {
-    const { error } = JSON.parse(detail) as { error?: unknown }
+    const error = JSON.parse(stored) as unknown
     if (typeof error !== 'object' || error === null) return null
     const { kind, message, raw } = error as { kind?: unknown; message?: unknown; raw?: unknown }
     if (typeof kind !== 'string' || !GIT_ERROR_KINDS.has(kind)) return null
@@ -455,28 +427,4 @@ function errorFromDetail(detail: string | null): GitError | null {
   } catch {
     return null
   }
-}
-
-/**
- * 从 `update_checks.detail` 里取回上次算出的推荐结论。
- *
- * 只存了 `verdict` 这个短码，其余（原因、能不能拉）用 core 的 `recommendationFrom`
- * 重建——**不在 server 里另写一份文案**，那必然与 core 漂开。
- * 旧记录没有 `verdict`（这个字段之前不存在），返回 null：宁可没有，也不要编一条。
- */
-function recommendationFromDetail(detail: string | null): UpdateRecommendation | null {
-  if (!detail) return null
-  try {
-    const parsed = JSON.parse(detail) as { verdict?: unknown; canPull?: unknown }
-    const verdict = parsed.verdict
-    if (typeof verdict !== 'string' || !isVerdict(verdict)) return null
-    // canPull 一起存了（光凭 verdict 推不出来：「已是最新」也是 safe，但没东西可拉）
-    return recommendationFrom(verdict, parsed.canPull === true)
-  } catch {
-    return null
-  }
-}
-
-function isVerdict(value: string): value is UpdateVerdict {
-  return Object.hasOwn(VERDICT_LABEL, value)
 }

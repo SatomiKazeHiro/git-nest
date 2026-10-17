@@ -1,7 +1,7 @@
 import type { DB } from '../db/index.ts'
 import { analyze, type UpdateReport } from './git.ts'
-import { writeRepoState } from '../repos/repo-state.ts'
-import { lastUpstreamSha, recordUpdateCheck } from '../repos/updates.ts'
+import { upstreamBaseline, writeRepoState } from '../repos/repo-state.ts'
+import { recordUpdateCheck } from '../repos/updates.ts'
 
 /**
  * **取一个仓库此刻的远程状态：唯一的入口。**
@@ -37,7 +37,7 @@ export async function syncRepo(
 ): Promise<UpdateReport> {
   const report = await analyze(project.path, {
     // 基线必须从库里读：core 不认识数据库，而「作者改写历史」只能靠上次见过的上游 SHA
-    lastUpstreamSha: lastUpstreamSha(db, project.id),
+    lastUpstreamSha: upstreamBaseline(db, project.id),
     projectId: project.id,
     ...(options.label === undefined ? {} : { label: options.label }),
     ...(options.onStart === undefined ? {} : { onStart: options.onStart }),

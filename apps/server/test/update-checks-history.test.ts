@@ -4,22 +4,26 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { buildApp } from '../src/app.ts'
 import { openDatabase, type DB } from '../src/db/index.ts'
-import { KEEP_CHECKS_PER_PROJECT, lastUpstreamSha, lastVerdict, pruneUpdateChecks } from '../src/repos/updates.ts'
+import { KEEP_CHECKS_PER_PROJECT, pruneUpdateChecks } from '../src/repos/updates.ts'
+import { stateVerdict, upstreamBaseline, writeRepoState } from '../src/repos/repo-state.ts'
+import type { UpdateReport } from '../src/lib/git.ts'
 
 /**
- * 「上一次留下的那个事实」怎么读，两处必须一致。
+ * 「上一次留下的那个事实」怎么读，三处必须一致。
  *
  * 有三处会读它：
- * - 清单页显示「推荐」列（`latestChecksByProject`，只认**远程结论**那几种状态）
- * - `PUT /api/updates/apply` 的服务端闸（拦「别拉」）
- * - 下次检查 / 更新时的基线（判「作者改写了历史」）
+ * - 清单页的「推荐」列（`latestChecksByProject`，只认**远程结论**那几种状态）
+ * - `POST /api/updates/apply` 的服务端闸（拦「别拉」）
+ * - 下次同步 / 更新时的基线（判「作者改写了历史」）
  *
- * 原来后两处都是「最新一行，读不出来就 null」。而**最近一行常常故意什么都不带**：
- * 自动 fetch 每 30 分钟跑一轮，断网时写的那行是 `error`、没有 verdict；
- * 一次 pull 之后写的那行既没有 verdict 也没有上游 SHA（那一刻真正的答案是
- * 「刚拉过了」）。于是：
- * - 界面还写着「别拉」，服务端那道闸却已经松开；
- * - 基线每次 pull 之后丢一次。
+ * 它们现在都读 **`repo_state` 的那一行**（一个仓库一行）。这一版之前读的是
+ * `update_checks` 的「最新一行」，而那一行**常常故意什么都不带**：断网时自动 fetch
+ * 写的是 `error`、没有 verdict；一次 pull 之后写的那行既没有 verdict 也没有上游 SHA。
+ * 于是出现过两个真问题：界面还写着「别拉」，服务端那道闸却已经松开；基线每次
+ * pull 之后丢一次。
+ *
+ * 现在这两件事由表结构本身保证：不合格的尝试**根本不会碰**结论列
+ * （见 `writeRepoState`），所以「失败把闸冲开」这条路不存在。
  */
 
 let db: DB
@@ -52,67 +56,93 @@ async function makeProject(name: string): Promise<number> {
   return res.json().project.id as number
 }
 
-function insertCheck(projectId: number, status: string, detail: object | null): void {
-  db.prepare(
-    `INSERT INTO update_checks (project_id, checked_at, status, ahead_count, behind_count, detail)
-     VALUES (?, ?, ?, NULL, NULL, ?)`,
-  ).run(projectId, new Date().toISOString(), status, detail ? JSON.stringify(detail) : null)
+/** 一个「合格」的检查报告（只有它会覆盖结论） */
+function qualified(over: Partial<UpdateReport> = {}): UpdateReport {
+  return {
+    status: 'behind',
+    ahead: 0,
+    behind: 2,
+    incoming: [],
+    outgoing: [],
+    tags: [],
+    recommendation: { verdict: 'safe', ahead: 0, behind: 2, canPull: true, reason: '可以直接快进。' },
+    upstreamSha: 'a'.repeat(40),
+    error: null,
+    ...over,
+  }
 }
 
-describe('判决与基线的读取口径', () => {
-  it('后面插了一行没有 verdict 的失败检查，闸不能凭空松开', async () => {
+/** 一次失败的尝试（不合格，只应记 attempt/error） */
+function failed(): UpdateReport {
+  return {
+    status: 'error',
+    ahead: null,
+    behind: null,
+    incoming: [],
+    outgoing: [],
+    tags: [],
+    recommendation: null,
+    upstreamSha: null,
+    error: { kind: 'network', message: '连不上远程' },
+  }
+}
+
+describe('判决与基线的读取口径（repo_state）', () => {
+  it('后面来了一次失败的同步，闸不能凭空松开', async () => {
     const id = await makeProject('rewritten-then-error')
-    insertCheck(id, 'behind', {
-      incoming: 3,
-      outgoing: 0,
-      tags: [],
-      verdict: 'rewritten',
-      canPull: false,
-      upstreamSha: 'a'.repeat(40),
-    })
-    // 自动 fetch 在断网时写的那一行：error，没有 verdict
-    insertCheck(id, 'error', { incoming: 0, outgoing: 0, tags: [], error: { kind: 'network' } })
+    writeRepoState(
+      db,
+      id,
+      qualified({
+        recommendation: {
+          verdict: 'rewritten',
+          ahead: 0,
+          behind: 2,
+          canPull: false,
+          reason: '上游历史被改写过。',
+        },
+      }),
+    )
+    writeRepoState(db, id, failed())
 
     // 服务端那道闸读到的仍然是「别拉」
-    expect(lastVerdict(db, id)).toMatchObject({ verdict: 'rewritten', canPull: false })
-    // 清单页读到的也是同一条（两处口径一致）
+    expect(stateVerdict(db, id)).toMatchObject({ verdict: 'rewritten', canPull: false })
+    // 清单页读到的也是同一行（两处口径一致）
     const detail = await app.inject({ method: 'GET', url: `/api/projects/${id}` })
     expect(detail.json().project.latestCheck.recommendation.verdict).toBe('rewritten')
   })
 
-  it('pull 之后写的那行没带上游 SHA → 读成 null，让调用方退回本地 ref', async () => {
-    const id = await makeProject('baseline-after-pull')
+  it('失败的同步不动基线：调用方拿到的仍是上次合格那次的 SHA', async () => {
+    const id = await makeProject('baseline-after-error')
     const sha = 'b'.repeat(40)
-    insertCheck(id, 'behind', { incoming: 1, outgoing: 0, tags: [], verdict: 'safe', canPull: true, upstreamSha: sha })
-    // runApply 写的那一行：status 是 up_to_date（算远程结论），但没有 verdict / 上游 SHA
-    insertCheck(id, 'up_to_date', { incoming: 0, outgoing: 0, tags: [] })
+    writeRepoState(db, id, qualified({ upstreamSha: sha }))
+    writeRepoState(db, id, failed())
 
-    /*
-      **故意不往回翻更早那行**。SHA 属于某一条上游 ref，而 detail 里不记是哪一条：
-      A 分支上记的值拿去问 B 分支，答案必然是「不是祖先」，于是报
-      「作者改写了历史，别拉」——作者什么都没干。这种假警报比「判不出来」坏得多。
-      最新一行没有 SHA 时返回 null，调用方（analyzeUpdates）会退回**本地 ref**，
-      那个值天然属于当前这条线（见 repos/updates.ts 的注释）。
-    */
-    expect(lastUpstreamSha(db, id)).toBeNull()
-    // 判决那一侧同一条记录里也没有 verdict —— 这是有意的：那一刻真正的答案是「刚拉过了」
-    expect(lastVerdict(db, id)).toBeNull()
+    // 基线是「我们上次真的问过远程时看到的值」；断网那几次没有提供新事实
+    expect(upstreamBaseline(db, id)).toBe(sha)
   })
 
-  it('从来没有成功记录时返回 null，不瞎判', async () => {
+  it('从来没有成功过时返回 null，不瞎判', async () => {
     const id = await makeProject('no-history')
-    insertCheck(id, 'error', { incoming: 0, outgoing: 0, tags: [], error: { kind: 'network' } })
-    expect(lastVerdict(db, id)).toBeNull()
-    expect(lastUpstreamSha(db, id)).toBeNull()
+    writeRepoState(db, id, failed())
+    expect(stateVerdict(db, id)).toBeNull()
+    expect(upstreamBaseline(db, id)).toBeNull()
   })
 })
 
-describe('检查历史的清理', () => {
-  it('每个项目只保留最近的 N 条，最新的那条一定要留着', async () => {
+describe('流水（update_checks）的清理', () => {
+  /*
+    `update_checks` 已经退出读路径（当前状态在 `repo_state`），它只是追加的流水。
+    上限留着是为了别让它无限长；这条用例钉住「裁掉最老的、留下最新的」。
+  */
+  it('每个项目只保留最近的 N 条', async () => {
     const id = await makeProject('prune')
     const total = KEEP_CHECKS_PER_PROJECT + 25
     for (let i = 0; i < total; i += 1) {
-      insertCheck(id, 'up_to_date', { incoming: 0, outgoing: 0, tags: [], verdict: 'safe', canPull: false })
+      db.prepare(
+        `INSERT INTO update_checks (project_id, checked_at, status, ahead_count, behind_count, detail)
+         VALUES (?, ?, 'up_to_date', NULL, NULL, NULL)`,
+      ).run(id, new Date().toISOString())
     }
     const before = db
       .prepare('SELECT COUNT(*) AS n FROM update_checks WHERE project_id = ?')
@@ -126,7 +156,5 @@ describe('检查历史的清理', () => {
       .prepare('SELECT COUNT(*) AS n FROM update_checks WHERE project_id = ?')
       .get(id) as { n: number }
     expect(after.n).toBe(KEEP_CHECKS_PER_PROJECT)
-    // 最新那条（也就是闸与基线读的那条）必须在
-    expect(lastVerdict(db, id)).not.toBeNull()
   })
 })

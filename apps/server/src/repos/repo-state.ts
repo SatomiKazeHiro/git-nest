@@ -39,6 +39,8 @@ export interface RepoState {
   incoming: UpdateReportEntry[]
   /** 最近一次**尝试**（成功或失败）的时间 */
   attemptAt: string
+  /** 最近一次尝试得出的状态（失败时是 error / no_remote…，与 status 是两件事） */
+  attemptStatus: UpdateStatus
   /** 最近一次尝试的失败原因（原样存 JSON，读出来是 unknown）；null = 没失败 */
   error: string | null
 }
@@ -54,6 +56,7 @@ interface Row {
   upstream_sha: string | null
   incoming: string
   attempt_at: string
+  attempt_status: string
   error: string | null
 }
 
@@ -77,9 +80,9 @@ export function writeRepoState(
     db.prepare(
       `INSERT INTO repo_state
          (project_id, checked_at, status, ahead, behind, verdict, can_pull,
-          upstream_sha, incoming, attempt_at, error)
+          upstream_sha, incoming, attempt_at, attempt_status, error)
        VALUES (@projectId, @at, @status, @ahead, @behind, @verdict, @canPull,
-               @upstreamSha, @incoming, @at, @error)
+               @upstreamSha, @incoming, @at, @status, @error)
        ON CONFLICT(project_id) DO UPDATE SET
          checked_at   = excluded.checked_at,
          status       = excluded.status,
@@ -89,8 +92,9 @@ export function writeRepoState(
          can_pull     = excluded.can_pull,
          upstream_sha = excluded.upstream_sha,
          incoming     = excluded.incoming,
-         attempt_at   = excluded.attempt_at,
-         error        = excluded.error`,
+         attempt_at     = excluded.attempt_at,
+         attempt_status = excluded.attempt_status,
+         error          = excluded.error`,
     ).run({
       projectId,
       at,
@@ -114,11 +118,12 @@ export function writeRepoState(
   db.prepare(
     `INSERT INTO repo_state
        (project_id, checked_at, status, ahead, behind, verdict, can_pull,
-        upstream_sha, incoming, attempt_at, error)
-     VALUES (@projectId, @at, @status, NULL, NULL, NULL, 0, NULL, '[]', @at, @error)
+        upstream_sha, incoming, attempt_at, attempt_status, error)
+     VALUES (@projectId, @at, @status, NULL, NULL, NULL, 0, NULL, '[]', @at, @status, @error)
      ON CONFLICT(project_id) DO UPDATE SET
-       attempt_at = excluded.attempt_at,
-       error      = excluded.error`,
+       attempt_at     = excluded.attempt_at,
+       attempt_status = excluded.attempt_status,
+       error          = excluded.error`,
   ).run({ projectId, at, status: report.status, error })
 }
 
@@ -144,6 +149,39 @@ export function readRepoStates(db: DB, projectIds?: number[]): Map<number, RepoS
   return new Map(rows.map((r) => [r.project_id, toState(r)]))
 }
 
+/**
+ * 下次判「作者改写历史」的基线：上一次**合格**同步看到的上游 SHA。
+ *
+ * 失败的一次不动这一列（见 `writeRepoState`）：基线本来就该是「我们上次真的
+ * 问过远程时看到的值」，断网那几次没有提供新事实。读不出来就返回 null，
+ * 调用方会退回「本机 ref 现在指着谁」——那个值天然属于当前这条上游 ref。
+ */
+export function upstreamBaseline(db: DB, projectId: number): string | null {
+  const row = db.prepare('SELECT upstream_sha FROM repo_state WHERE project_id = ?').get(projectId) as
+    | { upstream_sha: string | null }
+    | undefined
+  return row?.upstream_sha ?? null
+}
+
+/**
+ * 上一次合格同步算出的判决——**「更新」那一步的服务端闸**。
+ *
+ * 前端把「别拉」那些的勾选框禁掉只是建议（直接打 `POST /updates/apply` 绕得过去），
+ * 所以这道闸必须在服务端，且读的是**库里那条结论**而不是现算：
+ * 现算要多跑 4 次 git 命令，而且改判据会导致「界面写着别拉、服务端不拦」。
+ * 与界面读的是同一行（`repos/projects.ts` 的 `latestChecksByProject`）。
+ */
+export function stateVerdict(
+  db: DB,
+  projectId: number,
+): { verdict: UpdateVerdict; canPull: boolean } | null {
+  const row = db
+    .prepare('SELECT verdict, can_pull FROM repo_state WHERE project_id = ?')
+    .get(projectId) as { verdict: string | null; can_pull: number } | undefined
+  if (!row?.verdict) return null
+  return { verdict: row.verdict as UpdateVerdict, canPull: row.can_pull === 1 }
+}
+
 function toState(row: Row): RepoState {
   let incoming: UpdateReportEntry[] = []
   try {
@@ -165,6 +203,7 @@ function toState(row: Row): RepoState {
     upstreamSha: row.upstream_sha,
     incoming,
     attemptAt: row.attempt_at,
+    attemptStatus: row.attempt_status as UpdateStatus,
     error: row.error,
   }
 }

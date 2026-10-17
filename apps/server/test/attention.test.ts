@@ -1,6 +1,8 @@
 import { describe, expect, it, beforeEach } from 'vitest'
+import { recommendationFrom, type UpdateStatus, type UpdateVerdict } from '@git-nest/core'
 import { openDatabase, type DB } from '../src/db/index.ts'
 import { insertProject, listProjects } from '../src/repos/projects.ts'
+import { writeRepoState } from '../src/repos/repo-state.ts'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -31,10 +33,28 @@ function addCheck(
   detail: unknown,
   at = '2026-10-05T00:00:00.000Z',
 ) {
-  db.prepare(
-    `INSERT INTO update_checks (project_id, checked_at, status, ahead_count, behind_count, detail)
-     VALUES (?, ?, ?, 0, ?, ?)`,
-  ).run(id, at, status, behind, detail === null ? null : JSON.stringify(detail))
+  /*
+    直接写**当前状态**那一行（`repo_state`）：分类判定读的就是它。
+    走生产同一个写入器（`writeRepoState`），于是「不合格的一次不覆盖结论」
+    这条语义在这里也是真的，而不是靠用例自己摆出来的假象。
+  */
+  const d = (detail ?? {}) as { verdict?: UpdateVerdict; canPull?: boolean; upstreamSha?: string }
+  writeRepoState(
+    db,
+    id,
+    {
+      status: status as UpdateStatus,
+      ahead: 0,
+      behind,
+      incoming: [],
+      outgoing: [],
+      tags: [],
+      recommendation: d.verdict ? recommendationFrom(d.verdict, d.canPull === true) : null,
+      upstreamSha: d.upstreamSha ?? null,
+      error: status === 'error' ? { kind: 'network', message: '连不上远程' } : null,
+    },
+    at,
+  )
 }
 
 beforeEach(() => {

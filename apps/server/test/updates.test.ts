@@ -290,18 +290,14 @@ describe('POST /api/updates/apply', () => {
     const id = await addProject('apply-refused', clone)
     commitIn(origin, '远程提交')
 
-    // 造一条「上次检查」的记录：状态是 behind，判决是 rewritten
+    // 造一条「上次同步」的结论：状态是 behind，判决是 rewritten。
+    // 它现在住在 `repo_state`（一个仓库一行），而不是检查流水里。
+    const seededAt = new Date(Date.now() - 60_000).toISOString()
     db.prepare(
-      `INSERT INTO update_checks (project_id, checked_at, status, ahead_count, behind_count, detail)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    ).run(
-      id,
-      new Date(Date.now() - 60_000).toISOString(),
-      'behind',
-      0,
-      1,
-      JSON.stringify({ incoming: 1, outgoing: 0, tags: [], verdict: 'rewritten', canPull: false }),
-    )
+      `INSERT INTO repo_state (project_id, checked_at, status, ahead, behind, verdict, can_pull,
+                               upstream_sha, incoming, attempt_at, attempt_status, error)
+       VALUES (?, ?, 'behind', 0, 1, 'rewritten', 0, NULL, '[]', ?, 'behind', NULL)`,
+    ).run(id, seededAt, seededAt)
     const before = git(clone, 'rev-parse', 'HEAD').trim()
 
     const task = await waitForTask(
@@ -324,10 +320,11 @@ describe('POST /api/updates/apply', () => {
     expect(git(clone, 'rev-parse', 'HEAD').trim()).toBe(before)
     expect(git(clone, 'log', '-1', '--pretty=%s').trim()).not.toBe('远程提交')
     // 「上次检查」的时间也不该被这次拒绝覆盖（这一步没读到任何新事实）
-    const last = db
-      .prepare('SELECT status FROM update_checks WHERE project_id = ? ORDER BY id DESC LIMIT 1')
-      .get(id) as { status: string }
-    expect(last.status).toBe('behind')
+    const state = db
+      .prepare('SELECT status, checked_at FROM repo_state WHERE project_id = ?')
+      .get(id) as { status: string; checked_at: string }
+    expect(state.status).toBe('behind')
+    expect(state.checked_at).toBe(seededAt)
   })
 
   it('已是最新 → already_up_to_date', async () => {
@@ -404,22 +401,18 @@ describe('POST /api/updates/apply', () => {
     commitIn(clone, '本地提交')
     commitIn(origin, '远程提交')
 
-    // 先放一条**合格**检查：behind + 可拉。它是界面新鲜度与行动分类的来源。
+    // 先放一条**合格**的结论（behind + 可拉）：界面新鲜度与行动分类都读它
+    const seededAt = new Date(Date.now() - 60_000).toISOString()
     db.prepare(
-      `INSERT INTO update_checks (project_id, checked_at, status, ahead_count, behind_count, detail)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    ).run(
-      id,
-      new Date(Date.now() - 60_000).toISOString(),
-      'behind',
-      0,
-      1,
-      JSON.stringify({ incoming: 1, outgoing: 0, tags: [], verdict: 'safe', canPull: true }),
-    )
+      `INSERT INTO repo_state (project_id, checked_at, status, ahead, behind, verdict, can_pull,
+                               upstream_sha, incoming, attempt_at, attempt_status, error)
+       VALUES (?, ?, 'behind', 0, 1, 'safe', 1, NULL, '[]', ?, 'behind', NULL)`,
+    ).run(id, seededAt, seededAt)
     const latest = () =>
       db
         .prepare(
-          'SELECT id, checked_at, status, ahead_count, detail FROM update_checks WHERE project_id = ? ORDER BY id DESC LIMIT 1',
+          `SELECT checked_at, status, ahead, behind, verdict, can_pull, attempt_at
+           FROM repo_state WHERE project_id = ?`,
         )
         .get(id)
     const before = latest()
