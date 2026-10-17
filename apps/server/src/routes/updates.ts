@@ -3,12 +3,8 @@ import { z } from 'zod'
 import { MAX_BATCH_IDS, VERDICT_LABEL, VERDICT_REASON, type UpdateVerdict } from '@git-nest/core'
 import type { DB } from '../db/index.ts'
 import { badRequest, notFound } from '../lib/errors.ts'
-import {
-  analyze,
-  clearStatusCache,
-  pull,
-  type UpdateReport,
-} from '../lib/git.ts'
+import { clearStatusCache, pull, type UpdateReport } from '../lib/git.ts'
+import { syncRepo } from '../lib/sync.ts'
 import { readSettings } from '../lib/settings.ts'
 import { corsHeadersFor } from '../lib/origins.ts'
 import {
@@ -247,14 +243,14 @@ async function runCheck(db: DB, task: Task, targets: Target[]) {
         // `onStart` 而不是在这里 markRunning：`analyze` 内部按仓库排队限流，
         // 这一句会在**所有** target 上同步执行——200 个仓库会一起变成「检查中」，
         // 而真正在跑的只有并发上限那几个。进度条上的数字会骗人。
-        const report = await analyze(target.path, {
-          lastUpstreamSha: lastUpstreamSha(db, target.id),
+        //
+        // 状态与流水的写入都在 `syncRepo` 里（唯一入口，见 docs/软件定位.md §2）；
+        // 这里只负责「这一行轮到它了」与「它跑完 / 失败了」。
+        const report = await syncRepo(db, target, {
+          label: 'check',
           onStart: () => markRunning(task, target.id),
-          // 按项目换传输方式：上次走通的那条先试，这次走通的记下来
-          projectId: target.id,
         })
         reports.push(report)
-        recordUpdateCheck(db, target.id, report)
         markDone(task, target.id, report)
       } catch (err) {
         const message = err instanceof Error ? err.message : '检查失败'

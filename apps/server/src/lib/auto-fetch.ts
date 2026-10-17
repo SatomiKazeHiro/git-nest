@@ -1,7 +1,7 @@
 import type { DB } from '../db/index.ts'
-import { analyze } from './git.ts'
 import { readSettings } from './settings.ts'
-import { lastUpstreamSha, pruneUpdateChecks, recordUpdateCheck } from '../repos/updates.ts'
+import { syncRepo } from './sync.ts'
+import { pruneUpdateChecks } from '../repos/updates.ts'
 
 /**
  * 自动 fetch —— **保持远程状态新鲜，但绝不碰工作区**。
@@ -100,14 +100,9 @@ async function doAutoFetch(db: DB): Promise<AutoFetchSummary> {
   await Promise.all(
     targets.map(async (row) => {
       try {
-        // label 进命令日志——用户要能看出这些进程是谁起的。
-        // `projectId` 让「取远程事实」按项目换传输方式（并把走通的那条记住）
-        const report = await analyze(row.path, {
-          lastUpstreamSha: lastUpstreamSha(db, row.id),
-          label: 'auto-fetch',
-          projectId: row.id,
-        })
-        recordUpdateCheck(db, row.id, report)
+        // 状态与流水都由 `syncRepo` 写（唯一入口）。label 进命令日志
+        // ——用户要能看出这些进程是谁起的。
+        const report = await syncRepo(db, row, { label: 'auto-fetch' })
         if (report.error) summary.failed += 1
         else summary.checked += 1
       } catch {

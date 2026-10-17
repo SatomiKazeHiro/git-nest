@@ -173,4 +173,45 @@ export const migrations = [
       );
     `,
   },
+  {
+    id: '007_repo_state',
+    /*
+      每个仓库一行的「当前状态」——**主体业务表**。
+
+      ## 为什么要它（这是 `docs/软件定位.md` §10 的第一行）
+
+      在这张表之前，同一个事实有三种读法：清单的「差异」列现场读本地 refs、
+      「状态」列从 `update_checks` 里挑最新一行（相关子查询 + 解析 detail 的 JSON）、
+      提交列表只在检查任务的内存里。三个都"对"，但**谁也不是权威**，于是每加一个
+      字段都要在三处保证一致。
+
+      现在：一个仓库一条数据，`sync()` 是唯一的写入者，读的人只读这一行。
+
+      ## 与 `update_checks` 的分工
+
+      - 这张表 = **当前值**（一个项目一行，覆盖写）；
+      - `update_checks` = **流水**（追加，可删的派生物，只写不读）。
+
+      `checked_at` 与 `attempt_at` 分开是刻意的：一次失败的同步**不该**把上一次
+      好结论擦掉（那会让「上次看是最新」在断网时变成「没查过」），但失败本身要看得见
+      ——于是好结论留在 `checked_at`/`status`/…，失败写进 `attempt_at`/`error`。
+
+      `ahead`/`behind` 允许 NULL：读不出来与 0 是两件事（0 = 一样多，NULL = 没读到）。
+    */
+    sql: `
+      CREATE TABLE repo_state (
+        project_id   INTEGER PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+        checked_at   TEXT NOT NULL,               -- 最近一次**合格**同步的时间
+        status       TEXT NOT NULL,               -- UpdateStatus（behind / up_to_date / …）
+        ahead        INTEGER,                     -- NULL = 没读到，不是 0
+        behind       INTEGER,
+        verdict      TEXT,                        -- '推不推荐更新'那个结论；NULL = 没算出来
+        can_pull     INTEGER NOT NULL DEFAULT 0,  -- 此刻是不是真有东西可拉
+        upstream_sha TEXT,                        -- 下次判「作者改写历史」的基线
+        incoming     TEXT NOT NULL DEFAULT '[]',  -- 要拉进来的前几条提交（JSON）
+        attempt_at   TEXT NOT NULL,               -- 最近一次**尝试**（成功或失败）
+        error        TEXT                         -- 最近一次尝试的失败原因（JSON）；NULL = 没失败
+      );
+    `,
+  },
 ] as const
