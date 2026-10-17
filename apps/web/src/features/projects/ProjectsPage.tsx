@@ -8,8 +8,7 @@ import { useUiStore } from '@/store/ui'
 import { useProjects } from './queries'
 import { useStatuses } from '@/features/status/queries'
 import { detailPath } from './detailPath'
-import { useUpdateTask, isPull } from '@/features/updates/taskStream'
-import { useInvalidate } from '@/lib/invalidate'
+import { useSync } from '@/features/updates/sync'
 import { Toolbar } from './ListToolbar'
 import { ProjectTable } from './ProjectTable'
 import { RemoveDialog } from './RemoveDialog'
@@ -60,24 +59,11 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
   const { data: projects, isPending, error } = useProjects({ ...filters, q: debouncedQuery })
 
   /*
-    行内「更新」：**单个仓库**，一次 ff-only。
-    弹窗已经删了（docs/软件定位.md §2：更新只是 sync 的一个触发器），
-    所以这个列表自己持有一份任务状态——每个项目在 	ask.items 里都有自己那一条。
+    行内「更新」：单个仓库，一次 ff-only。
+    状态映射与详情页那颗「联网同步」**共用同一个 hook**（features/updates/sync.ts），
+    否则两处迟早会说不一样的话。
   */
-  const invalidate = useInvalidate()
-  const updater = useUpdateTask(() => invalidate())
-  const updateOf = (id: number) => {
-    const item = updater.task?.items.find((i) => i.projectId === id)
-    if (!item) return null
-    if (item.state === 'pending' || item.state === 'running') return { busy: true, text: '更新中…' }
-    if (item.state === 'failed') return { busy: false, text: item.error ?? '更新失败', failed: true }
-    return {
-      busy: false,
-      failed: false,
-      text: isPull(item.result) ? item.result.summary : '已更新',
-    }
-  }
-
+  const sync = useSync()
   const {
     data: statuses,
     error: statusesError,
@@ -138,8 +124,8 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
             isPending={isPending}
             onOpen={(projectId) => navigate(detailPath(currentId, projectId))}
             onRemove={(p) => setPendingRemoval(p)}
-            onUpdate={(id) => updater.startApply([id])}
-            updateOf={updateOf}
+            onUpdate={sync.updateOne}
+            updateOf={sync.stateOf}
           />
         </div>
 

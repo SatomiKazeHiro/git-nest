@@ -13,8 +13,7 @@ import { AttentionBadge } from '@/features/status/badges'
 // 判决卡住在状态域（`features/status/StatusPanel`），页面只负责把它摆进来。
 // 那三条状态政策（只有 safe 配绿、不是仓库就不重算、脏标记降级）跟着它一起走。
 import { StatusPanel } from '@/features/status/StatusPanel'
-import { useInvalidate } from '@/lib/invalidate'
-import { useUpdateTask } from '@/features/updates/taskStream'
+import { useSync } from '@/features/updates/sync'
 import { useProject } from '@/features/projects/queries'
 // 「远程」与「记录」都是项目域自己的展示，不属于「详情页」这个组合根
 import { RemoteRow } from '@/features/projects/RemoteRow'
@@ -36,21 +35,11 @@ export function ProjectDetailPage() {
   // 分类名从配置里读（用户自己加的那些，静态表里没有）
   const categories = useCategories()
   /*
-    联网同步**这一个**仓库：startCheck([id], includeOwn=true)——
-    用户点名要查它，所以显式带上「我自己的」，不被批量默认挡掉。
-    结果不进任何报告面板：状态卡与推荐本身就读 epo_state，失效一次就都新了。
+    联网同步**这一个**仓库：syncOne(id)。用户点名要查它，所以显式带上「我自己的」，
+    不被批量默认挡掉。结果不进任何报告面板——状态卡与推荐本身就读 epo_state，
+    跑完失效一次就都新了。**与清单的行内按钮共用同一个 hook**（eatures/updates/sync.ts）。
   */
-  const invalidate = useInvalidate()
-  const { busy: syncBusy, error: syncError, startCheck } = useUpdateTask(() => invalidate())
-  const sync = {
-    busy: syncBusy,
-    error: syncError,
-    run: () => {
-      // 路由里的 id 读不出来就什么都不做（那一页本来也渲染不出内容）
-      if (!Number.isFinite(projectId)) return
-      void startCheck([projectId], true)
-    },
-  }
+  const sync = useSync()
   /*
     详情栏的两页。**默认落在概览**——打开一个项目最常见的需求是看它现在什么状态，
     而「这个仓库是讲什么的」是第二问。
@@ -130,7 +119,7 @@ export function ProjectDetailPage() {
           */}
           <Button
             variant="primary"
-            onClick={() => sync.run()}
+            onClick={() => sync.syncOne(projectId)}
             disabled={sync.busy}
             title="联网 fetch 这一个仓库，再算落后多少、推不推荐更新"
           >

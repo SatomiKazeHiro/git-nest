@@ -15,7 +15,13 @@ export interface Settings {
   gitTimeoutMs: number
   /** 跨仓库并发上限 */
   concurrency: number
-  /** 批量操作超过这个数量先让用户确认范围 */
+  /**
+   * 「一次加进来太多」的那道确认：扫目录后批量导入超过这个数时先问一句。
+   *
+   * **它曾经也管「批量检查」**（弹窗里那句「要对 N 个项目联网 fetch，确认吗」）。
+   * 那个弹窗删掉之后（检查变成顶部刷新 / 每 :00/:30 一轮），只剩导入在用——
+   * 所以别再按「检查前确认」去读它，那会让人以为它已经没人用。
+   */
   confirmThreshold: number
   /** 常用扫描目录，扫完不用再输路径 */
   scanDirs: string[]

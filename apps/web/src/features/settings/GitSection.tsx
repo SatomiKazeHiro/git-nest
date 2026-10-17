@@ -72,7 +72,7 @@ export function GitSection() {
         />
       </SettingRow>
 
-      <SettingRow name="确认阈值" desc="一次检查超过这么多个项目，先问一句再开跑" note="1–200">
+      <SettingRow name="确认阈值" desc="一次加入清单超过这么多个，先问一句再动手" note="1–200">
         <NumberField
           label="确认阈值"
           min={1}
