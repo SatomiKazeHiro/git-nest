@@ -72,6 +72,8 @@ export function ProjectRow({
   onRemove,
   onUpdate,
   updateOf,
+  selected,
+  onToggleSelect,
 }: {
   project: ProjectListItem
   status: RepoStatus | undefined
@@ -83,6 +85,9 @@ export function ProjectRow({
   onUpdate?: (id: number) => void
   /** 这一行当前的更新状态；没有就是「没跑过」 */
   updateOf?: (id: number) => { busy: boolean; text?: string; failed?: boolean } | null
+  /** 勾选（批量更新的入口）。只有能拉的行才会出现勾选框 */
+  selected?: boolean
+  onToggleSelect?: (id: number) => void
 }) {
   const openEdit = useUiStore((s) => s.openEdit)
   /*
@@ -117,6 +122,22 @@ export function ProjectRow({
         地方正好给「当前分支」腾位置，而路径本来就是「哪一份」的唯一凭据，
         跟在名字下面比单开一列更好认。
       */}
+      <td className="col-select">
+        {/*
+          批量更新的入口：**只有能拉的行才有勾选框**（attention = ready）。
+          给「别拉」「要你决定」的行一个勾选框，等于让人挑一堆点下去必然失败的东西。
+        */}
+        {onToggleSelect && p.attention === 'ready' ? (
+          <input
+            type="checkbox"
+            className="list-check cursor-pointer"
+            checked={selected === true}
+            onChange={() => onToggleSelect(p.id)}
+            aria-label={`选中 ${p.name}`}
+          />
+        ) : null}
+      </td>
+
       <td className="col-repo">
         <span className="flex min-w-0 items-start gap-1.5">
           {/*
@@ -292,7 +313,7 @@ export function ProjectRow({
     */}
     {openCommits && commits.length > 0 ? (
       <tr className="row-detail">
-        <td colSpan={6}>
+        <td colSpan={7}>
           <div className="flex flex-col gap-1">
             <span className="text-[11.5px] text-ink-3">
               上次同步时要拉进来的（{formatRelative(p.latestCheck?.checkedAt ?? null)}查的）

@@ -23,7 +23,24 @@ import { FilterToggle } from './FilterToggle'
  * 逐个字段订阅 store，而不是 `useUiStore()` 整店订阅——整店订阅会让任何一处
  * 状态变化（比如详情栏折叠）都重渲染这一行。
  */
-export function Toolbar({ total, onScan }: { total: number; onScan: () => void }) {
+export function Toolbar({
+  total,
+  onScan,
+  selection,
+}: {
+  total: number
+  onScan: () => void
+  /** 勾选之后的动作组；没有勾选就传 null（那一组整块不出现） */
+  selection?: {
+    count: number
+    busy: boolean
+    done: number
+    total: number
+    summary: Record<string, number> | null
+    onRun: () => void
+    onClear: () => void
+  } | null
+}) {
   const filters = useUiStore((s) => s.filters)
   const setQuery = useUiStore((s) => s.setQuery)
   const clearFilters = useUiStore((s) => s.clearFilters)
@@ -32,24 +49,41 @@ export function Toolbar({ total, onScan }: { total: number; onScan: () => void }
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-line bg-paper px-4 py-2">
-      {/*
-        收起/展开过滤面板。**放在搜索框左边第一个**：它是这一行里唯一"改变布局"
-        的控件（其余都是动作），贴在最左边与它折叠的那一列相邻，位置对得上。
-        它自己不订阅任何东西——状态在 `FilterToggle` 里，这里只负责摆进去。
-      */}
       <FilterToggle />
-      {/* 搜索框是这一行里唯一允许被压缩的东西，别的都不行：
-          按钮一旦被压到文字竖排（「扫/描」两行），就成了整屏最难看的那个点。
-          给它一个下限，窄下去时先丢的是搜索框的宽度。 */}
-      <div className="w-56 min-w-32">
-        <Input
-          id="project-search"
-          value={filters.q}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="按名称、路径、远程地址搜"
-          aria-label="搜索项目"
-        />
-      </div>
+
+      {/*
+        **勾选之后的动作组，放在这一行最左边**：勾选发生在表格里，动完就在上面，
+        视线不用来回跳。它只在有勾选时出现，所以平时这一行不会被撑宽。
+        按钮与搜索框共用一套尺寸（都是 `h-7`）——高度不一致是工具条最容易看出来
+        的毛病，而那套尺寸只有 `Button` 的 `md` 与 `Input` 一处定义。
+      */}
+      {selection && selection.count > 0 ? (
+        <>
+          <span className="shrink-0 font-mono text-[12px] text-ink-2">已选 {selection.count} 个</span>
+          {selection.busy ? (
+            <span className="shrink-0 font-mono text-[12px] text-ink-3">
+              更新中 {selection.done}/{selection.total}…
+            </span>
+          ) : selection.summary ? (
+            <span
+              className={`shrink-0 text-[12px] ${
+                (selection.summary.failed ?? 0) > 0 ? 'text-signal-bad' : 'text-ink-3'
+              }`}
+            >
+              已更新 {selection.summary.updated ?? 0} 个
+              {selection.summary.commits ? `，共 ${selection.summary.commits} 个提交` : ''}
+              {selection.summary.failed ? `，失败 ${selection.summary.failed} 个` : ''}
+            </span>
+          ) : null}
+          <Button className="shrink-0" onClick={selection.onClear}>
+            清空勾选
+          </Button>
+          <Button className="shrink-0" variant="primary" onClick={selection.onRun} disabled={selection.busy}>
+            {selection.busy ? '更新中…' : `更新选中的 ${selection.count} 个`}
+          </Button>
+        </>
+      ) : null}
+
       {hasFilter(filters) ? (
         <Button className="shrink-0" onClick={clearFilters}>
           <Eraser size={14} aria-hidden />
@@ -57,7 +91,21 @@ export function Toolbar({ total, onScan }: { total: number; onScan: () => void }
         </Button>
       ) : null}
       <span className="shrink-0 font-mono text-[12px] text-ink-3">{total} 个项目</span>
+
       <div className="ml-auto flex shrink-0 items-center gap-2">
+        {/*
+          搜索框在**右侧**：左侧留给「勾选之后的动作」，而搜索是随时会用、
+          用完就离开的控件，贴着动作那一组放，宽的搜索框也不会把动作挤到第二行。
+        */}
+        <div className="w-56 min-w-32">
+          <Input
+            id="project-search"
+            value={filters.q}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="按名称、路径、远程地址搜"
+            aria-label="搜索项目"
+          />
+        </div>
         {/* 主动刷新：**只同步状态，不开弹窗**。这是最常用的一枚——看一眼就走。 */}
         <RefreshButton />
         <Button onClick={onScan} title="去设置里扫描一个目录，把本机仓库批量加进清单">

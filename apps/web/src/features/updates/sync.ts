@@ -49,6 +49,8 @@ export function useSync() {
     syncOne: (id: number) => startCheck([id], true),
     /** 更新**指定的一个**：只 ff-only，只动这一个仓库 */
     updateOne: (id: number) => startApply([id]),
+    /** 批量更新：一次把勾选的几个都快进（仍然是逐个串行、只 ff-only） */
+    updateMany: (ids: number[]) => startApply(ids),
     stateOf,
   }
 }

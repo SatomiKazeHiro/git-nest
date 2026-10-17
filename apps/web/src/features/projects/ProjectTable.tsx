@@ -37,6 +37,8 @@ export function ProjectTable({
   onRemove,
   onUpdate,
   updateOf,
+  selectedIds,
+  onToggleSelect,
 }: {
   projects: ProjectListItem[] | undefined
   /** 批量状态。**可能缺**（读失败时整列就是空的），所以每一列都要能显示「—」 */
@@ -49,6 +51,9 @@ export function ProjectTable({
   onUpdate?: (id: number) => void
   /** 这一行当前的更新状态（一个列表只持有一份任务状态） */
   updateOf?: (id: number) => { busy: boolean; text?: string; failed?: boolean } | null
+  /** 已勾选的仓库（批量更新用） */
+  selectedIds?: Set<number>
+  onToggleSelect?: (id: number) => void
 }) {
   const sort = useUiStore((s) => s.filters.sort)
 
@@ -99,6 +104,8 @@ export function ProjectTable({
               onRemove={() => onRemove(p)}
               {...(onUpdate ? { onUpdate } : {})}
               {...(updateOf ? { updateOf } : {})}
+              {...(onToggleSelect ? { onToggleSelect } : {})}
+              selected={selectedIds?.has(p.id) ?? false}
             />
           )),
         )}
@@ -166,6 +173,7 @@ function ColumnHeader() {
   return (
     <thead className="tr-tint column-header sticky top-0 z-[5]">
       <tr className="border-b border-line text-[11px] text-ink-3">
+        <th className="col-select" aria-label="勾选" />
         <SortableTh label="仓库" sortKey="name" hint="按名称排序" className="col-repo" />
         {/* 分支与操作没有排序键，所以是纯文字：**点了没反应的控件比没有更糟**。 */}
         <th className="col-branch">当前分支</th>

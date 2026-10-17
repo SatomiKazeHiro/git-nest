@@ -11,6 +11,8 @@ import { detailPath } from './detailPath'
 import { useSync } from '@/features/updates/sync'
 import { Toolbar } from './ListToolbar'
 import { ProjectTable } from './ProjectTable'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { useSettings } from '@/features/settings/queries'
 import { RemoveDialog } from './RemoveDialog'
 
 /**
@@ -64,6 +66,27 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
     否则两处迟早会说不一样的话。
   */
   const sync = useSync()
+
+  /*
+    批量更新：**勾选 + 底部动作条**。
+    勾选状态就放在这一页（它只服务这一屏），换筛选时不清空——用户挑的是一批仓库，
+    不是「当前这几行」；数不对了他自己会点「清空」。
+  */
+  const [picked, setPicked] = useState<Set<number>>(new Set())
+  /*
+    「一次更太多」的那道确认：阈值就是设置里那个 confirmThreshold
+    （它原来只服务扫描导入；批量更新回来之后，又多了这一个消费者）。
+    单仓库更新不经过这里——它只动一个仓库。
+  */
+  const { data: settings } = useSettings()
+  const [confirmingBulk, setConfirmingBulk] = useState(false)
+  const togglePick = (id: number) =>
+    setPicked((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   const {
     data: statuses,
     error: statusesError,
@@ -81,7 +104,30 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
 
   return (
     <div className="pane-list">
-      <Toolbar total={projects?.length ?? 0} onScan={openScan} />
+      <Toolbar
+        total={projects?.length ?? 0}
+        onScan={openScan}
+        selection={
+          picked.size > 0
+            ? {
+                count: picked.size,
+                busy: sync.busy,
+                done: sync.task?.done ?? 0,
+                total: sync.task?.total ?? picked.size,
+                summary: sync.task?.summary ?? null,
+                onClear: () => setPicked(new Set()),
+                onRun: () => {
+                  const threshold = settings?.confirmThreshold ?? 20
+                  if (picked.size > threshold) {
+                    setConfirmingBulk(true)
+                    return
+                  }
+                  sync.updateMany([...picked])
+                },
+              }
+            : null
+        }
+      />
 
       {/*
         清单区：**清单表 + 详情并排**，选中项目时右边那一轨才长出来。
@@ -126,11 +172,28 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
             onRemove={(p) => setPendingRemoval(p)}
             onUpdate={sync.updateOne}
             updateOf={sync.stateOf}
+            selectedIds={picked}
+            onToggleSelect={togglePick}
           />
         </div>
 
+
         {showDetail ? <aside className="detail border-l border-line bg-panel h-full overflow-hidden">{detail}</aside> : null}
       </div>
+
+      {confirmingBulk ? (
+        <ConfirmDialog
+          title={`要更新 ${picked.size} 个仓库`}
+          description={`这会逐个 fast-forward ${picked.size} 个仓库（只动工作区、只快进、不产生 merge commit）。超过确认阈值 ${settings?.confirmThreshold ?? 20} 个，所以先问一句。`}
+          confirmText={`更新 ${picked.size} 个`}
+          danger={false}
+          onConfirm={() => {
+            setConfirmingBulk(false)
+            sync.updateMany([...picked])
+          }}
+          onClose={() => setConfirmingBulk(false)}
+        />
+      ) : null}
 
       {pendingRemoval ? (
         <RemoveDialog project={pendingRemoval} onClose={() => setPendingRemoval(null)} />

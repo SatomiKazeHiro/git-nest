@@ -326,7 +326,7 @@
     它们去抢剩下的空间，而里面的控件是 `items-center` 垂直居中的，于是那一行
     会飘到窗格正中间（看着像布局坏了）。滚动区拿 `1fr`，剩下的都是它的。
   */
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
 }
 
@@ -367,9 +367,24 @@
   grid-template-columns: minmax(0, 1fr) var(--w-detail);
 }
 
-/** 清单那一轨：表头、状态读不出来那条提示、空状态、表格，全在这里 */
+/* 分列这一层**不滚**：滚动交给 .list-pane / 详情栏各自处理 */
+.pane-list > .list-scroll {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/**
+ 清单那一轨：表头、状态读不出来那条提示、空状态、表格，全在这里。
+
+ **它是唯一滚动的那个**：.list-scroll 只负责分列（清单 / 详情），自己不再滚
+ ——两层嵌套滚动区会抢同一个滚轮（表头和过滤面板会各滚各的，看着像界面坏了）。
+ 表头 sticky 在 .list-pane 里，于是「表头 + 表体」正好占满工具条剩下的高度，
+ 没有分页器、也没有页面级的纵向滚动。
+*/
 .list-pane {
   min-width: 0;
+  min-height: 0;
+  overflow: auto;
   /* 让下面那些 `@container (width < …)` 问的是「表格自己有多宽」，
      而不是「窗口有多宽」——窗口拖宽，清单栏照样可以很窄。 */
   container-type: inline-size;
@@ -618,6 +633,7 @@ owrap / overflow:hidden 钉成单行高密度，展开的那一行
   **收列的顺序按重要性**：状态是「该动吗」（唯一的行动项），最后才动；
   差异是「差多少」，先走。
 */
+.col-select { width: 2.25rem; }
 .col-repo { width: auto; }
 .col-branch { width: 6rem; }
 .col-attention { width: 6rem; }
