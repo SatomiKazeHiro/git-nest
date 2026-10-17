@@ -1,9 +1,9 @@
-import { useState, type ComponentType } from 'react'
-import { Archive, BookOpen, FlaskConical, Wrench } from 'lucide-react'
+import { useState } from 'react'
 import type { Category } from '@git-nest/core'
 import { Button, ErrorNote, Input } from '@/components/ui'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { IconPicker } from '@/features/categories/IconPicker'
+import { categoryIcon } from '@/features/categories/icons'
 import { ApiError } from '@/lib/api'
 import {
   useCategoriesQuery,
@@ -19,15 +19,11 @@ import {
  * 项目的 `category` 里，是这个软件自带的四个桶。用户自己加的可以改名、可以删——
  * 删掉时引用它的项目退回「未分类」，所以删除要过确认框，而且「会影响几个」写在天明处。
  *
- * 图标这一轮**只展示不选**（服务端已经有 `icon` 字段）：名字认不出来就什么都不显示，
- * 不拿一个占位图标凑数——那会让人以为这个分类本来就有个图标。
+ * 图标走**真注册表**（`features/categories/icons.tsx` 的 `categoryIcon()`，94 项）。
+ * 这里曾经有一张只有 4 项（内置四个）的本地映射，于是用户在 IconPicker 里选了别的
+ * 图标之后，**设置列表这一行不显示、左栏却显示**——同一个分类两种样子。
+ * 名字认不出来就什么都不显示，不拿一个占位图标凑数——那会让人以为它本来就有图标。
  */
-const CATEGORY_ICONS: Record<string, ComponentType<{ size?: number; className?: string }>> = {
-  'book-open': BookOpen,
-  archive: Archive,
-  'flask-conical': FlaskConical,
-  wrench: Wrench,
-}
 
 export function CategorySection() {
   const { data, isPending, error } = useCategoriesQuery()
@@ -109,7 +105,7 @@ export function CategorySection() {
           ) : (
             <ul className="flex flex-col">
               {categories.map((c) => {
-                const Icon = c.icon ? CATEGORY_ICONS[c.icon] : undefined
+                const Icon = categoryIcon(c.icon)
                 const isRenaming = renaming?.key === c.key
                 return (
                   <li

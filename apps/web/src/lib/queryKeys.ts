@@ -78,6 +78,15 @@ export const queryKeys = {
   settings: ['settings'] as const,
   /** README 全文。`full` 进 key，所以「加载完整文档」就是换一条查询 */
   readme: (id: number, full: boolean) => ['readme', id, full] as const,
+  /**
+   * 所有 README 的**前缀**。
+   *
+   * 它一度缺席：失效表里有清单、详情、标签、分类、状态、设置，唯独没有 README。
+   * 后果是**改了项目路径之后，详情栏一直渲染旧仓库的文档**——那个查询的 key 里
+   * 只有 id，换路径不改 id，于是永远命中同一条缓存。README 是"这个目录里的文件"，
+   * 路径变了它就是另一份东西，必须一起失效。
+   */
+  readmeAll: ['readme'] as const,
 }
 
 function idList(ids: number[]): number[] {

@@ -131,6 +131,26 @@ const disc = (cx: number, cy: number, r: number) => <circle cx={cx} cy={cy} r={r
   )
 }
 
+/* ── 「需要确认」 ────────────────────────────────────────────
+   分叉（`UpdateVerdict = diverged`）：两边都往前走了，git 自己不肯替你选。
+   形状用一个**分叉**（一根主干、顶上岔成两条），而不是问号——问号在这套图标里
+   已经被「未分类」占了（`MessageCircleQuestionMark`，左栏分类段那一枚），
+   两处都画问号会让"我该做什么"和"它没归类"变成同一个记号。
+   ------------------------------------------------------------ */
+
+function NeedsDecisionIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      {disc(12, 12, 10)}
+      <g {...mark}>
+        <path d="M12 16.3v-3.2" />
+        <path d="M12 13.1 9.3 9.5" />
+        <path d="m12 13.1 2.7-3.6" />
+      </g>
+    </Svg>
+  )
+}
+
 /* ── 「我自己的」 ────────────────────────────────────────────
    它不是一个「状态」，但它在面板里和那五个并列，所以形状必须同一套
    （实心圆底 + 白色内容），否则六个条目里有五个圆点、一个缺口，很显眼。
@@ -157,6 +177,7 @@ function MineIcon(p: IconProps) {
   updatable: UpdatableIcon,
   synced: SyncedIcon,
   'not-recommended': NotRecommendedIcon,
+  'needs-decision': NeedsDecisionIcon,
   'pending-check': PendingCheckIcon,
   mine: MineIcon,
 } as const
@@ -186,6 +207,9 @@ export const STATUS_ICON_TONE: Record<IconName, string> = {
   updatable: 'text-[#28a870]',
   synced: 'text-[#158e8b]',
   'not-recommended': 'text-[#ec605b]',
+  /* 琥珀：与清单那枚「需要确认」药丸同色系（药丸是 amber-bg/amber token，
+     这里是同一语义的饱和版，理由见上面那段关于"两套调色板"的说明）。 */
+  'needs-decision': 'text-[#d9912b]',
   'pending-check': 'text-[#6d80a1]',
   /* 「我自己的」**故意用中性灰**（主题的 ink-3），不跟着上面那套饱和色走：
      它不是一种状态，而是一个布尔——涂成彩色会让人以为「个人」也是一种进度。

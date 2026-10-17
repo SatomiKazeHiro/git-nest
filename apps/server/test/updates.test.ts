@@ -388,6 +388,65 @@ describe('POST /api/updates/apply', () => {
     expect(task.summary.skipped).toBe(1)
   })
 
+  /*
+    一次**跳过**的 pull 不该在 `update_checks` 里留行。
+
+    它曾经留：`PullResult.status` 是**闸门原因**，而 `'diverged'` / `'ahead'` 同时属于
+    `REMOTE_CHECK_STATUSES`，于是这一行被当成「最近一次合格检查」——ahead/behind 与判决
+    一起被写成 null，清单上「上次检查 = 刚刚」却显示「待检查」。
+
+    用「已分叉」这个场景，因为它的 status 正好落在那个集合里；dirty 落不进去，
+    用它测不出这个洞。
+  */
+  it('跳过时不写检查历史（skip 的 status 不是远程结论）', async () => {
+    const { origin, clone } = makeOriginWithClone('apply-skip-nowrite', 0)
+    const id = await addProject('apply-skip-nowrite', clone)
+    commitIn(clone, '本地提交')
+    commitIn(origin, '远程提交')
+
+    // 先放一条**合格**检查：behind + 可拉。它是界面新鲜度与行动分类的来源。
+    db.prepare(
+      `INSERT INTO update_checks (project_id, checked_at, status, ahead_count, behind_count, detail)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      new Date(Date.now() - 60_000).toISOString(),
+      'behind',
+      0,
+      1,
+      JSON.stringify({ incoming: 1, outgoing: 0, tags: [], verdict: 'safe', canPull: true }),
+    )
+    const latest = () =>
+      db
+        .prepare(
+          'SELECT id, checked_at, status, ahead_count, detail FROM update_checks WHERE project_id = ? ORDER BY id DESC LIMIT 1',
+        )
+        .get(id)
+    const before = latest()
+
+    const task = await waitForTask(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/updates/apply',
+          headers: json,
+          payload: { ids: [id] },
+        })
+      ).json().id,
+    )
+    expect(task.items[0].result.outcome).toBe('skipped')
+    expect(task.items[0].result.status).toBe('diverged')
+
+    // 没有新增行：那条合格检查原样还在（id / 时间 / 数字 / 判决都没被动过）
+    expect(latest()).toEqual(before)
+
+    // 而且**界面上的结论也没被改写**：仍然是「可更新」，不是「待检查」。
+    const list = (
+      await app.inject({ method: 'GET', url: '/api/projects' })
+    ).json() as { projects: { id: number; attention: string }[] }
+    expect(list.projects.find((p) => p.id === id)?.attention).toBe('ready')
+  })
+
   it('一部分失败不影响其他仓库', async () => {
     const good = makeOriginWithClone('apply-good', 0)
     const goodId = await addProject('apply-good', good.clone)

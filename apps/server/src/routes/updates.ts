@@ -281,19 +281,36 @@ async function runApply(db: DB, task: Task, targets: Target[]) {
       // 第三个参数是项目 id：基线闸那次 fetch 也要按项目换传输方式，
       // 走通的那条同样要记住（与「检查」共用一处口径，见 lib/git.ts）。
       const result = await pull(target.path, lastUpstreamSha(db, target.id), target.id)
-      recordUpdateCheck(db, target.id, {
-        status: result.status,
-        ahead: null,
-        behind: null,
-        incoming: [],
-        outgoing: [],
-        tags: [],
-        // pull 之后不重新算推荐：这一刻真正的答案是「刚刚拉过了」，
-        // 下一次检查会给出新的结论。这里给 null 比给一条旧结论诚实。
-        recommendation: null,
-        upstreamSha: null,
-        error: result.error,
-      })
+      /*
+        **`skipped` 不写 update_checks**，与上面那道拒绝闸同一条理由（看 `continue` 上面
+        那两行注释）。这里曾经无条件写，于是 `PullResult.status` 这个**闸门原因**被当成
+        了「远程结论」落库，两个后果都是实打实的：
+
+        1. `SKIP(..., 'ahead' | 'diverged')` 里的值属于 `REMOTE_CHECK_STATUSES`
+           （`packages/core/src/types.ts`），所以这一行会被当成「最近一次**合格**检查」，
+           把 ahead/behind 覆盖成 null、推荐覆盖成 null → 清单上「上次检查 = 刚刚」
+           却显示「待检查」（`ATTENTION_SQL` 没有 ELSE，落 `unchecked`）。
+        2. 这一行的 detail 里没有 `upstreamSha`，而 `lastUpstreamSha` 只读最新一行的
+           detail → 基线和它一起被清空，下一次检查就判不出「作者改写了历史」。
+
+        换句话说：一次**没动工作区、也没得出远程结论**的跳过，不该出现在「检查历史」里。
+        `failed` 照写——失败归因本来就要留档，而它不在那四个「合格」状态里。
+      */
+      if (result.outcome !== 'skipped') {
+        recordUpdateCheck(db, target.id, {
+          status: result.status,
+          ahead: null,
+          behind: null,
+          incoming: [],
+          outgoing: [],
+          tags: [],
+          // pull 之后不重新算推荐：这一刻真正的答案是「刚刚拉过了」，
+          // 下一次检查会给出新的结论。这里给 null 比给一条旧结论诚实。
+          recommendation: null,
+          upstreamSha: null,
+          error: result.error,
+        })
+      }
       markDone(task, target.id, result)
 
       if (result.outcome === 'updated') {

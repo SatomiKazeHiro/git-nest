@@ -29,5 +29,9 @@ export function useInvalidate() {
     void qc.invalidateQueries({ queryKey: queryKeys.categories })
     void qc.invalidateQueries({ queryKey: queryKeys.statusRoot })
     void qc.invalidateQueries({ queryKey: queryKeys.settings })
+    // README 是**磁盘上的文件**，而键里只有 id：改了路径（或换了目录）之后不失效，
+    // 就会一直渲染旧仓库的文档（见 `queryKeys.readmeAll` 的注释）。
+    // 它比别的根贵（要读盘），但只在写操作之后发生，写操作本来就少。
+    void qc.invalidateQueries({ queryKey: queryKeys.readmeAll })
   }
 }

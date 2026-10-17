@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { builtinCategoryList, type ProjectListItem } from '@git-nest/core'
@@ -123,5 +123,70 @@ describe('FilterPanel · 分类项的图标', () => {
 
     const row = await screen.findByRole('button', { name: /AI 项目/ })
     expect(row.querySelector('svg')).toBeNull()
+  })
+})
+
+/**
+ * 「仓库状态」那一组的**完整性**。
+ *
+ * 由来：`ATTENTION_SQL` 把分叉判成 `decide`，而面板只画了四个桶（没有 `decide`）。
+ * 后果不是"少一个选项"，而是两件更糟的事：
+ * 1. 分叉的仓库行上挂着「需要确认」药丸，**面板里没有任何入口能筛出它**；
+ * 2. 四个桶的计数加起来**小于**「全部仓库」，而它们看着仍像在报告全量。
+ *
+ * 所以这里钉两件事：五个桶一个不少，且计数加等于总数。
+ */
+describe('FilterPanel · 仓库状态那一组', () => {
+  const ATTENTIONS = ['ready', 'synced', 'blocked', 'decide', 'unchecked'] as const
+  const LABELS: Record<(typeof ATTENTIONS)[number], string> = {
+    ready: '可更新',
+    synced: '已同步',
+    blocked: '不推荐',
+    decide: '需要确认',
+    unchecked: '待检查',
+  }
+
+  /** 每个桶各一个项目，合计 = 5 */
+  const onePerBucket = () =>
+    ATTENTIONS.map((attention, i) => ({ ...project(''), id: i + 1, attention }))
+
+  function serveBuckets() {
+    server.use(
+      http.get('/api/categories', () => HttpResponse.json({ categories: builtinCategoryList() })),
+      http.get('/api/projects', () =>
+        HttpResponse.json({ projects: onePerBucket(), total: ATTENTIONS.length }),
+      ),
+    )
+  }
+
+  /** 一个条目按钮上的数字（末尾那个）；标签里没有阿拉伯数字，取尾数不会取错 */
+  const countOf = (label: string) => {
+    const text = screen.getByRole('button', { name: new RegExp(label) }).textContent ?? ''
+    return Number(text.replace(/\s/g, '').match(/(\d+)$/)?.[1])
+  }
+
+  it('五个桶一个不少，且计数加等于「全部仓库」', async () => {
+    serveBuckets()
+    renderPanel()
+
+    // 这一条就是那个洞的回归闸：`decide` 曾经完全没有入口。
+    expect(await screen.findByRole('button', { name: /需要确认/ })).toBeTruthy()
+
+    let sum = 0
+    for (const a of ATTENTIONS) sum += countOf(LABELS[a])
+    expect(sum).toBe(ATTENTIONS.length)
+    expect(countOf('全部仓库')).toBe(ATTENTIONS.length)
+  })
+
+  it('点「需要确认」按 decide 筛；再点一下取消', async () => {
+    serveBuckets()
+    renderPanel()
+
+    const row = await screen.findByRole('button', { name: /需要确认/ })
+    fireEvent.click(row)
+    expect(useUiStore.getState().filters.attention).toBe('decide')
+
+    fireEvent.click(row)
+    expect(useUiStore.getState().filters.attention).toBeNull()
   })
 })

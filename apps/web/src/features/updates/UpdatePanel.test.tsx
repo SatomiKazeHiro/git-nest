@@ -122,6 +122,24 @@ async function waitForStream() {
 }
 
 /**
+ * 等到**匹配这个片段**的那条流出现，再把它交回来。
+ *
+ * `waitForStream()` 只保证「至少有一条」并返回最后一条——所以在一个已经建过流
+ * （检查那一轮会建 `task-check/events`）的用例里，它会把**上一条**交回来。那句
+ * 「这条流是 apply 的」于是变成在赌「apply 的 202 已经回来了」，机器一忙就输。
+ * 按 URL 等，就和延迟无关了。
+ */
+async function waitForStreamMatching(fragment: string) {
+  await waitFor(() =>
+    expect(
+      FakeEventSource.instances.some((s) => s.url.includes(fragment)),
+      `等不到 ${fragment}；现有流：${FakeEventSource.instances.map((s) => s.url).join(', ') || '（一条都没有）'}`,
+    ).toBe(true),
+  )
+  return FakeEventSource.instances.filter((s) => s.url.includes(fragment)).at(-1)!
+}
+
+/**
  * 某一行当前的全部文字。
  *
  * 状态词不能直接 `getByText('检查中…')`：底部那个按钮上可能是同一个词，
@@ -218,8 +236,7 @@ describe('勾选更新流程', () => {
       expect((useButton(/更新选中的/) as HTMLButtonElement).textContent).toContain('1'),
     )    // 4. 更新
     await click(/更新选中的/)
-    const applyStream = await waitForStream()
-    expect(applyStream.url).toContain('/api/updates/task-apply/events')
+    const applyStream = await waitForStreamMatching('/api/updates/task-apply/events')
     expect(applied).toEqual([[1]]) // 只有勾的那个，不是全部
 
     // 5. 结果汇总
@@ -546,8 +563,7 @@ describe('每一行那句状态词要说实话', () => {
     await readyToApply()
 
     await click(/更新选中的/)
-    const applyStream = await waitForStream()
-    expect(applyStream.url).toContain('/api/updates/task-apply/events')
+    const applyStream = await waitForStreamMatching('/api/updates/task-apply/events')
 
     // 服务端把这个项目标成 running（`/updates/apply` 的快照 kind 就是 apply）
     applyStream.emit({ type: 'item', item: { projectId: 1, name: 'behind-one', state: 'running' } })
@@ -749,11 +765,17 @@ describe('更新进行中，「更新选中的」按钮留在原地并报进度'
   it('按钮还在（不是换成那个禁用的检查按钮）、是禁用的、文案里带「已完成/这一轮总数」', async () => {
     const applyRequests: number[][] = []
     /*
-      apply 的 202 故意晚 60ms 回来：这样「点下去 → 快照回来」那段窗口**看得见**
-      （生产里它是一次真实网络往返）。60ms 够跑完下面那几步同步断言，又不会让用例变慢。
-      ids 在 handler 入口就记下了，所以「请求发出去了」不用等这段延迟。
+      apply 的 202 故意晚一点回来：这样「点下去 → 快照回来」那段窗口**看得见**
+      （生产里它是一次真实网络往返）。ids 在 handler 入口就记下了，所以「请求发出去了」
+      不用等这段延迟。
+
+      **窗口从 60ms 加到 250ms**：60ms 在满载跑全量测试时会输给调度延迟——`waitFor` 自己的
+      轮询间隔就是 50ms，机器一忙，「请求已发出」被观察到的那一刻 60ms 早已过去，于是下面那条
+      「按钮此刻必须是禁用的」拿到的其实是**已经放开**的按钮，偶发失败（在干净基线上也能复现）。
+      这条用例要断言的就是"飞行中"那一档，那窗口就必须显著长于观察延迟。代价是每条这样的
+      用例多 200ms，比偶发红一次便宜得多。
     */
-    await checkedTwoPullable(applyRequests, 60)
+    await checkedTwoPullable(applyRequests, 250)
 
     /*
       ① 先证明「点得到」：主按钮在文档里、可点，而且底部含「更新」的按钮就是它们几个。
@@ -805,8 +827,13 @@ describe('更新进行中，「更新选中的」按钮留在原地并报进度'
     expect(applyingNow.disabled).toBe(true)
     expect(screen.queryByRole('button', { name: /检查中…/ })).toBeNull() // ← 原来就是它顶掉了这枚按钮
 
-    const applyStream = await waitForStream()
-    expect(applyStream.url).toContain('/api/updates/task-apply/events')
+    /*
+      **不能只等「有一个流」**：检查那一轮已经建过 `task-check/events`，而
+      `waitForStream()` 只保证数量 > 0 并返回最后一条——它会把**上一条**交回来，
+      于是这句「这条流是 apply 的」变成在赌"apply 的 202 已经回来了"。
+      按 URL 等，与延迟无关。
+    */
+    const applyStream = await waitForStreamMatching('/api/updates/task-apply/events')
 
     // ④ 进度：这一轮勾了 2 个，此刻一个都还没跑完
     await waitFor(() =>
@@ -850,7 +877,7 @@ describe('更新进行中，「更新选中的」按钮留在原地并报进度'
 
   it('更新这一轮起跑失败时那枚按钮要放得开，不能把底部永久锁在更新档', async () => {
     const applyRequests: number[][] = []
-    await checkedTwoPullable(applyRequests, 60)
+    await checkedTwoPullable(applyRequests, 250)
     server.use(
       http.post('/api/updates/apply', async ({ request }) => {
         /*
@@ -859,8 +886,8 @@ describe('更新进行中，「更新选中的」按钮留在原地并报进度'
           ✗（自己把自己的前提掐了）。
         */
         applyRequests.push(((await request.json()) as { ids: number[] }).ids)
-        // 同样把窗口撑开一点，让「启动中」那一档看得见
-        await delay(60)
+        // 同样把窗口撑开一点，让「启动中」那一档看得见（250ms 的理由见上一条用例）
+        await delay(250)
         return HttpResponse.json(
           { code: 'bad_request', message: '这批里没有可以更新的' },
           { status: 400 },

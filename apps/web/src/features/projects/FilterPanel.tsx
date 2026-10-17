@@ -95,8 +95,12 @@ export function FilterPanel() {
         并给「当前没筛选」一个可见状态。点它**只清状态那一个维度**，
         分类 / 标签 / 我自己的都不动。
 
-        「需要确认」（verdict=diverged）不单列一项：它是少数情况，
-        混进「不推荐」那一档会让后者失去「作者改写了历史」那层警告的分量。
+        「需要确认」（verdict=diverged）**单独一项，不能省**：`ATTENTION_SQL` 把它判成
+        `decide` 而不是 `blocked`，所以它既不在「不推荐」那一档里、也没有别的入口能筛到它。
+        省掉它的后果不是"少一个选项"，而是**四个桶的计数加不等于「全部仓库」**，
+        而且分叉的仓库行上明明挂着「需要确认」药丸、面板里却找不出这个桶。
+        （它确实不该并进「不推荐」——那会让后者失去「作者改写了历史 / 换了仓库」
+        那层警告的分量。所以是**多一项**，不是**合并**。）
       */}
       {/*
         「我自己的」**不再单独成段**：它只有一个选项，而「一段只有一个选项」那种排版
@@ -148,6 +152,13 @@ export function FilterPanel() {
           count={attentionCounts.blocked}
           active={attention === 'blocked'}
           onClick={() => setAttention(attention === 'blocked' ? null : 'blocked')}
+        />
+        <Item
+          icon="needs-decision"
+          label="需要确认"
+          count={attentionCounts.decide}
+          active={attention === 'decide'}
+          onClick={() => setAttention(attention === 'decide' ? null : 'decide')}
         />
         <Item
           icon="pending-check"
