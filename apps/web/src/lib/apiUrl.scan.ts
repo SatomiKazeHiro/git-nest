@@ -22,8 +22,14 @@ import path from 'node:path'
  */
 const API_LITERAL = /['"`][^'"`]*\/api/
 
-/** `from '@/lib/api'` / `import '@/lib/api'` 不算调用点（那是模块路径，不是地址）。 */
-const IMPORT_LINE = /\bfrom\s+['"`][^'"`]*\/api['"`]|\bimport\s+['"`][^'"`]*\/api['"`]/
+/**
+ * `from '@/lib/api'` / `import '@/lib/api'` 不算调用点（那是模块路径，不是地址）。
+ *
+ * **`/api` 后面允许还有字符**：`from './apiUrl.scan'` 这种「模块名以 api 开头」的
+ * 导入也长得像地址，第一版的正则只认「以 /api 结尾」，于是把
+ * `import { … } from './apiUrl.scan'` 报成了违规（假警报的闸门会被人直接关掉）。
+ */
+const IMPORT_LINE = /\bfrom\s+['"`][^'"`]*\/api[^'"`]*['"`]|\bimport\s+['"`][^'"`]*\/api[^'"`]*['"`]/
 
 /** 注释行：`// …` 或块注释的续行 `* …`。注释里提 `/api` 是**说明**，不是调用点。 */
 function isCommentLine(line: string): boolean {

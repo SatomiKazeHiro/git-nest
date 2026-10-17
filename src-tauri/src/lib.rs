@@ -558,6 +558,11 @@ pub fn run() {
         )
         // v2 的插件式 shell：sidecar 走它（v1 的 allowlist 在 v2 已经没有了）。
         .plugin(tauri_plugin_shell::init())
+        // 系统目录选择框（添加项目时的「选择目录…」）。
+        // **不注册这一行，前端那枚按钮就不会画**：`__TAURI__.dialog` 不存在，
+        // `apps/web/src/lib/platform.ts` 会如实报告「这项能力没有」
+        // ——不画按钮比画一个点了没反应的按钮好，但用户也就少了那个便利。
+        .plugin(tauri_plugin_dialog::init())
         .setup({
             let root = root.clone();
             move |app| {

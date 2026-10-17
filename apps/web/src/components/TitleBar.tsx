@@ -1,5 +1,5 @@
 import { FolderGit2, Minus, Square, X } from 'lucide-react'
-import { desktopWindow, type DesktopWindow } from '@/lib/desktop'
+import { desktopWindow, type DesktopWindow } from '@/lib/platform'
 
 /**
  * 标题栏。品牌在左，窗口控件在右，中间一整条是**拖拽区**。
@@ -9,7 +9,7 @@ import { desktopWindow, type DesktopWindow } from '@/lib/desktop'
  *
  * 窗口控件只在真的跑在桌面窗口里时才画（`window.__TAURI__` 在，且方法齐了）。
  * 在浏览器里开发时**藏掉而不是画成装饰**：三个点不动的按钮比没有更让人困惑，
- * 而且它们会占掉一截标题栏。判定见 `lib/desktop.ts`——刻意不引 Tauri 的依赖。
+ * 而且它们会占掉一截标题栏。判定见 `lib/platform.ts`——**平台差异只允许出现在那一个模块里**。
  */
 export function TitleBar() {
   const win = desktopWindow()

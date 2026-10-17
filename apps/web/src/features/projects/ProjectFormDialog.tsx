@@ -6,6 +6,7 @@ import { categoryIcon } from '@/features/categories/icons'
 import { categoryLabelOf } from '@/features/categories/label'
 import { ApiError } from '@/lib/api'
 import { Button, ErrorNote, Field, Input } from '@/components/ui'
+import { PathField } from '@/components/PathField'
 import { Dialog } from '@/components/Dialog'
 import { Select } from '@/components/Select'
 import { RecordEditor } from './RecordEditor'
@@ -249,11 +250,17 @@ export function ProjectFormDialog() {
           }
         >
           {(id) => (
-            <Input
+            /*
+              手输 + 「选择目录…」。**后者只在桌面壳里画**（浏览器里没有系统目录
+              选择框，判定与错误处理都在 `lib/platform.ts` 那一处）。
+              不这么做的话，两个环境各写一遍 `if (__TAURI__)`，总有一天漏一处。
+            */
+            <PathField
               id={id}
               value={form.path}
-              onChange={set('path')}
+              onChange={(v) => setForm((f) => ({ ...f, path: v }))}
               placeholder="D:/Git/canvas-editor"
+              pickTitle="选一个仓库目录"
             />
           )}
         </Field>

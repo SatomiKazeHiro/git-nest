@@ -59,6 +59,12 @@ describe('API 地址的单一收口', () => {
         path.join(dir, 'test', 'server.ts'),
         "export const h = http.get('/api/settings', () => null)\n",
       )
+      // 好样本四：模块路径「以 api 开头、但后面还有字」也不是地址
+      // （`import … from './apiUrl.scan'` 被报过，假警报的闸门会被直接关掉）
+      writeFileSync(
+        path.join(dir, 'features', 'Good2.tsx'),
+        "import { x } from './apiUrl.scan'\nexport const y = x\n",
+      )
 
       const offenders = findUncollectedApiLiterals(dir)
       expect(offenders.map((o) => o.file)).toEqual(['features/Bad.tsx'])
