@@ -28,6 +28,12 @@ type StreamEvent =
   | { type: 'item'; item: TaskItem; done?: number }
   | { type: 'finished'; summary: Record<string, number> }
   | { type: 'error'; message: string }
+  /**
+   * 心跳。**必须是个真事件**：服务端每 25s 推一条，唯一的用途是让下面的
+   * 看门狗知道「流还活着」。`EventSource` 不派发注释帧（`: ping`），所以心跳
+   * 一旦改用注释帧，慢仓库（fetch 卡过 75s）就会被判成断流、把好好的流扔掉。
+   */
+  | { type: 'tick' }
   | { type: 'closed' }
 
 export function isReport(r: TaskItem['result']): r is UpdateReport {
@@ -65,7 +71,11 @@ export function startApply(ids: number[]) {
  */
 const MAX_RETRIES = 3
 const RETRY_DELAY_MS = 500
-/** 服务端每 25s 一个心跳；超过这么久没有任何事件就认为流死了 */
+/**
+ * 服务端每 25s 推一条 `{"type":"tick"}`（**事件帧，不是 `: ping` 注释帧**——
+ * 注释帧不会触发 `message`，这个看门狗看不见它，于是慢仓库会被误判成断流）。
+ * 留三倍的余量：超过这么久一条事件都没有，才认为流真的死了。
+ */
 const SILENCE_TIMEOUT_MS = 75_000
 
  interface UpdateTaskOptions {
@@ -243,6 +253,10 @@ export function useUpdateTask(onFinished?: () => void, options: UpdateTaskOption
               i.projectId === event.item.projectId ? event.item : i,
             )
             current = { ...current, items, done: event.done ?? current.done }
+          } else if (event.type === 'tick') {
+            // 心跳：上面那句 armSilenceWatchdog 已经把它算作「流还活着」，
+            // 它不承载任何状态，所以到此为止（也不该触发一次无意义的重渲染）
+            return
           } else if (event.type === 'finished') {
             current = { ...current, status: 'done', summary: event.summary, done: current.total }
           } else if (event.type === 'error') {

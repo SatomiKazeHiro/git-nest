@@ -166,6 +166,34 @@ describe('勾选更新流程', () => {
     expect(screen.getByRole('dialog', { name: '联网检查更新' })).toBeTruthy()
   })
 
+  /*
+    任务已经不在服务端了（服务端重启把内存里的任务丢了 / 被 TTL 清扫）。
+
+    服务端**不回 404**：`EventSource` 读不到状态码，404 与断网在客户端眼里一模一样，
+    面板上只会出现「进度流断了，重连几次都没成功」——把责任推给网络，还建议用户
+    再试一次同一件注定失败的事。现在改成在这条流里推一条 `error` 收尾，这条用例
+    钉住「那句话真的显示在面板上」，而不是只存在于事件里。
+  */
+  it('任务在服务端没了：面板说出真正的原因', async () => {
+    server.use(
+      http.post('/api/updates/check', () => HttpResponse.json(lastCheckTask, { status: 202 })),
+    )
+
+    renderPanel()
+    await click(/开始检查/)
+    const stream = await waitForStream()
+
+    stream.emit({
+      type: 'error',
+      message: '这次检查的任务已经不在了（服务端重启过？）。点「重新检查」重跑一次。',
+    })
+    stream.emit({ type: 'closed' })
+
+    await waitFor(() => expect(screen.getByText(/已经不在/)).toBeTruthy())
+    // 收尾后按钮要回到「重新检查」那一档，否则用户被卡在这句话上无从下手
+    await waitFor(() => expect(useButton(/重新检查/)).toBeTruthy())
+  })
+
   it('检查 → 看报告 → 只勾能快进的 → 更新 → 汇总', async () => {
     const applied: number[][] = []
 

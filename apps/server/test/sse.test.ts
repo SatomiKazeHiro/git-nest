@@ -2,9 +2,11 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { DEFAULT_PORTS } from '@git-nest/core'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { buildApp } from '../src/app.ts'
 import { openDatabase, type DB } from '../src/db/index.ts'
+import { bindSettings } from '../src/lib/git.ts'
 
 /**
  * 进度 SSE 的两条**运维**问题（审计发现，原来这一整块零测试）：
@@ -74,8 +76,11 @@ function url(instance: ReturnType<typeof buildApp>['app']): string {
   return `http://127.0.0.1:${address.port}`
 }
 
-/** 一个连不上的远程 + 3s 超时 = 任务能挂住几秒，够我们订阅了 */
-async function createSlowTask(target: string): Promise<string> {
+/**
+ * 一个连不上的远程 + 3s 超时 = 任务能挂住几秒，够我们订阅了。
+ * `base` 只在用例自建了另一个实例时才传（那种实例有自己的库与设置）。
+ */
+async function createSlowTask(target: string, base = baseUrl): Promise<string> {
   const dir = path.join(root, target)
   fs.mkdirSync(dir, { recursive: true })
   git(dir, 'init', '-b', 'main')
@@ -84,7 +89,7 @@ async function createSlowTask(target: string): Promise<string> {
   git(dir, 'commit', '-m', '初始提交')
   git(dir, 'remote', 'add', 'origin', 'https://192.0.2.1/never.git') // TEST-NET，必然连不通
 
-  const created = await fetch(`${baseUrl}/api/projects`, {
+  const created = await fetch(`${base}/api/projects`, {
     method: 'POST',
     headers: json,
     body: JSON.stringify({ name: target, path: dir, category: 'tools' }),
@@ -92,7 +97,7 @@ async function createSlowTask(target: string): Promise<string> {
   expect(created.status).toBe(201)
   const id = ((await created.json()) as { project: { id: number } }).project.id
 
-  const started = await fetch(`${baseUrl}/api/updates/check`, {
+  const started = await fetch(`${base}/api/updates/check`, {
     method: 'POST',
     headers: json,
     body: JSON.stringify({ ids: [id] }),
@@ -126,10 +131,104 @@ describe('进度 SSE 的连接生命周期', () => {
     expect(types.indexOf('finished')).toBeLessThan(types.lastIndexOf('closed'))
   })
 
-  it('订阅不存在的任务返回 404，不是挂住', async () => {
+  /*
+    任务没了（服务端重启把内存任务丢了 / 被 TTL 清扫）时的契约。
+
+    这里**故意不是 404**：`EventSource` 读不到状态码，非 2xx 在客户端眼里与断网
+    无法区分，于是前端会照常重连 3 次、再报「重连几次都没成功」——而它永远不会
+    成功，用户被指向「网断了」这个错误的方向。给一条正常收尾的流，把原因说清楚。
+  */
+  it('任务不存在时给一条收尾的流（error + closed），不是 404', async () => {
     const res = await fetch(`${baseUrl}/api/updates/does-not-exist/events`)
-    expect(res.status).toBe(404)
-    await res.text()
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('text/event-stream')
+
+    const body = await res.text()
+    const events = body
+      .split('\n\n')
+      .filter((chunk) => chunk.startsWith('data: '))
+      .map((chunk) => JSON.parse(chunk.slice('data: '.length)) as { type: string; message?: string })
+
+    expect(events.map((e) => e.type)).toEqual(['error', 'closed'])
+    expect(events[0]!.message).toContain('重新检查')
+  })
+
+  /*
+    心跳必须是 `data:` 帧。
+
+    注释帧（`: ping`）浏览器不会派发 message 事件，而前端「多久没事件就认为流
+    死了」的看门狗只认消息帧——一个仓库的 fetch 慢过 75 秒，流就会被误判成断了：
+    面板报「进度流断了，没能恢复」，好好的任务被扔掉。这条用 200ms 的心跳把
+    「服务端确实推的是事件」钉住（25 秒的默认值在用例里没法等）。
+  */
+  it('心跳是事件帧而不是注释帧（否则客户端看门狗看不见）', async () => {
+    const ownDb = openDatabase(':memory:')
+    const own = buildApp({ db: ownDb, logger: false, sseHeartbeatMs: 200 }).app
+    await own.listen({ port: 0, host: '127.0.0.1' })
+    const ownUrl = url(own)
+
+    // 5s 超时：任务活得够久，才等得到心跳
+    await fetch(`${ownUrl}/api/settings`, {
+      method: 'PATCH',
+      headers: json,
+      body: JSON.stringify({ gitTimeoutMs: 5_000 }),
+    })
+    const taskId = await createSlowTask('heartbeat-repo', ownUrl)
+
+    const res = await fetch(`${ownUrl}/api/updates/${taskId}/events`)
+    const reader = res.body!.getReader()
+    const decoder = new TextDecoder()
+    let text = ''
+    const deadline = Date.now() + 10_000
+    while (!text.includes('"type":"tick"') && Date.now() < deadline) {
+      const chunk = await reader.read()
+      if (chunk.done) break
+      text += decoder.decode(chunk.value, { stream: true })
+    }
+
+    expect(text, '10 秒内没等到心跳').toContain('"type":"tick"')
+    expect(text, '不该再用注释帧当心跳').not.toContain(': ping')
+
+    await reader.cancel()
+    await own.close()
+    ownDb.close()
+    /*
+      `bindSettings` 是**模块级单例**（`lib/git.ts` 里那个 `db`）：上面这次 buildApp
+      把全局绑定换成了 `ownDb`，它一关，之后任何走 git 的请求都会去读一个已关闭的库
+      → 500（实测：后面两条用例的 `POST /api/projects` 直接 500）。
+      这里显式换回主实例。不是被测代码的缺陷——生产里只 build 一次 app；
+      但这说明「多实例共用一套全局绑定」只适合测试，别在别处依赖它。
+    */
+    bindSettings(db)
+  })
+
+  /*
+    这条流的响应头是**直接写在 `reply.raw` 上**的，绕开了 Fastify 的发送通道，
+    所以 `@fastify/cors` 设的头一个也到不了线上。只在跨源时现形——浏览器里开发
+    走 vite 代理是同源的，一切正常；桌面壳里页面的来源是 web 端口那个（dev）
+    或 `http://tauri.localhost`（release），API 在 `127.0.0.1:36379`，跨源。
+    缺 `access-control-allow-origin` 的表现不是「报 CORS 错误」，而是浏览器直接判
+    这条连接失败 → 前端四次 onerror → 面板上「进度流断了，重连几次都没成功」，
+    而同一页面的其它接口全好。
+  */
+  it('跨源（桌面壳）时流自己带上 CORS 头，别人的页面读不到', async () => {
+    const taskId = await createSlowTask('cors-repo')
+
+    for (const origin of [`http://localhost:${DEFAULT_PORTS.web}`, 'http://tauri.localhost']) {
+      const res = await fetch(`${baseUrl}/api/updates/${taskId}/events`, { headers: { origin } })
+      expect(res.status).toBe(200)
+      expect(res.headers.get('access-control-allow-origin'), `${origin} 拿不到 ACAO`).toBe(origin)
+      expect(res.headers.get('vary')).toContain('Origin')
+      await res.text()
+    }
+
+    // 白名单之外的来源：进度里有项目名，不该漏给任意页面
+    const foreign = await fetch(`${baseUrl}/api/updates/${taskId}/events`, {
+      headers: { origin: 'http://evil.example' },
+    })
+    expect(foreign.status).toBe(200)
+    expect(foreign.headers.get('access-control-allow-origin')).toBeNull()
+    await foreign.text()
   })
 
   it('客户端中途断开后，服务端要停下来（app.close 不再被挂住）', async () => {

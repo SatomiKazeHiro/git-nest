@@ -2,10 +2,10 @@ import cors from '@fastify/cors'
 import Fastify from 'fastify'
 import { ZodError } from 'zod'
 import type { Scheduler } from '@git-nest/core/git'
-import { config } from './config.ts'
 import { openDatabase, type DB } from './db/index.ts'
 import { HttpError, toErrorBody } from './lib/errors.ts'
 import { bindSettings, useScheduler } from './lib/git.ts'
+import { allowedOrigins } from './lib/origins.ts'
 import { categoryRoutes, projectRoutes, tagRoutes } from './routes/index.ts'
 import { gitRoutes } from './routes/git.ts'
 import { logoRoutes } from './routes/logo.ts'
@@ -19,6 +19,8 @@ import { diagnosticsRoutes } from './routes/diagnostics.ts'
   logger?: boolean
   /** 换掉 `lib/git.ts` 里那个全局 scheduler（测试注入用） */
   scheduler?: Scheduler
+  /** 进度流的心跳间隔（测试注入用：默认 25 秒没法在用例里等） */
+  sseHeartbeatMs?: number
 }
 
 export function buildApp(options: AppOptions = {}) {
@@ -31,6 +33,8 @@ export function buildApp(options: AppOptions = {}) {
   // Ctrl-C 之后进程退不掉。关服务时直接断开连接。
   const app = Fastify({ logger: options.logger ?? true, forceCloseConnections: true })
 
+  // 白名单在 `lib/origins.ts`：SSE 端点直接往 reply.raw 写头部，拿不到这个插件的头，
+  // 所以它读的是**同一份**清单（那里有说明）。
   app.register(cors, { origin: allowedOrigins() })
 
   /*
@@ -76,7 +80,7 @@ export function buildApp(options: AppOptions = {}) {
   app.register(categoryRoutes(db), { prefix: '/api' })
   app.register(gitRoutes(db), { prefix: '/api' })
   app.register(logoRoutes(db), { prefix: '/api' })
-  app.register(updateRoutes(db), { prefix: '/api' })
+  app.register(updateRoutes(db, { heartbeatMs: options.sseHeartbeatMs }), { prefix: '/api' })
   app.register(settingsRoutes(db), { prefix: '/api' })
   app.register(scanRoutes(db), { prefix: '/api' })
   app.register(diagnosticsRoutes(db), { prefix: '/api' })
@@ -120,28 +124,6 @@ export function buildApp(options: AppOptions = {}) {
  * GET/HEAD/OPTIONS 不在里头：它们本来就该可跨站读（而且没有副作用）。
  */
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
-
-/**
- * 允许的浏览器来源：
- * - `GIT_NEST_CORS`（默认是 web 端口那个来源）里的那一个，外加本机的等价
- *   写法——vite 端口用 127.0.0.1 打开时 Origin 就不是 localhost，
- *   那不是「跨站」，不该被拦
- * - 打包成桌面软件后 webview 自己的来源（见 `config.tauriOrigins`）。
- *   少了这一组，装成应用之后**每一个写接口都会 403**，而本地开发完全正常——
- *   这类只在打包后现形的故障最难查，所以写进配置而不是等到那天再补
- */
-function allowedOrigins(): string[] {
-  const base = config.corsOrigin
-  const out = new Set([base, ...config.tauriOrigins])
-  try {
-    const url = new URL(base)
-    const mirror = url.hostname === 'localhost' ? '127.0.0.1' : 'localhost'
-    out.add(`${url.protocol}//${mirror}${url.port ? `:${url.port}` : ''}`)
-  } catch {
-    // 配了个不是 URL 的东西：那就只认字面量
-  }
-  return [...out]
-}
 
 /**
  * better-sqlite3 的 UNIQUE 约束错误。

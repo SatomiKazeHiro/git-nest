@@ -131,4 +131,66 @@ describe('进度流断掉时的兜底', () => {
     expect(latest.closed).toBe(false)
     expect(result.current.busy).toBe(true)
   })
+
+  /*
+    心跳（服务端每 25s 一条 `{"type":"tick"}`）的唯一用途是让看门狗知道流还活着。
+
+    它必须是**消息帧**：`EventSource` 不派发注释帧（`: ping`），所以心跳一旦退回
+    注释帧，这些 tick 就收不到了——而一个仓库的 fetch 卡过 75 秒（默认 git 超时
+    是 120s）时，流明明活着也会被判死，面板报「进度流断了，没能恢复」并把这条
+    流扔掉。这条用例同时钉两件事：tick 不该动任何状态，但必须能续命。
+  */
+  it('心跳 tick 不动状态，但能让看门狗知道流还活着', async () => {
+    server.use(http.post('/api/updates/check', () => HttpResponse.json(task, { status: 202 })))
+
+    // 看门狗 250ms；下面 500ms 里每 25ms 一条心跳，累计远超阈值
+    const { result } = renderHook(() =>
+      useUpdateTask(undefined, { retryDelayMs: 20, silenceTimeoutMs: 250 }),
+    )
+
+    act(() => {
+      void result.current.startCheck([1, 2])
+    })
+    await waitFor(() => expect(FakeEventSource.instances.length).toBe(1))
+    const source = FakeEventSource.instances[0]!
+
+    for (let i = 0; i < 20; i++) {
+      source.emit({ type: 'tick' })
+      await new Promise((r) => setTimeout(r, 25))
+    }
+
+    // 看门狗被心跳续上了：没有报错、还在跑、条目还是原样
+    expect(result.current.error).toBeNull()
+    expect(result.current.busy).toBe(true)
+    expect(result.current.task?.status).toBe('running')
+    expect(result.current.task?.items.map((i) => i.state)).toEqual(['pending', 'pending'])
+  })
+
+  /*
+    「任务已经不在服务端了」（服务端重启 / 任务被清扫）走的也是这条流：
+
+    服务端**故意不回 404**，而是按正常收尾推一条 `error` + `closed`。原因是
+    `EventSource` 读不到状态码——404 在客户端眼里和断网一模一样，只会换来三次
+    注定失败的重连，最后给用户一句「重连几次都没成功」，把责任推给网络。
+  */
+  it('任务没了时，把服务端说的原因原样留下来（不是写成断流）', async () => {
+    server.use(http.post('/api/updates/check', () => HttpResponse.json(task, { status: 202 })))
+
+    const { result } = renderHook(() => useUpdateTask(undefined, { retryDelayMs: 20 }))
+
+    act(() => {
+      void result.current.startCheck([1, 2])
+    })
+    await waitFor(() => expect(FakeEventSource.instances.length).toBe(1))
+    const source = FakeEventSource.instances[0]!
+
+    source.emit({ type: 'error', message: '这次检查的任务已经不在了（服务端重启过？）。点「重新检查」重跑一次。' })
+    source.emit({ type: 'closed' })
+
+    await waitFor(() => expect(result.current.busy).toBe(false))
+    // 那句「断流」兜底的 error 不该出现，真正的原因是任务没了
+    expect(result.current.error).toBeNull()
+    expect(result.current.task?.status).toBe('failed')
+    expect(result.current.task?.error).toContain('重新检查')
+  })
 })

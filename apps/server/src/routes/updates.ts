@@ -10,6 +10,7 @@ import {
   type UpdateReport,
 } from '../lib/git.ts'
 import { readSettings } from '../lib/settings.ts'
+import { corsHeadersFor } from '../lib/origins.ts'
 import {
   lastUpstreamSha,
   lastVerdict,
@@ -41,7 +42,20 @@ import {
  */
 const MAX_BATCH = MAX_BATCH_IDS
 const SSE_POLL_MS = 150
+/**
+ * 心跳间隔。**必须发 `data:` 帧，不能发 `: ping` 注释帧**：
+ * 注释帧是给中间代理和 EventSource 自己的重连机制看的，浏览器的 `message` 事件
+ * 不会派发它，而前端的看门狗（`features/updates/taskStream.ts` 的
+ * `SILENCE_TIMEOUT_MS`）只认消息帧——一个仓库的 fetch 慢过 75 秒就会被误判成
+ * 「流死了」，然后扔掉一条好好的流。所以这里推一个没有状态语义的 `tick`。
+ *
+ * 它**不进任务的事件缓冲**（见下面 `streamEvents`）：心跳是传输层的事，
+ * 不该被重连重放，也不该让缓冲随任务时长一起长。
+ */
 const SSE_HEARTBEAT_MS = 25_000
+const SSE_TICK = '{"type":"tick"}'
+/** 任务没了（服务端重启 / 被清扫）时推给客户端的那句话 */
+const TASK_GONE_MESSAGE = '这次检查的任务已经不在了（服务端重启过？）。点「重新检查」重跑一次。'
 
 const idsSchema = z.object({
   ids: z.array(z.number().int().positive()).max(MAX_BATCH).optional(),
@@ -64,7 +78,13 @@ const applySchema = z.object({
  * 更新模块。核心原则：**绝不自动更新**。
  * 检查可以批量跑，更新必须由用户勾选后触发，且只走 --ff-only。
  */
-export const updateRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
+export const updateRoutes = (
+  db: DB,
+  /** `heartbeatMs` 只给测试用：25 秒的心跳没法在用例里等 */
+  options: { heartbeatMs?: number } = {},
+): FastifyPluginAsync => async (fastify) => {
+  const heartbeatMs = options.heartbeatMs ?? SSE_HEARTBEAT_MS
+
   /** 批量 fetch + 分析，逐仓库推进度 */
   fastify.post('/updates/check', async (req, reply) => {
     const body = idsSchema.parse(req.body ?? {})
@@ -119,14 +139,32 @@ export const updateRoutes = (db: DB): FastifyPluginAsync => async (fastify) => {
     return taskSnapshot(task)
   })
 
-  /** 进度流。EventSource 只能 GET，所以启动用 POST、订阅用 GET。 */
+  /**
+   * 进度流。EventSource 只能 GET，所以启动用 POST、订阅用 GET。
+   *
+   * **任务不存在时故意不回 404**：`EventSource` 读不到状态码，非 2xx 只会让它触发
+   * 一次 `onerror`，前端分不清「服务端重启把内存里的任务丢了」和「网络抖了一下」，
+   * 于是照原计划重连 3 次、再报「重连几次都没成功」——而那 3 次注定不会成功。
+   * 这里改成一条**正常收尾**的流，把原因当作 `error` 事件推过去，面板直接显示
+   * 「任务已经不在了，重新检查一次」。
+   * （快照接口 `GET /updates/:taskId` 仍然回 404 —— 那是给普通 HTTP 调用方的。）
+   */
   fastify.get('/updates/:taskId/events', async (req, reply) => {
     const { taskId } = req.params as { taskId: string }
     const task = getTask(taskId)
-    if (!task) throw notFound('任务')
+    if (!task) {
+      await sendTaskGone(req.headers.origin, reply)
+      return
+    }
 
     const lastId = Number(req.headers['last-event-id'] ?? (req.query as { cursor?: string } | undefined)?.cursor ?? 0)
-    await streamEvents(reply, task, Number.isFinite(lastId) ? lastId : 0)
+    await streamEvents(
+      req.headers.origin,
+      reply,
+      task,
+      Number.isFinite(lastId) ? lastId : 0,
+      heartbeatMs,
+    )
   })
 }
 
@@ -331,13 +369,25 @@ async function runApply(db: DB, task: Task, targets: Target[]) {
   pruneUpdateChecks(db)
 }
 
-async function streamEvents(reply: FastifyReply, task: Task, startCursor: number) {
-  reply.raw.writeHead(200, {
-    'content-type': 'text/event-stream; charset=utf-8',
-    'cache-control': 'no-cache, no-transform',
-    connection: 'keep-alive',
-    'x-accel-buffering': 'no',
-  })
+/**
+ * 把进度推成一条 SSE 流。
+ *
+ * `origin` 是浏览器带的 `Origin`，用来自己补 CORS 头——**这一步不能省**：
+ * 头部是直接写在 `reply.raw` 上的，等于绕开了 Fastify 的发送通道，`@fastify/cors`
+ * 在钩子里设的头一个都到不了线上。后果只在**跨源**时才现形：浏览器里开发走 vite
+ * 代理（同源）一切正常，而桌面壳里页面的来源是 `http://tauri.localhost`（dev 形态
+ * 是 web 端口那个来源）、API 在 `127.0.0.1:36379`，跨源且响应里没有
+ * `access-control-allow-origin` → 浏览器直接判这条连接失败 → 客户端四次
+ * `onerror` 之后报「进度流断了，重连几次都没成功」，而同一页面的其它接口全好。
+ */
+async function streamEvents(
+  origin: string | undefined,
+  reply: FastifyReply,
+  task: Task,
+  startCursor: number,
+  heartbeatMs: number,
+) {
+  reply.raw.writeHead(200, sseHeaders(origin))
 
   let cursor = startCursor
   let lastBeat = Date.now()
@@ -366,9 +416,11 @@ async function streamEvents(reply: FastifyReply, task: Task, startCursor: number
         return
       }
 
-      if (Date.now() - lastBeat > SSE_HEARTBEAT_MS) {
+      if (Date.now() - lastBeat > heartbeatMs) {
         lastBeat = Date.now()
-        reply.raw.write(': ping\n\n') // 心跳，防中间代理掐断
+        // 心跳写成事件而不是 `: ping`：注释帧不派发 message，前端看门狗看不见
+        // （见上面 `SSE_HEARTBEAT_MS` 那段）。顺带它也替代理保了活。
+        reply.raw.write(`data: ${SSE_TICK}\n\n`)
       }
 
       await sleep(SSE_POLL_MS)
@@ -378,6 +430,34 @@ async function streamEvents(reply: FastifyReply, task: Task, startCursor: number
   } finally {
     reply.raw.off('close', onClose)
     if (!reply.raw.writableEnded) reply.raw.end()
+  }
+}
+
+/**
+ * 任务没了：给一条**正常收尾**的流，把原因当 `error` 事件说清楚。
+ *
+ * 为什么不回 404：见上面路由那段注释（`EventSource` 读不到状态码，404 在客户端
+ * 眼里和断网一模一样，只会换来三次注定失败的重连）。
+ */
+async function sendTaskGone(origin: string | undefined, reply: FastifyReply) {
+  reply.raw.writeHead(200, sseHeaders(origin))
+  reply.raw.write(`data: ${JSON.stringify({ type: 'error', message: TASK_GONE_MESSAGE })}\n\n`)
+  reply.raw.write('data: {"type":"closed"}\n\n')
+  reply.raw.end()
+}
+
+/**
+ * SSE 的响应头。**头部是直接写给 `reply.raw` 的**，绕开了 Fastify 的发送通道，
+ * 所以 `@fastify/cors` 设的头到不了线上——CORS 头必须按同一份白名单自己补，
+ * 否则跨源的 `EventSource` 会被浏览器直接判失败（理由见 `streamEvents` 的注释）。
+ */
+function sseHeaders(origin: string | undefined): Record<string, string> {
+  return {
+    ...corsHeadersFor(origin),
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-cache, no-transform',
+    connection: 'keep-alive',
+    'x-accel-buffering': 'no',
   }
 }
 
