@@ -489,6 +489,30 @@ fn create_main_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWin
         // 尺寸下限：三栏（导航 / 列表 / 详情）是设计基线，再窄就没有并排的意义了
         .min_inner_size(960.0, 600.0)
         .resizable(true)
+        /*
+          **不要系统标题栏**。界面自己已经有标题栏（`components/TitleBar.tsx`）：
+          品牌 + 拖拽区 + 最小化 / 最大化 / 关闭。两套标题栏叠在一起时，上面那条
+          是系统的、下面那条是应用的，两排按钮做同一件事——桌面软件里没有比这更
+          像"壳没做完"的东西。
+
+          ## 三件必须一起成立的事
+
+          1. **拖窗口**：靠 ``TitleBar`` 上的 `data-tauri-drag-region`（Tauri 靠这个
+             属性识别可拖区域），所以系统标题栏去掉之后照样能拖。
+          2. **窗口控件真的画得出来**：`lib/platform.ts` 从
+             `__TAURI__.window.getCurrentWindow()` 拿实例，能力由
+             `capabilities/main-window.json` 里的 `core:window:allow-*` 给。
+             **这一条是硬前提**：没有标题栏之后，如果控件也没画出来，窗口就没有
+             关闭按钮了（只剩 Alt+F4 / 任务栏右键）。
+          3. **能改大小**：系统边框去掉不影响边缘拖动改大小——窗口仍带
+             `resizable` 与可点击的边（Windows 上由窗口系统处理）。
+             实在要调大小也还有 `min_inner_size` 挡着，不会缩成一条缝。
+
+          `shadow(true)`：无边框窗口在 Windows 上默认没有系统投影，桌面上会显得
+          "贴"在壁纸上、边界糊成一片；这一条把它拉回一个窗口该有的立体感。
+        */
+        .decorations(false)
+        .shadow(true)
         .center()
         .initialization_script(init_script)
         .build()?;

@@ -17,8 +17,13 @@ export function TitleBar() {
   return (
     <header
       className="chrome flex h-9 shrink-0 items-center gap-2 border-b border-line bg-panel pl-3"
-      // 拖拽区。Tauri 靠这个属性识别「按住这里可以拖窗口」，浏览器里它什么也
-      // 不是，正好现在就能把布局看清楚，将来不用改。
+      /*
+        拖拽区。**桌面壳里系统标题栏已经被去掉了**（`src-tauri/src/lib.rs` 的
+        `decorations(false)`），所以这一条是窗口唯一的拖动入口——
+        Tauri 判断的是「按下时那个元素有没有这个属性」，于是品牌文字与副标题
+        也各带一份：不然拖着"git-nest"那四个字时窗口纹丝不动，只有点空白处才行。
+        浏览器里它什么也不是，正好现在就能把布局看清楚，将来不用改。
+      */
       data-tauri-drag-region
     >
       {/*
@@ -29,8 +34,15 @@ export function TitleBar() {
         这个软件是「本机一堆仓库的清单」，文件夹 + 分叉正好说的是这件事。
       */}
       <FolderGit2 size={16} aria-hidden className="shrink-0 text-accent" />
-      <span className="font-mono text-[13px] font-semibold tracking-tight text-ink">git-nest</span>
-      <span className="text-[12px] text-ink-3">本地仓库清单</span>
+      <span
+        data-tauri-drag-region
+        className="font-mono text-[13px] font-semibold tracking-tight text-ink"
+      >
+        git-nest
+      </span>
+      <span data-tauri-drag-region className="text-[12px] text-ink-3">
+        本地仓库清单
+      </span>
 
       {win ? <WindowControls win={win} /> : null}
     </header>
