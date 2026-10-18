@@ -872,6 +872,6 @@ owrap / overflow:hidden 钉成单行高密度，展开的那一行
     overflow: auto;
     background-color: var(--color-panel);
     border-left: 1px solid var(--color-line);
-    z-index: 4;
+    z-index: 5;
   }
 }

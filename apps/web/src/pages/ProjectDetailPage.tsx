@@ -36,7 +36,8 @@ export function ProjectDetailPage() {
   const categories = useCategories()
   /*
     联网同步**这一个**仓库：syncOne(id)。用户点名要查它，所以显式带上「我自己的」，
-    不被批量默认挡掉。结果不进任何报告面板——状态卡与推荐本身就读 epo_state，
+    不被批量默认挡掉。结果不进任何报告面板——状态卡与推荐本身就读 
+epo_state，
     跑完失效一次就都新了。**与清单的行内按钮共用同一个 hook**（eatures/updates/sync.ts）。
   */
   const sync = useSync()
@@ -158,7 +159,7 @@ export function ProjectDetailPage() {
         （一个满是 `javascript:` 链接的仓库），面板里一个可聚焦元素都没有，
         Tab 键会直接跳出面板。这个落点让键盘永远进得来。
       */}
-      <div role="tabpanel" id="panel-overview" aria-labelledby="tab-overview" tabIndex={0} hidden={tab !== 'overview'}>
+      <div role="tabpanel" id="panel-overview" className='min-h-0 flex-1 overflow-hidden' aria-labelledby="tab-overview" tabIndex={0} hidden={tab !== 'overview'}>
         <OverviewPanel
           project={project}
           categoryName={project.category ? categoryLabelOf(categories, project.category) : '未分类'}
@@ -251,59 +252,61 @@ function OverviewPanel({
   isRefreshing: boolean
 }) {
   return (
-    <div className="flex flex-1 flex-col gap-4 px-4 py-4">
-      <StatusPanel
-        status={status}
-        isFetching={isRefreshing}
-        onRefresh={refresh}
-        lastCheckAt={project.latestCheck?.checkedAt ?? null}
-        lastCheckStatus={project.latestCheck?.status ?? null}
-      />
+    <div className="h-full overflow-auto">
+      <div className="flex flex-1 flex-col gap-4 px-4 py-4">
+        <StatusPanel
+          status={status}
+          isFetching={isRefreshing}
+          onRefresh={refresh}
+          lastCheckAt={project.latestCheck?.checkedAt ?? null}
+          lastCheckStatus={project.latestCheck?.status ?? null}
+        />
 
-      <RemoteRow url={project.remoteUrl} />
+        <RemoteRow url={project.remoteUrl} />
 
-      {/*
-        分类与标签并成一行 chip。
-        原来它们各占一个 7rem 标签列 + 右边一个 chip 盒——**包了两层**：
-        「分类」两个字、然后一个等宽字、再然后一个带框的小块。
-        这一行里没有真正的「值」需要和「标签」对齐，chip 自己就是值。
-      */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
         {/*
-          「我自己的」是这个项目最重要的一条元信息——它决定批量检查会不会
-          跳过它。分类可以为空，这一项不行：勾上了却看不出来，等于没勾。
+          分类与标签并成一行 chip。
+          原来它们各占一个 7rem 标签列 + 右边一个 chip 盒——**包了两层**：
+          「分类」两个字、然后一个等宽字、再然后一个带框的小块。
+          这一行里没有真正的「值」需要和「标签」对齐，chip 自己就是值。
         */}
-        {project.isOwn ? (
-          <>
-            <span className="text-[11px] text-ink-3">身份</span>
-            <Chip>我自己的</Chip>
-          </>
-        ) : null}
-        <span className="text-[11px] text-ink-3">分类</span>
-        <Chip>{categoryName}</Chip>
-        {project.tags.length > 0 ? (
-          <>
-            <span className="ml-1 text-[11px] text-ink-3">标签</span>
-            {project.tags.map((t) => (
-              <Chip key={t.id}>{t.name}</Chip>
-            ))}
-          </>
-        ) : null}
-      </div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          {/*
+            「我自己的」是这个项目最重要的一条元信息——它决定批量检查会不会
+            跳过它。分类可以为空，这一项不行：勾上了却看不出来，等于没勾。
+          */}
+          {project.isOwn ? (
+            <>
+              <span className="text-[11px] text-ink-3">身份</span>
+              <Chip>我自己的</Chip>
+            </>
+          ) : null}
+          <span className="text-[11px] text-ink-3">分类</span>
+          <Chip>{categoryName}</Chip>
+          {project.tags.length > 0 ? (
+            <>
+              <span className="ml-1 text-[11px] text-ink-3">标签</span>
+              {project.tags.map((t) => (
+                <Chip key={t.id}>{t.name}</Chip>
+              ))}
+            </>
+          ) : null}
+        </div>
 
-      {/*
-        记录单独立一段，且是**正文**字号与颜色。
-        它原来是个 `text-ink-2` 的灰字、还缩在标签列右边那一格宽里，
-        跟「添加时间」一个权重——而它是这个项目里**唯一由你写的东西**，
-        剩下的字段都是从 git 读来的。自己写的话不该是这个项目里最不容易被
-        读到的一块。
-      */}
-      <section>
-        <h2 className="mb-1.5 text-[11px] font-medium text-ink-3">
-          记录
-        </h2>
-        <RecordView record={project.record} />
-      </section>
+        {/*
+          记录单独立一段，且是**正文**字号与颜色。
+          它原来是个 `text-ink-2` 的灰字、还缩在标签列右边那一格宽里，
+          跟「添加时间」一个权重——而它是这个项目里**唯一由你写的东西**，
+          剩下的字段都是从 git 读来的。自己写的话不该是这个项目里最不容易被
+          读到的一块。
+        */}
+        <section>
+          <h2 className="mb-1.5 text-[11px] font-medium text-ink-3">
+            记录
+          </h2>
+          <RecordView record={project.record} />
+        </section>
+      </div>
     </div>
   )
 }
