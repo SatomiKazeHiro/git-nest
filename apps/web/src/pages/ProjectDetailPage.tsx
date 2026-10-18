@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { AlertTriangle, Pencil, RefreshCw, X } from 'lucide-react'
+import { AlertTriangle, Pencil, X } from 'lucide-react'
 import { type ProjectDetail, type RepoStatus } from '@git-nest/core'
 import { categoryLabelOf } from '@/features/categories/label'
 import { useCategories } from '@/features/categories/queries'
@@ -113,21 +113,6 @@ epo_state，
             编辑资料
           </Button>
           {/*
-            联网**同步这一个仓库**：弹窗已经删了（更新落到了清单的行内按钮，
-            检查落到了「顶部刷新 + 每 :00/:30 一轮」）。这里保留一个点名的入口，
-            因为详情页是「我只关心这一个」的地方——用户点名要它，就该当场能问。
-            跑完 invalidate() 会让下面的状态卡与推荐自己变新。
-          */}
-          <Button
-            variant="primary"
-            onClick={() => sync.syncOne(projectId)}
-            disabled={sync.busy}
-            title="联网 fetch 这一个仓库，再算落后多少、推不推荐更新"
-          >
-            <RefreshCw size={14} aria-hidden className={sync.busy ? 'animate-spin' : ''} />
-            {sync.busy ? '同步中…' : '联网同步'}
-          </Button>
-          {/*
             「关闭」：详情是清单里的第二轨，关掉它 = 回清单。
             在此之前只能靠浏览器的后退键——而在这个界面里，后退键的意思不是
             「关掉右栏」（它可能一路退到别的页面去）。清单不动、筛选全留着。
@@ -166,6 +151,8 @@ epo_state，
           status={status}
           refresh={() => refresh.mutate()}
           isRefreshing={refresh.isPending}
+          onSync={() => sync.syncOne(projectId)}
+          syncing={sync.busy}
         />
       </div>
       <div
@@ -239,6 +226,8 @@ function OverviewPanel({
   status,
   refresh,
   isRefreshing,
+  onSync,
+  syncing,
 }: {
   project: ProjectDetail
   /**
@@ -250,6 +239,9 @@ function OverviewPanel({
   status: RepoStatus | undefined
   refresh: () => void
   isRefreshing: boolean
+  /** 联网同步这一个仓库（见 StatusPanel 的 onSync：它和 efresh 不是一回事） */
+  onSync: () => void
+  syncing: boolean
 }) {
   return (
     <div className="h-full overflow-auto">
@@ -258,6 +250,8 @@ function OverviewPanel({
           status={status}
           isFetching={isRefreshing}
           onRefresh={refresh}
+          onSync={onSync}
+          syncing={syncing}
           lastCheckAt={project.latestCheck?.checkedAt ?? null}
           lastCheckStatus={project.latestCheck?.status ?? null}
         />

@@ -52,7 +52,7 @@ export function RecommendationCell({
     return (
       <span
         className="font-mono text-[12px] text-ink-3"
-        title="还没点过「联网检查更新」。推不推荐更新必须先问过远程才算得出来——本地看不出作者有没有改写历史。"
+        title="还没联网问过远程。推不推荐更新必须先问过远程才算得出来——本地看不出作者有没有改写历史。"
       >
         没查过
       </span>

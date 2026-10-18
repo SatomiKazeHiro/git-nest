@@ -17,7 +17,7 @@
  * `features/projects` 或 `pages`**——那会让状态域认识「项目详情页」，
  * 正是把这块搬出来要断掉的边。
  */
-import { AlertTriangle, CheckCircle2, HelpCircle, RefreshCw } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Globe, HelpCircle, RefreshCw } from 'lucide-react'
 import {
   VERDICT_LABEL,
   deriveStatus,
@@ -135,12 +135,26 @@ export function StatusPanel({
   status,
   isFetching,
   onRefresh,
+  onSync,
+  syncing,
   lastCheckAt,
   lastCheckStatus,
 }: {
   status: RepoStatus | undefined
   isFetching: boolean
   onRefresh: () => void
+  /**
+   * **联网**同步这一个仓库（fetch + 算，会写库）。
+   *
+   * 它和 onRefresh 不是一回事，而且**不能合并**：
+   * - onSync 会联网（问远程现在怎样），产出的是这张卡的**结论**（落后多少、推不推荐）；
+   * - onRefresh 绝不联网，只重读本机 git（工作区脏不脏、本地 refs 指到哪）。
+   *
+   * 两张数据源本来就不同（远程事实在 epo_state，本地事实现场读），
+   * 合成一个按钮的话，用户永远不知道"更新"这个词指的是问远程还是重读磁盘。
+   */
+  onSync?: () => void
+  syncing?: boolean
   lastCheckAt: string | null
   lastCheckStatus: UpdateStatus | null
 }) {
@@ -203,9 +217,13 @@ export function StatusPanel({
         拉了会不会出事。
       */}
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
-        <h2 className="text-[11px] font-medium text-ink-3">
-          推不推荐更新
-        </h2>
+        {/*
+          标题用**「更新建议」**，不用「推不推荐更新」：后者是这句话的完整问法，
+          但它有 7 个字，而这行还要塞下「远程检查 · 11 分钟前查的」与两枚动作按钮
+          ——标题一长，最右边的按钮就先被挤走。而「建议」两个字已经把这张卡的职责
+          说全了：它是一个**结论**，不是一组数据。
+        */}
+        <h2 className="text-[11px] font-medium text-ink-3">更新建议</h2>
         {hasRemoteCheck ? (
           <Meta
             label="远程检查"
@@ -217,19 +235,36 @@ export function StatusPanel({
             label="远程检查"
             value="没查过"
             placeholder
-            title="还没点过「联网检查更新」，所以下面的远程数字没有联网核实过"
+            title="还没联网问过远程，所以下面的数字与建议都还没核实过"
           />
         )}
-        <Button
-          className="ml-auto"
-          size="sm"
-          disabled={isFetching}
-          onClick={onRefresh}
-          title="不联网：只重读本机的 git 状态（绕开几秒缓存）。要问远程用上面的「联网检查更新」"
-        >
-          <RefreshCw size={12} aria-hidden className={isFetching ? 'animate-spin' : ''} />
-          {isFetching ? '重读中…' : '重读本地状态'}
-        </Button>
+        <span className="ml-auto flex items-center gap-1">
+          {/*
+            **联网同步在前、重读本地状态在后**。两者都在这张卡里，但它们是两件事：
+            前者问远程（写库、会改变结论），后者只重读磁盘（不联网、不改结论）。
+            联网那个放前面：这张卡的头一行说的就是"远程那边怎样"。
+          */}
+          {onSync ? (
+            <Button
+              size="sm"
+              disabled={syncing}
+              onClick={onSync}
+              title="联网 fetch 这个仓库（只动 refs/remotes/*），再重算落后多少、推不推荐更新"
+            >
+              <Globe size={12} aria-hidden className={syncing ? 'animate-spin' : ''} />
+              {syncing ? '同步中…' : '联网同步'}
+            </Button>
+          ) : null}
+          <Button
+            size="sm"
+            disabled={isFetching}
+            onClick={onRefresh}
+            title="不联网：只重读本机的 git 状态（绕开几秒缓存）。要问远程用左边那个「联网同步」"
+          >
+            <RefreshCw size={12} aria-hidden className={isFetching ? 'animate-spin' : ''} />
+            {isFetching ? '重读中…' : '重读本地状态'}
+          </Button>
+        </span>
       </div>
 
       {/*
