@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { AlertTriangle, Pencil, X } from 'lucide-react'
-import { type ProjectDetail, type RepoStatus } from '@git-nest/core'
+import type { ProjectDetail } from '@git-nest/core'
 import { categoryLabelOf } from '@/features/categories/label'
 import { useCategories } from '@/features/categories/queries'
 import { TabBar } from '@/components/TabBar'
@@ -9,10 +9,10 @@ import { Button, ErrorNote } from '@/components/ui'
 import { formatRelative } from '@/lib/format'
 import { useUiStore } from '@/store/ui'
 import { useProjectStatus } from '@/features/status/queries'
-import { AttentionBadge } from '@/features/status/badges'
-// 判决卡住在状态域（`features/status/StatusPanel`），页面只负责把它摆进来。
+
+// 判决卡住在状态域（`features/status/StatusCard`），页面只负责把它摆进来。
 // 那三条状态政策（只有 safe 配绿、不是仓库就不重算、脏标记降级）跟着它一起走。
-import { StatusPanel } from '@/features/status/StatusPanel'
+import { StatusCard } from '@/features/status/StatusCard'
 import { useSync } from '@/features/updates/sync'
 import { useProject } from '@/features/projects/queries'
 // 「远程」与「记录」都是项目域自己的展示，不属于「详情页」这个组合根
@@ -36,8 +36,7 @@ export function ProjectDetailPage() {
   const categories = useCategories()
   /*
     联网同步**这一个**仓库：syncOne(id)。用户点名要查它，所以显式带上「我自己的」，
-    不被批量默认挡掉。结果不进任何报告面板——状态卡与推荐本身就读 
-epo_state，
+    不被批量默认挡掉。结果不进任何报告面板——状态卡与推荐本身就读 repo_state，
     跑完失效一次就都新了。**与清单的行内按钮共用同一个 hook**（eatures/updates/sync.ts）。
   */
   const sync = useSync()
@@ -90,22 +89,11 @@ epo_state，
         {project.hasLogo ? (
           <ProjectLogo projectId={project.id} size={24} className="mt-0.5" />
         ) : null}
-        {/*
-          行动分类的药丸放在**抬头跟着名字**，不是下面「推不推荐更新」那一节的标题行。
-          那节的 `Recommendation` 面板隔二十来像素就写着「可更新 / 别拉 / 要你决定」
-          （`VERDICT_LABEL`，讲判决），药丸讲的是分类（`ATTENTION_TEXT`）——挨着放，
-          同一个状态出现两个词（「可更新」重复、「不推荐」对「别拉」），读者得自己
-          判断它们是不是一回事。抬头这份是「现在这个仓库什么状态」，和清单里
-          那一行的状态列**逐字相同**（同一份 `attention`，同一套降级）。
-        */}
         <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
           <h1 className="min-w-0 text-[17px] font-semibold leading-tight text-ink [overflow-wrap:anywhere]">
             {project.name}
           </h1>
-          <AttentionBadge
-            attention={project.attention}
-            checkedAt={project.latestCheck?.checkedAt ?? null}
-          />
+
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <Button onClick={() => openEdit(project.id)}>
@@ -128,6 +116,21 @@ epo_state，
         >
           {project.path}
         </p>
+
+        {/*
+          **整张状态卡**（features/status/StatusCard）：远程检查时间 + 两枚动作 +
+          一条合并的结论。它原来是概览里的一张卡，要往下滚才看见；而判决是这个软件
+          最要紧的一条输出。抬头那枚药丸因此删掉——它说的和这条是同一件事。
+        */}
+        <StatusCard
+          status={status}
+          isFetching={refresh.isPending}
+          onRefresh={() => refresh.mutate()}
+          onSync={() => sync.syncOne(projectId)}
+          syncing={sync.busy}
+          lastCheckAt={project.latestCheck?.checkedAt ?? null}
+          lastCheckStatus={project.latestCheck?.status ?? null}
+        />
       </header>
 
       <TabBar tabs={TABS} value={tab} onChange={setTab} />
@@ -148,11 +151,6 @@ epo_state，
         <OverviewPanel
           project={project}
           categoryName={project.category ? categoryLabelOf(categories, project.category) : '未分类'}
-          status={status}
-          refresh={() => refresh.mutate()}
-          isRefreshing={refresh.isPending}
-          onSync={() => sync.syncOne(projectId)}
-          syncing={sync.busy}
         />
       </div>
       <div
@@ -223,11 +221,6 @@ function MissingNotice() {
 function OverviewPanel({
   project,
   categoryName,
-  status,
-  refresh,
-  isRefreshing,
-  onSync,
-  syncing,
 }: {
   project: ProjectDetail
   /**
@@ -236,25 +229,10 @@ function OverviewPanel({
    * 而分类名要从配置里读——那是 `ProjectDetailPage` 的事。
    */
   categoryName: string
-  status: RepoStatus | undefined
-  refresh: () => void
-  isRefreshing: boolean
-  /** 联网同步这一个仓库（见 StatusPanel 的 onSync：它和 efresh 不是一回事） */
-  onSync: () => void
-  syncing: boolean
 }) {
   return (
     <div className="h-full overflow-auto">
       <div className="flex flex-1 flex-col gap-4 px-4 py-4">
-        <StatusPanel
-          status={status}
-          isFetching={isRefreshing}
-          onRefresh={refresh}
-          onSync={onSync}
-          syncing={syncing}
-          lastCheckAt={project.latestCheck?.checkedAt ?? null}
-          lastCheckStatus={project.latestCheck?.status ?? null}
-        />
 
         <RemoteRow url={project.remoteUrl} />
 

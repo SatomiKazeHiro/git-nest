@@ -92,7 +92,7 @@ export function ProjectRow({
   const openEdit = useUiStore((s) => s.openEdit)
   /*
     行内折叠：**默认收着**。展开的是「上次同步时要拉进来的前几条提交」——
-    它和「上次检查」那一格来自同一条记录（epo_state），所以时间上对得上。
+    它和「上次检查」那一格来自同一条记录（repo_state），所以时间上对得上。
     展开行的按钮在「差异」格里，不带自己的 onClick 冒泡（整行可点会打开详情栏）。
   */
   const [openCommits, setOpenCommits] = useState(false)
