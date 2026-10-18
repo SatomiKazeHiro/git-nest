@@ -433,7 +433,14 @@
   无层（unlayered）样式的优先级高于任何 layer，正是这里需要的。
 */
 .row-link {
-  transition: background-color 120ms ease;
+  transition: background-color var(--row-fade) ease;
+}
+/*
+  每个格子也带同一个过渡。原因见 --row-fade 的注释：钉住首格与当前行是**自己上底色**的
+  	d，只给 	r 写过渡对它们无效。放在 	d 上而不是逐个选择器上，是为了不再漏第三种状态。
+*/
+.list-table td {
+  transition: background-color var(--row-fade) ease;
 }
 .row-link:hover {
   background-color: var(--color-accent-wash);
@@ -455,7 +462,7 @@
 /* 行操作按钮平时不显眼，指到这一行才露出来（原来靠 tailwind 的 group-hover） */
 .row-link .row-actions {
   opacity: 0;
-  transition: opacity 120ms ease;
+  transition: opacity var(--row-fade) ease;
 }
 .row-link:hover .row-actions,
 .row-link:focus-within .row-actions {
@@ -563,6 +570,14 @@
   */
   --row-h: 2.75rem; /* 44px */
   --row-pad-y: 0.55rem;
+  /*
+    行底色渐变的时长。**一个数、三处用**（tr 的 hover、钉住的首格、行操作按钮的淡入）：
+    原来只有 	r.row-link 写了 	ransition，而钉住的首格（.row-link:hover > td:first-child）
+    与当前行（.row-current > td）都是**自己上底色**的格子——它们没有过渡，
+    于是同一行里一半淡入、一半直接跳色，看着"裂"。
+    修法不是各补一个数，而是把这一个数抽出来，让所有会变底色的格子用同一个。
+  */
+  --row-fade: 120ms;
 }
 .list-table th,
 .list-table td {

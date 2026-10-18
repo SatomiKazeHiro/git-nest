@@ -144,7 +144,14 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
           没变窄，变窄的是表格那一轨。基准放错的话，表格已经挤到要收列了、
           断点却还没触发。
         */}
-        <div className="list-pane px-4 pb-6 h-full overflow-auto">
+        {/*
+          `px-4` 留着：工具条也是 `px-4`，表格的左缘要跟「已选 N 个」那种文字对齐。
+          `pb-6` 是滚到底时的一点余量。
+          **`h-full` 与 `overflow-auto` 从内联挪走了**：高度现在由 `.pane-list` 的
+          `minmax(0, 1fr)` 那一行给，滚动由 `.list-pane` 自己的 CSS 负责——
+          两处都写一遍，改一处不改另一处的时候只有一个会生效（内联那个永远赢）。
+        */}
+        <div className="list-pane px-4 pb-6">
           {/*
             状态那一列读不出来时必须说出来。原来这个错误被丢掉了（只解构了 data），
             于是超过服务端上限、后端挂了、超时——用户看到的都是每一行「读状态…」，

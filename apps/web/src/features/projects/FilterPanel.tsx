@@ -217,7 +217,14 @@ export function FilterPanel() {
       <Group title="标签" icon={Tag}>
         {tags.length === 0 ? <Hint>还没有标签</Hint> : null}
         {tags.map(([name, n]) => (
-          <Item key={name} label={name} count={n} active={tag === name} onClick={() => setTag(name)} />
+          <Item
+            key={name}
+            label={name}
+            count={n}
+            active={tag === name}
+            onClick={() => setTag(name)}
+            lucide={<Tag size={15} className="shrink-0" aria-hidden />}
+          />
         ))}
       </Group>
     </div>
@@ -245,7 +252,7 @@ function Group({
   return (
     <section>
       <h2 className="mb-1 flex items-center gap-1.5 px-1 text-[11px] font-medium text-ink-3">
-        {Icon ? <Icon size={13} aria-hidden className="shrink-0" /> : null}
+        {Icon ? <Icon size={15} aria-hidden className="shrink-0" /> : null}
         {title}
       </h2>
       <div className="flex flex-col">{children}</div>
