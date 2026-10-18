@@ -328,6 +328,13 @@
   */
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
+  /*
+    **这一层是详情浮层的判据容器**。容器查询只能给"容器里面"的元素写规则，
+    而 .list-scroll（要改网格列的那个）是它的子元素、.detail-pane 是孙子
+    ——所以容器必须是 .pane-list。它的宽度就是清单区那一轨的宽度，
+    与 .list-scroll 完全相同（过滤面板收起时一起变宽），所以判据等价。
+  */
+  container-type: inline-size;
 }
 
 /* 每栏各自滚。桌面软件不会有两个嵌套滚动区抢同一个滚轮。 */
@@ -346,6 +353,11 @@
   断点会拿「表格 + 详情」的宽度去算，于是表格已经挤到收列了、断点却还没触发。
 */
 .list-scroll {
+  /*
+    浮层的定位基准（阈值以下详情绝对定位，见文件末尾那组 @container）。
+    常驻 position: relative 没有副作用：不浮的时候没有任何绝对定位子元素。
+  */
+  position: relative;
   /*
     详情那一轨的宽度：**有上限的比例**，不是写死的 480px。
 
@@ -807,4 +819,44 @@ owrap / overflow:hidden 钉成单行高密度，展开的那一行
   display: flex;
   justify-content: center;
   padding-bottom: 1rem;
+}
+
+/*
+  ── 详情浮层（阈值以下）────────────────────────────────────────────────────
+
+  见 `docs/DETAIL-OVERLAY.md` 的「方案 A」。**不是**"详情永远浮着，也不是
+  "永远挤压 + 横向滚动条"——那两条在两端都难看：
+
+  - 永远浮着：1920px 下把清单盖住 480px，白盖；
+  - 永远挤压：窄到 800px 时清单只剩 ~390px，表格收列收到只剩状态和操作两列，
+    横向滚动条天天在（那正是这次要止住的那种"疼"）。
+
+  所以按**容器宽度**分档：够宽就走老路（详情占一列、清单照常），窄到 46rem 以下
+  才把详情抬起来盖在清单上。判据是 `.pane-list` 的宽度（容器查询跟得上过滤面板收起 /
+  拖宽窗口），阈值只在这里写一次。
+
+  三条刻意的取舍（文档里也写了）：
+  1. **绝对定位不参与布局** → 浮层出现/消失时清单宽度一个像素都不变，"抖动"结构性地
+     不可能发生；
+  2. **没有遮罩、不是模态** → 点清单就是点清单，不加 Esc、不加"点外部关闭"，
+     关闭只有已有那两条（抬头的「关闭」、再点当前那一行）；
+  3. **不做宽度动画** → 瞬时切换最稳，也符合这个软件的气质。
+*/
+@container (width < 46rem) {
+  /* 详情退出栅格：清单拿回全部宽度 */
+  .list-scroll-has-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* 抬起来盖在清单右侧。不透明背景是必须的：否则下面的行会透出来 */
+  .detail-pane {
+    position: absolute;
+    inset-block: 0;
+    right: 0;
+    width: min(30rem, 100%);
+    overflow: auto;
+    background-color: var(--color-panel);
+    border-left: 1px solid var(--color-line);
+    z-index: 4;
+  }
 }

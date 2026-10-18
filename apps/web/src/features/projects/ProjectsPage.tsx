@@ -185,7 +185,11 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
         </div>
 
 
-        {showDetail ? <aside className="detail border-l border-line bg-panel h-full overflow-hidden">{detail}</aside> : null}
+        {showDetail ? (
+          <aside className="detail detail-pane border-l border-line bg-panel h-full overflow-hidden">
+            {detail}
+          </aside>
+        ) : null}
       </div>
 
       {confirmingBulk ? (
