@@ -243,6 +243,73 @@ describe('PATCH / DELETE /api/projects/:id', () => {
     expect(res.statusCode).toBe(409)
   })
 
+  /*
+    换目录 = 换了一本账。
+
+    `repo_state` 是按项目存的一行，里面是**旧目录那个仓库**的检查时间 / 判决 /
+    基线 SHA / 待拉的提交。项目被重新指到另一个目录之后，那一行还留着的话，界面
+    会拿旧仓库的结论去说新目录（「这个目录 25 分钟前联网查过」，清单继续显示旧仓库
+    的 ↓22）。所以真要守住的是两件事：**真换了就清掉**、**没换（只改名）就留着**。
+  */
+  describe('改 path 之后，旧的检查账不能跟着走', () => {
+    /** 造一行「上次联网查过：落后 22、可以快进」的账 */
+    function seedCheckRow(projectId: number) {
+      const at = new Date().toISOString()
+      db.prepare(
+        `INSERT INTO repo_state
+           (project_id, checked_at, status, ahead, behind, verdict, can_pull,
+            upstream_sha, incoming, attempt_at, attempt_status)
+         VALUES (?, ?, 'behind', 0, 22, 'safe', 1, 'deadbeef', '[]', ?, 'behind')`,
+      ).run(projectId, at, at)
+    }
+    const stateRow = (projectId: number) =>
+      db.prepare('SELECT COUNT(*) AS n FROM repo_state WHERE project_id = ?').get(projectId) as {
+        n: number
+      }
+
+    it('真换了目录：repo_state 被清掉，清单回到「没查过」', async () => {
+      const created = await makeProject('repoint-from')
+      const id = created.json().project.id
+      seedCheckRow(id)
+      expect(stateRow(id).n, '先确认账真的造出来了').toBe(1)
+
+      const target = path.join(repoDir, 'repoint-to')
+      fs.mkdirSync(target, { recursive: true })
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/projects/${id}`,
+        headers: json,
+        payload: { path: target },
+      })
+      expect(res.statusCode).toBe(200)
+      expect(stateRow(id).n).toBe(0)
+
+      // 界面上读的是 list 的 latestCheck：它必须跟着变成 null，而不是旧目录那次
+      const list = await app.inject({ method: 'GET', url: '/api/projects' })
+      const row = list.json().projects.find((p: { id: number }) => p.id === id)
+      expect(row.latestCheck).toBeNull()
+    })
+
+    it('路径没变（只改名字，path 原样提交）：账必须留着', async () => {
+      // 编辑资料每次都把 path 一起提交，无条件清就等于「改个名字把检查结论弄丢」
+      const created = await makeProject('rename-only')
+      const id = created.json().project.id
+      const samePath = created.json().project.path as string
+      seedCheckRow(id)
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/projects/${id}`,
+        headers: json,
+        payload: { name: '改个名字', path: samePath },
+      })
+
+      expect(res.statusCode).toBe(200)
+      expect(stateRow(id).n).toBe(1)
+    })
+  })
+
   it('删除项目不会留下标签关联与检查历史', async () => {
     // 标题原来写「备注与标签关联」，但只断言了 notes（审计指出：假绿）。
     // 备注后来整个撤掉了，这里改成把两种会级联的子行真的造出来 ——

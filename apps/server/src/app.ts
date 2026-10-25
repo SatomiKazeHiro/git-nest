@@ -33,9 +33,28 @@ export function buildApp(options: AppOptions = {}) {
   // Ctrl-C 之后进程退不掉。关服务时直接断开连接。
   const app = Fastify({ logger: options.logger ?? true, forceCloseConnections: true })
 
-  // 白名单在 `lib/origins.ts`：SSE 端点直接往 reply.raw 写头部，拿不到这个插件的头，
-  // 所以它读的是**同一份**清单（那里有说明）。
-  app.register(cors, { origin: allowedOrigins() })
+  /*
+    白名单在 `lib/origins.ts`：SSE 端点直接往 reply.raw 写头部，拿不到这个插件的头，
+    所以它读的是**同一份**清单（那里有说明）。
+
+    ## `methods` 必须显式写（别省）
+
+    `@fastify/cors` 的默认值是 **`GET,HEAD,POST`**——它不会因为「你注册了 PATCH 路由」
+    就自动放开 PATCH。默认值在这里是致命的：桌面壳（`src-tauri`）里页面跑在
+    `http://localhost:36378`，而它调的是 `http://127.0.0.1:36379`（壳注入的绝对地址），
+    **每一个请求都是跨源的**，于是浏览器先发预检，预检回的 Allow-Methods 里没有 PATCH，
+    浏览器直接拦掉——表现是 `net::ERR_FAILED`，而界面上只会说「连不上后端」。
+
+    这个洞在浏览器里开发时**永远看不见**：那种形态走 vite 代理，同源，没有预检。
+    症状也很有欺骗性：读接口（GET）和添加项目（POST）都正常，只有编辑资料（PATCH）、
+    改标签（PUT）、删除（DELETE）坏——看起来像三个互不相关的 bug。
+
+    所以这里逐个列全，并且 `write-guard.test.ts` 里钉着「预检要允许 PATCH / PUT / DELETE」。
+  */
+  app.register(cors, {
+    origin: allowedOrigins(),
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  })
 
   /*
     **跨站写入闸**：本机工具没有鉴权，而「没有鉴权」不等于「浏览器里的任意页面都能

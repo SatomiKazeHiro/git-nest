@@ -12,6 +12,10 @@ import type { UpdateReport } from '../lib/git.ts'
  *
  * 1. **只有 `sync()` 会写它**（`lib/sync.ts`），所以「谁改了这个仓库的状态」永远
  *    只有一个答案。别在别处 `UPDATE repo_state`。
+ *
+ *    **唯一的一个删除口是 `clearRepoState()`**，而且只有一种场景会用到：项目被
+ *    重新指到了另一个目录（改了 `path`）。那时候这一行描述的是**旧目录那个仓库**，
+ *    留着它就是把别人的结论挂在这个项目上——所以不是写个空值，是删掉。
  * 2. **合格的同步才覆盖结论**。失败的尝试只写 `attempt_at` / `error`——一次断网
  *    不该把上次的好结论擦成「没查过」（那是最容易让人误判的方向）。
  * 3. **`incoming` 只留前几条**：这张表是当前状态，不是提交列表的存档。要给用户看
@@ -125,6 +129,25 @@ export function writeRepoState(
        attempt_status = excluded.attempt_status,
        error          = excluded.error`,
   ).run({ projectId, at, status: report.status, error })
+}
+
+/**
+ * 把一个项目的「当前状态」整行删掉。**只在项目被重新指到另一个目录时调用**
+ * （`PATCH /projects/:id` 真的改了 `path` 的那一刻）。
+ *
+ * 为什么是删而不是写个空结论：这一行描述的是**旧目录那个仓库**——检查时间、判决、
+ * 基线 SHA、待拉的提交，全都属于另一个目录。留着它，界面上就会出现「这个目录
+ * 25 分钟前联网查过」这种不成立的话（详情卡的时间来自旧目录，事实却是现读新目录的），
+ * 清单那一列也会继续显示旧仓库的 `↓22`。删掉之后界面说的是「没查过」——那才是真的。
+ *
+ * 顺带把 `upstream_sha` 那条基线也一起清掉了，这是必要的：旧基线指向另一个仓库，
+ * 拿它去判「作者改写历史」会得出无意义的结论（详见 `readBaselinePresence` 对
+ * 未知 SHA 的处理）。
+ *
+ * 别在别处调用它。规矩没变：**结论只有 `sync()` 写**，这里是唯一允许删的入口。
+ */
+export function clearRepoState(db: DB, projectId: number): void {
+  db.prepare('DELETE FROM repo_state WHERE project_id = ?').run(projectId)
 }
 
 /** 读一个仓库的当前状态。没有行 = 从没同步过。 */

@@ -92,3 +92,58 @@ describe('写接口的跨站闸', () => {
     expect(res.statusCode).toBe(403)
   })
 })
+
+/**
+ * CORS 预检：**方法必须放开**。
+ *
+ * `@fastify/cors` 的默认 `methods` 是 `GET,HEAD,POST`，它不会因为你注册了 PATCH 路由
+ * 就自动放开。而桌面壳（`src-tauri`）里页面是 `http://localhost:36378`、调的是
+ * `http://127.0.0.1:36379`（壳注入的绝对地址），**每个请求都跨源**——于是：
+ *
+ * - GET / POST 正常；
+ * - 编辑资料（PATCH）、改标签（PUT）、删除（DELETE）全被浏览器挡在预检，
+ *   界面上只显示一句「连不上后端」。
+ *
+ * 浏览器里开发时走 vite 代理（同源、没有预检），所以这组用例是**唯一**能提前发现
+ * 它的地方。断言的是响应头本身，不是某个调用点的行为。
+ */
+describe('CORS 预检要允许写方法', () => {
+  const webOrigin = `http://localhost:${DEFAULT_PORTS.web}`
+
+  function preflight(method: string) {
+    return app.inject({
+      method: 'OPTIONS',
+      url: '/api/projects/1',
+      headers: {
+        origin: webOrigin,
+        'access-control-request-method': method,
+        'access-control-request-headers': 'content-type',
+      },
+    })
+  }
+
+  it.each(['PATCH', 'PUT', 'DELETE', 'POST'])('预检 %s 时回给浏览器「允许」', async (method) => {
+    const res = await preflight(method)
+    const allow = (res.headers['access-control-allow-methods'] ?? '') as string
+    expect(allow.toUpperCase()).toContain(method)
+    expect(res.headers['access-control-allow-origin']).toBe(webOrigin)
+  })
+
+  it('预检允许带 content-type（写接口的 body 都是 JSON）', async () => {
+    const res = await preflight('PATCH')
+    const allow = (res.headers['access-control-allow-headers'] ?? '') as string
+    expect(allow.toLowerCase()).toContain('content-type')
+  })
+
+  it('外站 Origin 的预检拿不到放行头（读也读不到，写也写不了）', async () => {
+    const res = await app.inject({
+      method: 'OPTIONS',
+      url: '/api/projects/1',
+      headers: {
+        origin: 'http://evil.example',
+        'access-control-request-method': 'PATCH',
+      },
+    })
+    expect(res.headers['access-control-allow-origin']).toBeUndefined()
+  })
+})

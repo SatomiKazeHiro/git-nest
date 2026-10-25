@@ -18,6 +18,7 @@ import type { DB } from '../db/index.ts'
 import { HttpError, badRequest, conflict, fromZodError, notFound } from '../lib/errors.ts'
 import { dirExists, toAbsolutePath } from '../lib/paths.ts'
 import { getRemoteUrl, clearStatusCache } from '../lib/git.ts'
+import { clearRepoState } from '../repos/repo-state.ts'
 import {
   deleteProject,
   getProject,
@@ -111,13 +112,18 @@ export const projectRoutes = (db: DB): FastifyPluginAsync => {
       const projectId = idParamSchema.parse(id)
       const patch = parse(updateProjectSchema, req.body)
 
-      if (!getProject(db, projectId)) throw notFound('项目')
+      const existing = getProject(db, projectId)
+      if (!existing) throw notFound('项目')
 
       // 改 path = 把这个项目重新指到另一个目录，先确认那个目录真的在
+      let repointed = false
       if (patch.path !== undefined) {
         const abs = toAbsolutePath(patch.path)
         if (!dirExists(abs)) throw badRequest(`目录不存在：${abs}`)
         if (pathExists(db, abs, projectId)) throw conflict('这个路径已经在清单里了')
+        // **只在真的换了目录时**才算「重新指路」。编辑资料每次都带 path（哪怕只改
+        // 名字），拿它跟库里那条比一次，才不会「改个名字把检查结论弄丢」。
+        repointed = abs !== existing.path
         patch.path = abs
       }
 
@@ -126,6 +132,17 @@ export const projectRoutes = (db: DB): FastifyPluginAsync => {
       }
 
       if (!updateProject(db, projectId, patch)) throw notFound('项目')
+      /*
+        换目录 = 换了一本账。
+
+        `repo_state` 是按项目存的一行（"一个仓库一行"），里面是旧目录那个仓库的
+        检查时间 / 判决 / 基线 SHA / 待拉的提交。留着它，界面上就会出现「这个目录
+        25 分钟前联网查过」这种不成立的话，清单那一列也会继续显示旧仓库的 ↓N。
+        所以真换了路径就把它清掉，下一次检查从头记。
+
+        历史流水（`update_checks`）不动：它只写不读，是日志不是当前值。
+      */
+      if (repointed) clearRepoState(db, projectId)
       clearStatusCache()
       return { project: getProject(db, projectId) }
     })
