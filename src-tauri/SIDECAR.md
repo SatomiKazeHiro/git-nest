@@ -382,6 +382,11 @@ EBWebView   logs   git-nest.db   git-nest.db-shm   git-nest.db-wal
    壳这一步只是把它显式化，不依赖默认值。
    核实办法：打包形态起来后，在 webview devtools 里执行 `location.origin`；
    若与上面不符，改 `src/lib.rs` 的 `webview_origin()` 一行即可。
+8. **API 端口写死 36379，被占用时只有「连不上后端」**：壳拉起 sidecar 时固定
+   `GIT_NEST_PORT=36379`（`src/lib.rs`）。用户机器上这个端口被别的程序占了 →
+   Node listen 失败、sidecar 退出（日志里能看到 `EADDRINUSE`），界面只显示
+   「连不上后端」，不说原因。修法是「占用就换端口、并同步改注入页面的基地址」，
+   但注入发生在建窗那一刻、端口探测得在它之前——顺序要先想清楚，这一轮没做。
 
 ## 怎么验证「人能看见」那一步
 

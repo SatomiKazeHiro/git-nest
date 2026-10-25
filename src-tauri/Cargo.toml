@@ -38,3 +38,7 @@ serde_json = "1"
 tauri-plugin-log = "2"
 # 壳自己的日志门面（log_line 走它）。范围写小，跟别的依赖保持一致。
 log = "0.4"
+# 启动失败时的系统弹窗。只在「数据根定不下来」那条死路上用：那一刻 webview
+# 还没建出来，tauri-plugin-dialog 是指不上的——而 release 没有控制台，不弹窗
+# 用户只会看到「点了没反应」。
+rfd = "0.15"

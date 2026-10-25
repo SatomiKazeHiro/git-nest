@@ -125,7 +125,7 @@ script-src 'self';
 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
 font-src https://fonts.gstatic.com;
 img-src 'self' data:;
-connect-src 'self' ipc: http://ipc.localhost http://localhost http://127.0.0.1
+connect-src 'self' ipc: http://ipc.localhost http://localhost:* http://127.0.0.1:* ws://localhost:*
 ```
 
 逐条的理由（都是照着这个应用**实际**加载的东西写的，不是抄模板）：
@@ -143,10 +143,12 @@ connect-src 'self' ipc: http://ipc.localhost http://localhost http://127.0.0.1
   **README 里的图片只放行内联 `data:image/*`**（`apps/web/src/features/readme/urlPolicy.ts`，
   有测试钉着）。所以这里**不需要** `https:`，也不需要 `blob:`——写上去只会白放宽。
 - `connect-src`：`ipc:` / `http://ipc.localhost` 是 Tauri v2 自己的 IPC 通道
-  （少了它前端的 Tauri 调用全废）；`http://localhost` / `http://127.0.0.1` 是
-  **API 服务**。这里刻意**只写到 host、不写端口**：端口可以通过 `GIT_NEST_PORT`
-  覆盖（见 README），钉死 36379 会让「改了端口」和「CSP 拦住了」同时发生，
+  （少了它前端的 Tauri 调用全废）；`http://localhost:*` / `http://127.0.0.1:*` 是
+  **API 服务**。端口写的是**通配**而不是钉死 36379：端口可以通过 `GIT_NEST_PORT`
+  覆盖（见 README），钉死会让「改了端口」和「CSP 拦住了」同时发生，
   而后者不会告诉你原因。
+  `ws://localhost:*` 是给 dev 形态的 vite HMR 用的：CSP 的 scheme 匹配不认
+  `http:` → `ws:`，少这一条，桌面壳里的热更新会静默失效（打包形态用不到它）。
 
 ### 一处需要你知道的取舍：远程字体
 

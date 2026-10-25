@@ -24,3 +24,9 @@ src-tauri/target/
 src-tauri/gen/
 # sidecar 产物（打包后的服务 + Node 运行时 + 原生模块），由 scripts/build-sidecar.mjs 生成
 src-tauri/binaries/
+
+# 本地截图（改界面时用来对照，不是产物）
+shots/
+
+# 本地排查/实验的暂存区（不是产物，也不是源码）
+.temp/

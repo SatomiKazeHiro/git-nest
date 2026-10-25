@@ -571,6 +571,10 @@ pub fn run() {
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
+                // 默认上限只有 40KB：sidecar 的 stdout/stderr 全量转发进来，一次
+                // fetch 大仓库就能把它冲掉，真出事故时反而看不到前面的线索。
+                // 1MB 对纯文本诊断够深，又不会无限长（默认 KeepOne，只留当前这份）。
+                .max_file_size(1_000_000)
                 .targets([
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stderr),
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Folder {
@@ -652,6 +656,16 @@ fn panic_on_no_data_root(reason: &str) -> ! {
             eprintln!("[git-nest] 这条错误也写到了：{}", path.display());
         }
     }
+
+    // 弹一个系统对话框：release 没有控制台，不弹的话双击启动的用户只会看到
+    // 「点了没反应」。此刻 webview 还没建出来，tauri 自己的 dialog 插件指望不上，
+    // 所以走 rfd（纯系统对话框，不依赖事件循环）。弹不出来也无所谓——
+    // stderr 和落盘文件已经在了，不因为「通知失败」换个死法。
+    let _ = rfd::MessageDialog::new()
+        .set_title("git-nest 无法启动")
+        .set_description(&message)
+        .set_level(rfd::MessageLevel::Error)
+        .show();
 
     panic!("{message}");
 }
