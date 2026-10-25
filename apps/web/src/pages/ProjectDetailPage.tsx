@@ -110,12 +110,23 @@ export function ProjectDetailPage() {
             关闭
           </Button>
         </div>
-        <p
-          className="w-full min-w-0 font-mono text-[12px] leading-5 text-ink-2 [overflow-wrap:anywhere]"
-          title={project.path}
-        >
-          {project.path}
-        </p>
+        {/*
+          路径 + 加入时间：**同一个信息块**——「哪一份」和「什么时候进来的」是同一个
+          问题（认人），所以贴成一组（2px），和下面的状态卡之间才用抬头的 8px。
+
+          加入时间原来沉在整栏最底部、一条分隔线之下：在概览页要滚到底才看见，在
+          README 页更是永远看不见，而它明明是这个项目自己的事。现在它跟着路径走，
+          也不在标签栏里面——两件事都没丢。
+        */}
+        <div className="flex w-full min-w-0 flex-col gap-y-0.5">
+          <p
+            className="min-w-0 font-mono text-[12px] leading-5 text-ink-2 [overflow-wrap:anywhere]"
+            title={project.path}
+          >
+            {project.path}
+          </p>
+          <p className="text-[11px] leading-4 text-ink-3">加入清单于 {formatRelative(project.addedAt)}</p>
+        </div>
 
         {/*
           **整张状态卡**（features/status/StatusCard）：远程检查时间 + 两枚动作 +
@@ -128,6 +139,8 @@ export function ProjectDetailPage() {
           onRefresh={() => refresh.mutate()}
           onSync={() => sync.syncOne(projectId)}
           syncing={sync.busy}
+          onUpdate={() => sync.updateOne(projectId)}
+          updateState={sync.stateOf(projectId)}
           lastCheckAt={project.latestCheck?.checkedAt ?? null}
           lastCheckStatus={project.latestCheck?.status ?? null}
         />
@@ -163,13 +176,6 @@ export function ProjectDetailPage() {
       >
         <ReadmeView projectId={project.id} />
       </div>
-
-      {/* 添加时间是整栏里最不重要的一个事实：沉到最底下，用最小的字。
-          顺带它终于不用等宽了——那不是代码。
-          **它在标签栏外面**：它说的是这个项目，不是「这一页」。 */}
-      <footer className="mt-auto border-t border-line px-4 py-2 text-[11px] text-ink-3">
-        加入清单于 {formatRelative(project.addedAt)}
-      </footer>
 
       {/* 「编辑资料」弹窗挂在窗口外壳上（整个应用只此一份），这里不再挂。 */}
       {sync.error ? <ErrorNote message={sync.error} /> : null}    </div>

@@ -65,7 +65,20 @@ export function RecommendationCell({
   )
 }
 
-const ATTENTION_TEXT: Record<Attention, string> = {
+/**
+ * 行动分类（`Attention`）的五个词。**这是全应用唯一一份**：
+ *
+ * - 清单那一列的药丸（`AttentionBadge` 就在下面）；
+ * - 详情抬头状态卡的那个词（`StatusCard` 按 `BUCKET_ATTENTION` 取用）；
+ * - 左侧过滤面板那一段用的也是同样的说法。
+ *
+ * 它跟 `VERDICT_LABEL`（判决的声音：可更新 / 要你决定 / 别拉 / 上游没了 / 没上游）
+ * 不是一回事，而且**不能**在同一个位置上混着用：卡片的图标和语气色一直取自行
+ * 动分类，词却曾经取自判决——于是「safe 但没东西可拉」那一档，图标是青色的
+ * 「已同步」勾、清单写「已同步」，卡片头顶却写着「可更新」。同一个仓库在三处
+ * 说三种话，用户得自己做翻译。
+ */
+export const ATTENTION_TEXT: Record<Attention, string> = {
   ready: '可更新',
   synced: '已同步',
   blocked: '不推荐',

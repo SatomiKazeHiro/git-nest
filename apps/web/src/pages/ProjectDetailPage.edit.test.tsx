@@ -121,6 +121,153 @@ describe('编辑资料保存后，详情页要跟着更新', () => {
   })
 })
 
+describe('详情卡里的「更新」只在该出现的时候出现', () => {
+  /*
+    判据是 `canPull`（判决 safe **且**确实落后）：不是「落后 > 0」，也不是「判决 safe」
+    ——「已是最新」也是 safe，但它没有东西可拉。
+
+    不该出现的时候**不出现禁用态**：一个按下去只会被服务端跳过的按钮就是死控件。
+    所以这里断言的是「按钮在不在」，不是「disabled 是不是 true」。
+  */
+  function renderWithRecommendation(recommendation: RepoStatus['recommendation']) {
+    server.use(
+      http.get('/api/projects/5', () => HttpResponse.json({ project: baseProject })),
+      http.get('/api/projects/5/status', () =>
+        HttpResponse.json({
+          status: {
+            ...okStatus,
+            behind: recommendation?.behind ?? 0,
+            ahead: recommendation?.ahead ?? 0,
+            status: recommendation?.canPull ? 'behind' : 'up_to_date',
+            recommendation,
+          },
+        }),
+      ),
+      http.get('/api/tags', () => HttpResponse.json({ tags: [] })),
+    )
+    return renderDetail()
+  }
+
+  it('能干净快进（safe + 落后）：给「更新」，而且是主按钮（蓝）', async () => {
+    renderWithRecommendation({
+      verdict: 'safe',
+      ahead: 0,
+      behind: 22,
+      canPull: true,
+      reason: '可以直接快进到远程的 22 个提交。',
+    })
+
+    const update = await screen.findByRole('button', { name: '更新' })
+    expect(update.className).toContain('bg-accent')
+    // 三枚动作都在，顺序是「动手的 → 先问远程的 → 只重读的」
+    expect(screen.getByRole('button', { name: /联网同步/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /重读本地状态/ })).toBeTruthy()
+  })
+
+  it('已是最新（safe 但不能拉）：不给「更新」，免得按下去只会被跳过', async () => {
+    renderWithRecommendation({
+      verdict: 'safe',
+      ahead: 0,
+      behind: 0,
+      canPull: false,
+      reason: '已是最新，没有要拉的。',
+    })
+
+    await screen.findByTestId('status-summary')
+    expect(screen.queryByRole('button', { name: '更新' })).toBeNull()
+  })
+
+  it('别拉（rewritten）：不给「更新」', async () => {
+    renderWithRecommendation({
+      verdict: 'rewritten',
+      ahead: null,
+      behind: null,
+      canPull: false,
+      reason: '上游历史被改写过。',
+    })
+
+    await screen.findByTestId('status-summary')
+    expect(screen.queryByRole('button', { name: '更新' })).toBeNull()
+  })
+})
+
+describe('「不用动」的时候，同一句话不说两遍', () => {
+  /*
+    状态卡的依据行写着「已是最新」，而 core 给这一档的理由也叫「已是最新，没有要拉的。」
+    ——同一件事在两张字号上各写一遍，读起来像界面重复渲染了一次。判据是数据
+    （`safe` + 不能拉 + 两边都没多出提交），不是匹配文案，所以这条测试钉的是
+    「那一条数据组合下不出现理由」，不是某个字符串。
+  */
+  it('已是最新：状态词已经说了，理由那句不再出现', async () => {
+    server.use(
+      http.get('/api/projects/5', () =>
+        HttpResponse.json({
+          project: {
+            ...baseProject,
+            latestCheck: { checkedAt: '2026-10-18T06:30:00Z', status: 'up_to_date' },
+          },
+        }),
+      ),
+      http.get('/api/projects/5/status', () =>
+        HttpResponse.json({
+          status: {
+            ...okStatus,
+            recommendation: {
+              verdict: 'safe',
+              ahead: 0,
+              behind: 0,
+              canPull: false,
+              reason: '已是最新，没有要拉的。',
+            },
+          },
+        }),
+      ),
+      http.get('/api/tags', () => HttpResponse.json({ tags: [] })),
+    )
+
+    renderDetail()
+    const card = await screen.findByTestId('status-summary')
+    // 卡顶那个词走行动分类那一套（和清单的药丸、左栏同一份词表）：
+    // 「safe 但没有可拉的」是**已同步**，不是判决表里的「可更新」
+    // 这次检查已是 7 天前（stale），状态词要带限定语「上次看是最新」（text.ts 的
+    // 话术降级：陈旧的远程结论不许说成肯定的「已是最新」）
+    expect(card.textContent).toContain('已同步')
+    expect(card.textContent).toContain('上次看是最新')
+    expect(card.textContent).not.toContain('没有要拉的')
+  })
+  it('分叉：卡顶说「需要确认」，和清单那枚药丸同一个词', async () => {
+    server.use(
+      http.get('/api/projects/5', () => HttpResponse.json({ project: baseProject })),
+      http.get('/api/projects/5/status', () =>
+        HttpResponse.json({
+          status: {
+            ...okStatus,
+            ahead: 3,
+            behind: 2,
+            status: 'diverged',
+            recommendation: {
+              verdict: 'diverged',
+              ahead: 3,
+              behind: 2,
+              canPull: false,
+              reason: '上游和本地都往前走了，不能快进，需要你自己决定怎么合。',
+            },
+          },
+        }),
+      ),
+      http.get('/api/tags', () => HttpResponse.json({ tags: [] })),
+    )
+
+    renderDetail()
+    const card = await screen.findByTestId('status-summary')
+    // 判决表里这一档叫「要你决定」，但卡顶跟清单、左栏共用行动分类的词
+    expect(card.textContent).toContain('需要确认')
+    expect(card.textContent).not.toContain('要你决定')
+    // 事实那句还在，两个方向都写清楚
+    expect(card.textContent).toContain('已分叉')
+  })
+})
+
 describe('目录不在了 / 读不出来，不许说成「不是 git 仓库」', () => {
   function renderWithStatus(status: RepoStatus) {
     server.use(
@@ -163,5 +310,40 @@ describe('目录不在了 / 读不出来，不许说成「不是 git 仓库」',
     const line = await screen.findByTestId('status-summary')
     expect(line.textContent).toContain('读不出状态')
     expect(line.textContent).not.toContain('不是 git 仓库')
+  })
+
+  it('目录不在了、库里还留着上次远程检查：不许把那次检查的时间挂上来', async () => {
+    // 那次检查属于「这个目录还在」的时候。挂在「目录不在了」旁边，读起来像刚查过它。
+    server.use(
+      http.get('/api/projects/5', () =>
+        HttpResponse.json({
+          project: {
+            ...baseProject,
+            latestCheck: { checkedAt: '2026-10-18T06:30:00Z', status: 'up_to_date' },
+          },
+        }),
+      ),
+      http.get('/api/projects/5/status', () =>
+        HttpResponse.json({
+          status: {
+            ...okStatus,
+            isRepo: false,
+            branch: null,
+            upstream: null,
+            ahead: null,
+            behind: null,
+            lastCommit: null,
+            status: 'missing',
+            error: { kind: 'missing', message: '目录不在了' },
+          },
+        }),
+      ),
+      http.get('/api/tags', () => HttpResponse.json({ tags: [] })),
+    )
+
+    renderDetail()
+    const line = await screen.findByTestId('status-summary')
+    expect(line.textContent).toContain('目录不在了')
+    expect(line.textContent).not.toContain('联网查的')
   })
 })

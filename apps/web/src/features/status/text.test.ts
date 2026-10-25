@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import type { RepoStatus, UpdateStatus } from '@git-nest/core'
+import type { RepoStatus, UpdateRecommendation, UpdateStatus } from '@git-nest/core'
 import {
   STALE_AFTER_MS,
   VERDICT_TONE,
   freshnessOf,
+  reasonFor,
   statusTitle,
   textFor,
   toneFor,
+  worktreeNote,
 } from './text'
 
 /**
@@ -178,5 +180,85 @@ describe('VERDICT_TONE · 绿色只给 safe', () => {
     expect(VERDICT_TONE.unrelated).toBe('text-signal-bad')
     expect(VERDICT_TONE.gone).toBe('text-ink-3')
     expect(VERDICT_TONE.no_upstream).toBe('text-ink-3')
+  })
+})
+
+/**
+ * 卡片上那句理由：**只说上面没说过的事**。
+ *
+ * 两条规则都容易被"顺手改回去"：把「不用动」的理由加回来（同一句说两遍），或者
+ * 把能快进的理由换回带数字的详细版（`↓22` 就在上面 40px）。所以这两条各自钉一条。
+ */
+describe('reasonFor · 理由只说上面没说过的事', () => {
+  const rec = (over: Partial<UpdateRecommendation> = {}): UpdateRecommendation => ({
+    verdict: 'safe',
+    ahead: 0,
+    behind: 0,
+    canPull: false,
+    reason: '',
+    ...over,
+  })
+
+  it('没有判决就没有理由（那一行改由 provenance 承担）', () => {
+    expect(reasonFor(null)).toBe('')
+  })
+
+  it('不用动：不写。状态词已经写着「已是最新」，理由再说一遍就是复制品', () => {
+    expect(reasonFor(rec({ canPull: false, reason: '已是最新，没有要拉的。' }))).toBe('')
+  })
+
+  it('能快进：换 core 不带数字的那份——`↓22` 上面已经印着了', () => {
+    const r = reasonFor(rec({ canPull: true, behind: 22, reason: '可以直接快进到远程的 22 个提交。' }))
+    expect(r).toBe('可以直接快进。')
+    expect(r).not.toMatch(/\d/)
+  })
+
+  it('本地领先：数字留着。它背后是「还没推」和「远程没新东西」，不是重复', () => {
+    const reason = '本地有 3 个提交还没推，远程没有新东西可拉。'
+    expect(reasonFor(rec({ canPull: false, ahead: 3, reason }))).toBe(reason)
+  })
+
+  it('分叉 / 被改写这类：原样照抄 core 的说法', () => {
+    const reason = '上游和本地都往前走了，不能快进，需要你自己决定怎么合。'
+    expect(reasonFor(rec({ verdict: 'diverged', ahead: 3, behind: 2, reason }))).toBe(reason)
+  })
+})
+
+/**
+ * 工作区那句话。
+ *
+ * 它替掉的是一句笼统的「有未提交的改动」——那句话把「你改了一半的代码」和
+ * 「20 个没进 git 的构建产物」说成同一件事，于是工具栏着一堆与更新无关的东西
+ * 不让人动（core 的 `describeWorktree()` 记着同一笔账）。所以这里钉的是**分类**：
+ * 有已跟踪改动就往"会被拦下"那边说，只有未跟踪文件就明说是哪一类。
+ */
+describe('worktreeNote · 说清是哪一类改动', () => {
+  it('干净时没有这一句', () => {
+    expect(worktreeNote(repo())).toBeNull()
+  })
+
+  it('只有已跟踪文件被改：说的是「改过还没提交」，并点名会被拦下', () => {
+    const note = worktreeNote(repo({ dirty: true, dirtyCount: 2, dirtyTracked: 2 }))
+    expect(note?.text).toBe('2 个文件改过还没提交')
+    expect(note?.text).not.toContain('未跟踪')
+    expect(note?.title).toContain('会被拦下')
+  })
+
+  it('只有未跟踪文件：明说是这一类，不再说成「有改动」', () => {
+    const note = worktreeNote(repo({ dirty: true, dirtyCount: 20, dirtyTracked: 0, dirtyUntracked: 20 }))
+    expect(note?.text).toBe('只有 20 个未跟踪文件')
+    expect(note?.title).toContain('构建产物')
+  })
+
+  it('两类都有：两个数字都在', () => {
+    const note = worktreeNote(repo({ dirty: true, dirtyCount: 7, dirtyTracked: 2, dirtyUntracked: 5 }))
+    expect(note?.text).toContain('2 个文件改过')
+    expect(note?.text).toContain('5 个未跟踪')
+  })
+
+  it('数不出来时（lean 档不读工作区）退回笼统一句，不编 0', () => {
+    const note = worktreeNote(repo({ dirty: true, dirtyCount: 0 }))
+    expect(note?.text).toBe('有未提交的改动')
+    expect(note?.text).not.toContain('0 个')
   })
 })

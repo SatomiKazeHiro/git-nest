@@ -1,4 +1,11 @@
-import { isRemoteCheckStatus, type RepoStatus, type UpdateStatus, type UpdateVerdict } from '@git-nest/core'
+import {
+  VERDICT_REASON,
+  isRemoteCheckStatus,
+  type RepoStatus,
+  type UpdateRecommendation,
+  type UpdateStatus,
+  type UpdateVerdict,
+} from '@git-nest/core'
 
 /**
  * 状态这台机器在界面上的**文字与色彩**：一堆纯函数，没有一行 JSX。
@@ -112,6 +119,83 @@ export function statusText(status: UpdateStatus): string {
 
 export function statusTone(status: UpdateStatus): string {
   return TONE[status]
+}
+
+/**
+ * 详情卡上那句**理由**——写哪一句，或者干脆不写。
+ *
+ * 只有一条规矩：**这一行只该说上面还没说过的事**。两条规则都是它的推论。
+ *
+ * 1. **「不用动」的那一档不写。** `safe` + 不能拉 + 两边都没多出提交 ⇒ core 给的理由
+ *    是「已是最新，没有要拉的。」，而上面那个状态词已经写着「已是最新」——同一件事
+ *    的第二遍，还是一遍在 12px 的标签里、一遍在 13px 的正文里，读起来像界面重复
+ *    渲染了一次。
+ * 2. **能快进的时候不重复那个数字。** core 的详细版是「可以直接快进到远程的 22 个
+ *    提交。」，而卡片上面已经印着 `↓22`。这里换成 core 那份**不带数字**的说法
+ *    （`VERDICT_REASON.safe`——从历史结论重建时用的也是它，清单的 tooltip 读到的
+ *    就是这句）。这句话真正的新信息是「可以快进」（不产生 merge、不会冲突），
+ *    数字上面有了。
+ *
+ * 两条判据都取自**数据**（判决 + 能不能拉 + 两个计数），不匹配文案：措辞是 core 的
+ * 事，这里只决定**要不要说、说哪一份**——不改写它的句子。
+ *
+ * ⚠️ 「本地领先」那档（`safe` 但不能拉、`ahead > 0`）**不能**套用第 2 条：它的理由
+ * 是「本地有 N 个提交还没推，远程没有新东西可拉。」，那个数字背后是「还没推」和
+ * 「远程没新东西」，不是重复。所以第 2 条只看 `canPull`。
+ */
+export function reasonFor(r: UpdateRecommendation | null): string {
+  if (!r) return ''
+  const nothingToDo =
+    r.verdict === 'safe' && !r.canPull && (r.behind ?? 0) === 0 && (r.ahead ?? 0) === 0
+  if (nothingToDo) return ''
+  if (r.canPull) return VERDICT_REASON.safe
+  return r.reason
+}
+
+/**
+ * 工作区里那些改动 → 一句话 + 悬停说明。**分开说两类**，因为这两类对「能不能拉」
+ * 的含义完全不同：
+ *
+ * - **已跟踪文件被改**（`M ` / `A ` / `D ` / `R `…）：更新可能覆盖它们，快进时
+ *   git 会拦下；
+ * - **未跟踪的新文件**（`??`）：多半是构建产物、`.venv`、下载的数据，更新通常碰不到。
+ *
+ * 混成一句「有未提交的改动」，用户就会看到一堆跟他无关的构建产物被当成拦路的理由。
+ * core 的 `describeWorktree()` 已经按这条分过（那边给更新报告的跳过原因用，句子更长）；
+ * 这里是详情卡 11px 的条件行，只留能扫的部分，**判据与那边一致**。
+ *
+ * 数不出来时（lean 档不读工作区，`dirty*` 恒为 0）**退回笼统一句**：宁可说得含糊，
+ * 也不编一个 0 出来。
+ */
+export function worktreeNote(
+  s: Pick<RepoStatus, 'dirty' | 'dirtyTracked' | 'dirtyUntracked'>,
+): { text: string; title: string } | null {
+  if (!s.dirty) return null
+  const tracked = s.dirtyTracked
+  const untracked = s.dirtyUntracked
+
+  if (tracked > 0 && untracked > 0) {
+    return {
+      text: `${tracked} 个文件改过，另有 ${untracked} 个未跟踪`,
+      title: `${tracked} 个已跟踪文件被改过——拉到会碰到它们的提交时会被拦下；另有 ${untracked} 个未跟踪的新文件，多半是构建产物、依赖目录这类`,
+    }
+  }
+  if (tracked > 0) {
+    return {
+      text: `${tracked} 个文件改过还没提交`,
+      title: `${tracked} 个已跟踪文件被改过还没提交；拉到会碰到它们的提交时会被拦下`,
+    }
+  }
+  if (untracked > 0) {
+    return {
+      text: `只有 ${untracked} 个未跟踪文件`,
+      title: `${untracked} 个新建、还没纳入 git 的文件，多半是构建产物、依赖目录这类；更新通常碰不到它们，但为稳妥起见也不会自动更新`,
+    }
+  }
+  return {
+    text: '有未提交的改动',
+    title: '工作区有未提交的改动；拉到会碰到它们的提交时会被拦下',
+  }
 }
 
 /**
