@@ -64,7 +64,7 @@ describe('App 的异常兜底', () => {
     renderApp('/projects/1')
 
     // 标题栏还在（说明崩的是内容区，不是整个应用）
-    expect(screen.getByText('git-nest')).toBeTruthy()
+    expect(screen.getByText('GitNest')).toBeTruthy()
     // 降级界面自己也提供回清单的入口
     expect(screen.getAllByRole('link', { name: /清单/ }).length).toBeGreaterThan(0)
   })

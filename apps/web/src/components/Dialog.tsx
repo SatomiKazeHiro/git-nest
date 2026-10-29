@@ -80,6 +80,7 @@ function focusablesIn(root: HTMLElement | null): HTMLElement[] {
 
 export function Dialog({
   title,
+  icon,
   description,
   actions,
   footer,
@@ -90,6 +91,7 @@ export function Dialog({
   children,
 }: {
   title: string
+  icon?: ReactNode
   description?: string
   /** 头部右侧、关闭按钮之前的动作（比如「重新检查」）。 */
   actions?: ReactNode
@@ -208,7 +210,8 @@ export function Dialog({
       >
         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-line-soft px-5 py-4">
           <div className="min-w-0">
-            <h2 id={titleId} className="text-[15px] font-semibold text-ink">
+            <h2 id={titleId} className="flex items-center gap-1 text-[15px] font-semibold text-ink">
+              {icon}
               {title}
             </h2>
             {description ? (

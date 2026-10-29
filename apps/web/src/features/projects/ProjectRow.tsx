@@ -315,13 +315,13 @@ export function ProjectRow({
       <tr className="row-detail">
         <td colSpan={7}>
           <div className="flex flex-col gap-1">
-            <span className="text-[11.5px] text-ink-3">
-              上次同步时要拉进来的（{formatRelative(p.latestCheck?.checkedAt ?? null)}查的）
+            <span className="text-[12px] text-ink-1">
+              上次同步时要拉进来的（<span className="text-accent">{formatRelative(p.latestCheck?.checkedAt ?? null)}</span>查的）
             </span>
             <ul className="flex flex-col gap-0.5">
               {commits.map((c) => (
-                <li key={c.shortHash} className="flex gap-2 text-[12.5px]">
-                  <span className="w-20 shrink-0 truncate font-mono text-[11.5px] text-ink-3">
+                <li key={c.shortHash} className="flex gap-2 text-[12.5px] pl-2">
+                  <span className="w-20 shrink-0 truncate font-mono font-medium text-[11.5px] text-ink-3">
                     {c.shortHash}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-ink-2">{c.subject}</span>
@@ -329,7 +329,7 @@ export function ProjectRow({
               ))}
             </ul>
             {moreCommits > 0 ? (
-              <span className="text-[12px] text-ink-3">还有 {moreCommits} 个提交</span>
+              <span className="text-[12px] text-ink-3">还有 <span className="text-accent">{moreCommits}</span> 个提交</span>
             ) : null}
           </div>
         </td>

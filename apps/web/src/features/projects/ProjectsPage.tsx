@@ -151,7 +151,7 @@ export function ProjectsPage({ detail }: { detail?: ReactNode }) {
           `minmax(0, 1fr)` 那一行给，滚动由 `.list-pane` 自己的 CSS 负责——
           两处都写一遍，改一处不改另一处的时候只有一个会生效（内联那个永远赢）。
         */}
-        <div className="list-pane px-4 pb-6">
+        <div className="list-pane pb-6">
           {/*
             状态那一列读不出来时必须说出来。原来这个错误被丢掉了（只解构了 data），
             于是超过服务端上限、后端挂了、超时——用户看到的都是每一行「读状态…」，

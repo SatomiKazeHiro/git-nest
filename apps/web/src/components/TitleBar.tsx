@@ -38,7 +38,7 @@ export function TitleBar() {
         data-tauri-drag-region
         className="font-mono text-[13px] font-semibold tracking-tight text-ink"
       >
-        git-nest
+        GitNest
       </span>
       <span data-tauri-drag-region className="text-[12px] text-ink-3">
         本地仓库清单

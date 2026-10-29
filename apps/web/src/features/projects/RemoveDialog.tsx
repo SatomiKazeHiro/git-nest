@@ -38,7 +38,7 @@ export function RemoveDialog({
       }
       confirmText="移出清单"
       cancelText="留下"
-      icon={<Trash2 size={14} aria-hidden />}
+      confirmIcon={<Trash2 size={14} aria-hidden />}
       danger
       loading={remove.isPending}
       onConfirm={() =>

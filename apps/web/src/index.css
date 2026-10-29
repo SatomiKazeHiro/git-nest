@@ -618,8 +618,9 @@ owrap / overflow:hidden 钉成单行高密度，展开的那一行
   height: auto;
   white-space: normal;
   overflow: visible;
-  padding: 0.45rem 0.75rem 0.6rem;
-  background-color: color-mix(in oklab, var(--color-bg) 60%, transparent);
+  padding: 1rem;
+  /* background-color: color-mix(in oklab, var(--color-bg) 60%, transparent); */
+  background-color: var(--color-rail);
 }
 /* 表头铺满底色，滚动时数据不会从它背后透出来 */
 .tr-tint {
@@ -663,8 +664,8 @@ owrap / overflow:hidden 钉成单行高密度，展开的那一行
 .col-select { width: 2.25rem; }
 .col-repo { width: auto; }
 .col-branch { width: 6rem; }
-.col-attention { width: 6rem; }
-.col-delta { width: 5rem; }
+.col-attention { width: 7rem; }
+.col-delta { width: 6rem; }
 .col-checked { width: 5.5rem; }
 .col-actions { width: 3.5rem; text-align: right; }
 

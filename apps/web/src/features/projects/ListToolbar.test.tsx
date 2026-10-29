@@ -35,11 +35,16 @@ describe('工具条', () => {
     expect(useUiStore.getState().settingsOpen).toBe(true)
   })
 
-  it('它是这一行最右边的那一枚（在「添加项目」右侧）', () => {
+  it('「设置」在这一行最右；「添加项目」在动作组里、刷新左边', () => {
     renderToolbar()
+    const settings = screen.getByRole('button', { name: /设置/ })
+    const add = screen.getByRole('button', { name: /添加项目/ })
+    const refresh = screen.getByRole('button', { name: /^刷新$/ })
     const buttons = screen.getAllByRole('button')
-    expect(buttons[buttons.length - 1]?.textContent).toContain('设置')
-    expect(buttons[buttons.length - 2]?.textContent).toContain('添加项目')
+    expect(buttons[buttons.length - 1]).toBe(settings)
+    // 纯图标按钮没有文字，这里钉的是**位置**：添加 → … → 刷新 →（其余）→ 设置
+    expect(add.compareDocumentPosition(refresh) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(refresh.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('「刷新」联网跑一轮，并把结果说出来', async () => {

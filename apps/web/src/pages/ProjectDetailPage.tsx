@@ -90,15 +90,14 @@ export function ProjectDetailPage() {
           <ProjectLogo projectId={project.id} size={24} className="mt-0.5" />
         ) : null}
         <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
-          <h1 className="min-w-0 text-[17px] font-semibold leading-tight text-ink [overflow-wrap:anywhere]">
+          <h1 className="min-w-0 text-[20px] font-semibold leading-tight text-ink [overflow-wrap:anywhere]">
             {project.name}
           </h1>
 
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <Button onClick={() => openEdit(project.id)}>
+          <Button title="编辑资料" onClick={() => openEdit(project.id)}>
             <Pencil size={14} aria-hidden />
-            编辑资料
           </Button>
           {/*
             「关闭」：详情是清单里的第二轨，关掉它 = 回清单。
@@ -107,7 +106,6 @@ export function ProjectDetailPage() {
           */}
           <Button onClick={() => navigate('/')} title="关掉右边这一栏（清单与筛选都不动）">
             <X size={14} aria-hidden />
-            关闭
           </Button>
         </div>
         {/*

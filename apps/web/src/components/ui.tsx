@@ -131,7 +131,7 @@ export function EmptyState({
   action?: ReactNode
 }) {
   return (
-    <div className="flex flex-col items-start gap-2 border border-dashed border-line px-5 py-10">
+    <div className="flex flex-col items-start gap-2 border border-dashed border-line px-5 py-10 m-4">
       <p className="text-[14px] font-semibold text-ink">{title}</p>
       <p className="max-w-prose text-[13px] text-ink-2">{body}</p>
       {action}

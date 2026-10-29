@@ -22,17 +22,19 @@ import { Dialog } from './Dialog'
  */
 export function ConfirmDialog({
   title,
+  icon,
   description,
   children,
   confirmText = '确认',
   cancelText = '取消',
-  icon,
+  confirmIcon,
   danger,
   loading = false,
   onConfirm,
   onClose,
 }: {
   title: string
+  icon?: ReactNode
   /** 一句话说清「会发生什么」。可以是富文本（比如把路径用等宽体标出来） */
   description?: ReactNode
   /** 需要额外内容时用它（错误横幅之类），排在说明下面 */
@@ -40,8 +42,7 @@ export function ConfirmDialog({
   confirmText?: string
   cancelText?: string
   /** 确认按钮左边那枚图标（lucide 元素） */
-  icon?: ReactNode
-  /** **必填**：这个动作会不会毁掉用户自己的东西。见文件头 */
+  confirmIcon?: ReactNode  /** **必填**：这个动作会不会毁掉用户自己的东西。见文件头 */
   danger: boolean
   /** 正在处理：确认按钮转圈并禁用（取消仍可点——它不写任何数据） */
   loading?: boolean
@@ -51,13 +52,14 @@ export function ConfirmDialog({
   return (
     <Dialog
       title={title}
+      icon={icon}
       cancel={{ text: cancelText }}
       confirm={{
         text: confirmText,
         onClick: onConfirm,
         variant: danger ? 'danger' : 'primary',
         loading,
-        ...(icon ? { icon } : {}),
+        ...(confirmIcon ? { icon: confirmIcon } : {}),
       }}
       onClose={onClose}
     >

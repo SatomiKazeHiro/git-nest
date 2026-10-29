@@ -1,6 +1,6 @@
 import { useMemo, type ComponentType, type ReactNode } from 'react'
 import { orderBy } from 'es-toolkit'
-import { LaptopMinimal, MessageCircleQuestionMark, Shapes, Tag } from 'lucide-react'
+import { MessageCircleQuestionMark, Tag } from 'lucide-react'
 import { type Attention } from '@git-nest/core'
 import { categoryIcon } from '@/features/categories/icons'
 import { categoryLabelOf } from '@/features/categories/label'
@@ -124,7 +124,7 @@ export function FilterPanel() {
         </div>
       ) : null}
 
-      <Group title="仓库状态" icon={LaptopMinimal}>
+      <Group title="仓库状态">
         <Item
           icon="all-repositories"
           label="全部仓库"
@@ -169,7 +169,7 @@ export function FilterPanel() {
         />
       </Group>
 
-      <Group title="分类" icon={Shapes}>
+      <Group title="分类">
         {categories.length === 0 ? <Hint>还没有项目</Hint> : null}
         {categories.map(([name, n]) => {
           /*
@@ -214,7 +214,7 @@ export function FilterPanel() {
         })}
       </Group>
 
-      <Group title="标签" icon={Tag}>
+      <Group title="标签">
         {tags.length === 0 ? <Hint>还没有标签</Hint> : null}
         {tags.map(([name, n]) => (
           <Item
@@ -251,7 +251,7 @@ function Group({
 }) {
   return (
     <section>
-      <h2 className="mb-1 flex items-center gap-1.5 px-1 text-[11px] font-medium text-ink-3">
+      <h2 className="mb-1 flex items-center gap-1.5 px-1 text-[12px] font-medium text-ink-3">
         {Icon ? <Icon size={15} aria-hidden className="shrink-0" /> : null}
         {title}
       </h2>
@@ -315,5 +315,5 @@ function Item({
 }
 
 function Hint({ children }: { children: ReactNode }) {
-  return <p className="px-1 py-1 text-[12px] text-ink-3">{children}</p>
+  return <p className="px-1 py-1 text-[11px] text-ink-3 text-center">{children}</p>
 }

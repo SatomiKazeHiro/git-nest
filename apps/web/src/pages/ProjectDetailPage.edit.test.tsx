@@ -109,7 +109,8 @@ describe('编辑资料保存后，详情页要跟着更新', () => {
     await waitFor(() => expect(screen.getByText(/旧记录/)).toBeTruthy())
     const getsBefore = detailGets
 
-    fireEvent.click(screen.getByText('编辑资料'))
+    // 「编辑资料」已收成纯图标按钮，文字在 title 里（可访问名认 title 兜底）
+    fireEvent.click(screen.getByRole('button', { name: /编辑资料/ }))
     const box = (await screen.findByDisplayValue(/旧记录/)) as HTMLTextAreaElement
     fireEvent.change(box, { target: { value: '新记录：改过了' } })
     fireEvent.click(screen.getByText('保存改动'))

@@ -328,7 +328,10 @@ describe('ProjectRow · 行内展开「要拉进来的是哪几条」', () => {
       关键：总数只有一个来源。`incoming` 被截断到 4 条，
       所以「还有 2 个」＝ behindCount(6) − 4，而不是 incoming.length − 4 = 0。
     */
-    expect(screen.getByText('还有 2 个提交')).toBeTruthy()
+    // 数字被单独的 span 标了色，文本被拆开了——所以比整段 textContent，不比单节点文本
+    expect(
+      screen.getByText((_, el) => el?.textContent === '还有 2 个提交'),
+    ).toBeTruthy()
   })
 
   it('没有要拉的提交就不给展开钮（不让人点开一个空抽屉）', () => {

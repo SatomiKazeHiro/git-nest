@@ -36,8 +36,8 @@ export function RecordView({ record }: { record: string }) {
   if (!record) {
     return (
       <p className="border border-dashed border-line px-3 py-3 text-[12.5px] text-ink-3">
-        还没写。在上面「编辑资料」里写一句「怎么找到它的、有什么想法」——这一栏留给你，
-        别的字段都是从 git 读来的。
+        还未有记录。<br/>
+        可以在上面「编辑资料」里记录「怎么找到该项目、以什么想法收录的」
       </p>
     )
   }

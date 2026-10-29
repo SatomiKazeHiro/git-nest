@@ -21,7 +21,7 @@ import { RecordView } from './RecordView'
 describe('RecordView · 没写的时候', () => {
   it('空记录给一句引导，而不是一块空白', () => {
     const { container } = render(<RecordView record="" />)
-    expect(screen.getByText(/还没写/)).toBeTruthy()
+    expect(screen.getByText(/还未有记录/)).toBeTruthy()
     // 空记录不该渲染出 markdown 的那层容器
     expect(container.querySelector('.readme')).toBeNull()
   })

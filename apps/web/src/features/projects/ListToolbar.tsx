@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { Eraser, FolderSearch, Plus, RefreshCw, Settings } from 'lucide-react'
+import { Eraser, FolderPlus, FolderSearch, RefreshCw, Settings } from 'lucide-react'
 import { ApiError, api } from '@/lib/api'
 import { useInvalidate } from '@/lib/invalidate'
 import { Button, Input } from '@/components/ui'
@@ -52,6 +52,18 @@ export function Toolbar({
       <FilterToggle />
 
       {/*
+        三个最常用的动作放在最左：添加 / 扫描 / 刷新——纯图标按钮，靠 title 说清
+        各自干什么。刷新**只同步状态，不开弹窗**：这是最常用的一枚——看一眼就走。
+      */}
+      <Button variant="primary" onClick={openCreate} title="添加项目">
+        <FolderPlus size={14} aria-hidden />
+      </Button>
+      <Button onClick={onScan} title="扫描目录，把本机仓库批量加进清单">
+        <FolderSearch size={14} aria-hidden />
+      </Button>
+      <RefreshButton />
+
+      {/*
         **勾选之后的动作组，放在这一行最左边**：勾选发生在表格里，动完就在上面，
         视线不用来回跳。它只在有勾选时出现，所以平时这一行不会被撑宽。
         按钮与搜索框共用一套尺寸（都是 `h-7`）——高度不一致是工具条最容易看出来
@@ -90,13 +102,13 @@ export function Toolbar({
           清掉筛选
         </Button>
       ) : null}
-      <span className="shrink-0 font-mono text-[12px] text-ink-3">{total} 个项目</span>
 
       <div className="ml-auto flex shrink-0 items-center gap-2">
         {/*
           搜索框在**右侧**：左侧留给「勾选之后的动作」，而搜索是随时会用、
           用完就离开的控件，贴着动作那一组放，宽的搜索框也不会把动作挤到第二行。
         */}
+        <span className="shrink-0 font-mono text-[12px] text-ink-3">{total} 个项目</span>
         <div className="w-56 min-w-32">
           <Input
             id="project-search"
@@ -106,19 +118,8 @@ export function Toolbar({
             aria-label="搜索项目"
           />
         </div>
-        {/* 主动刷新：**只同步状态，不开弹窗**。这是最常用的一枚——看一眼就走。 */}
-        <RefreshButton />
-        <Button onClick={onScan} title="去设置里扫描一个目录，把本机仓库批量加进清单">
-          <FolderSearch size={14} aria-hidden />
-          扫描目录
-        </Button>
-        <Button variant="primary" onClick={openCreate}>
-          <Plus size={14} aria-hidden />
-          添加项目
-        </Button>
         <Button onClick={openSettings} title="设置：扫描目录、标签、联网检查与更新的参数">
           <Settings size={14} aria-hidden />
-          设置
         </Button>
       </div>
     </div>
@@ -169,10 +170,10 @@ function RefreshButton() {
         className="shrink-0"
         onClick={() => refresh.mutate()}
         disabled={refresh.isPending}
+        aria-label="刷新"
         title="联网 fetch 远程引用，重算每个仓库的状态。只动 refs/remotes/*，不碰工作区，也不会打开弹窗"
       >
         <RefreshCw size={14} aria-hidden className={refresh.isPending ? 'animate-spin' : ''} />
-        {refresh.isPending ? '刷新中…' : '刷新'}
       </Button>
       {error ? (
         <span role="alert" className="shrink-0 text-[12px] text-signal-bad">
