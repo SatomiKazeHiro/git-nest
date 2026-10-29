@@ -1,0 +1,7 @@
+# 应用自定义命令的权限。Tauri 2 不给应用自己的命令自动生成权限——
+# 「自定义命令 + capability 里引用 allow-xxx」中间必须有这份定义，否则
+# cargo build 直接报「Permission allow-app-mounted not found」。
+[[permission]]
+identifier = "allow-app-mounted"
+description = "允许前端发挂载成功的存活上报（壳的标题栏看门狗在等它，见 src/lib.rs 的 watch_title_bar）"
+commands.allow = ["app_mounted"]

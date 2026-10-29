@@ -240,6 +240,24 @@ dev 形态下 exe 在 `src-tauri/target/debug/`，所以数据落在
 这件事**不需要任何 capability / 权限**：初始化脚本是壳在建窗口时自己提供的，
 不是前端调用 Tauri 的命令，不经过 IPC 与 ACL。
 
+## 页面起不来时，窗口不能没有关闭按钮
+
+窗口是 `decorations(false)` 建的，最小化/最大化/关闭按钮是**前端
+`components/TitleBar.tsx` 画的**。所以「页面没加载成功」（JS 崩了、构建坏了、
+启动方式不对）会留下一个**连关闭按钮都没有**的窗口——只能从任务栏右键关（实测踩过）。
+
+兜底是壳侧的一条看门狗（`src/lib.rs` 的 `watch_title_bar`）：
+
+- 前端挂载成功后调一次 `app_mounted` 命令上报存活（`apps/web/src/lib/platform.ts`
+  的 `notifyAppMounted()`，浏览器环境里是静默 no-op）；
+- 壳建窗后等 **15 秒**：收到上报，什么都不做（成功路径零变化）；超时没收到，
+  `set_decorations(true)` 把系统标题栏还回来，并在日志里写明原因。
+
+这是壳里**唯一**的自定义命令，所以也多了一样东西：`permissions/app-mounted.toml`。
+Tauri 2 不给应用自己的命令自动生成权限——「自定义命令 + capability 引用
+`allow-app-mounted`」中间必须有那份定义，否则编译期就报
+`Permission allow-app-mounted not found`。
+
 ## sidecar（Node 服务）现在到哪一步了
 
 选了 **A：把 Node 当 sidecar 打进包**（理由与差距逐条见
@@ -252,6 +270,7 @@ build.rs                       生成端口常量 + gen/app.config.json，然后
 src/main.rs                    一行入口，调 lib 的 run()
 src/lib.rs                     壳的组装 + 建窗并注入 API 地址 + sidecar 的拉起/关停 + 数据目录
 capabilities/main-window.json  v2 的权限声明（替代 v1 的 allowlist）
+permissions/                   自定义命令的权限定义（app_mounted）
 tauri.conf.json                v2 配置（$schema 指 config/2）；窗口不在这里（见上）
 gen/                           生成物（app.config.json、schemas），进 .gitignore
 binaries/                      sidecar 产物，进 .gitignore

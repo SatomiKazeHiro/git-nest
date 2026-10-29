@@ -141,6 +141,24 @@ export function desktopWindow(): DesktopWindow | null {
   return currentWindow()
 }
 
+/**
+ * 告诉壳「页面挂载成功了」。
+ *
+ * 壳的窗口是 `decorations(false)` 建的，最小化/最大化/关闭按钮是前端
+ * `components/TitleBar.tsx` 画的——也就是说**页面起不来时那个窗口连关闭按钮
+ * 都没有**（实测踩过：只能从任务栏右键关）。所以壳建窗后等这一声上报，
+ * 宽限内等不到就把系统标题栏还回来（`src-tauri/src/lib.rs` 的
+ * `watch_title_bar`）。这里发出去就算完成使命，不读回执。
+ *
+ * 浏览器里没有壳，静默跳过；壳侧命令还没就绪（老壳）也静默——
+ * 这条上报失败的最坏结果只是壳多等几秒再把标题栏还回来，不影响界面本身。
+ */
+export function notifyAppMounted(): void {
+  const invoke = tauri()?.core?.invoke
+  if (typeof invoke !== 'function') return
+  invoke('app_mounted').catch(() => {})
+}
+
 /** 当前环境的能力清单。**每次现算**：窗口/插件可能在挂载之后才就绪，缓存会缓存一个假的「没有」。 */
 export function capabilities(): Capabilities {
   return {

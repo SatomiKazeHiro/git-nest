@@ -16,14 +16,17 @@
 //! `packages/core/src/types.ts` 的 `DEFAULT_PORTS` 生成——Rust 侧**没有**第二份
 //! 数字定义（那条规则见 core 里那段注释：数字抄成两份的后果是悄悄不一致）。
 //!
-//! ## 为什么 Rust 里没有 `#[tauri::command]`
+//! ## Rust 侧只有一条 `#[tauri::command]`：`app_mounted`
 //!
 //! 界面要的一切都走 HTTP `/api`（见 `apps/web/src/lib/api.ts`），Rust 侧不暴露
-//! 自己的命令面，所以也没有对应的 capability 要声明。将来若真需要壳提供能力
-//! （比如让用户用系统对话框选目录），再单独加命令 + 权限。
+//! 业务命令面。唯一的例外是 `app_mounted`：前端挂载成功后敲一声，壳的看门狗据此
+//! 决定要不要把系统标题栏还回来（窗口是 `decorations(false)` 建的，关闭按钮是
+//! 前端 `TitleBar` 画的；页面没起来时那个窗口连关闭按钮都没有）。
 
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use tauri::{Manager, RunEvent};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
@@ -524,6 +527,58 @@ fn create_main_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWin
     Ok(window)
 }
 
+/// 前端「活着」的一次性上报。挂载成功后前端调一次 `app_mounted`，看门狗据此知道
+/// 标题栏那三个按钮画得出来，系统标题栏就不用还回来了。
+///
+/// `Arc<AtomicBool>`：一份被 `.manage()` 交给命令，一份被看门狗线程拿着轮询。
+/// 为什么是 bool 而不是事件：它只表达「到达过一次」，不表达次序——
+/// 重复上报（React StrictMode 会挂载两次）与迟到上报都必须是无害的。
+struct AppMounted(Arc<AtomicBool>);
+
+/// 前端挂载成功的存活上报。什么都不返回、什么都不保证——它的全部作用就是
+/// 把那个 bool 置上。失败（比如 ACL 没放行）也**不能**是致命错误：
+/// 大不了看门狗把系统标题栏还回来，界面照旧能用。
+#[tauri::command]
+fn app_mounted(state: tauri::State<'_, AppMounted>) {
+    state.0.store(true, Ordering::Relaxed);
+    log_line("收到前端的存活上报（app_mounted）");
+}
+
+/// 给前端的存活上报留的宽限。页面加载 + JS 执行在正常机器上是亚秒级的事，
+/// 15 秒是「慢得离谱的机器上也该到了」的量级；等不到就当作「页面没起来」。
+const MOUNT_GRACE: Duration = Duration::from_secs(15);
+
+/// 标题栏看门狗：窗口是 `decorations(false)` 建的，最小化/最大化/关闭按钮是
+/// **前端 `TitleBar` 画的**。页面没起来（JS 崩了 / 构建坏了 / IPC 被 ACL 拒）时，
+/// 那个窗口就只剩任务栏右键和 Alt+F4 能关——实测踩过。所以建窗后等前端的
+/// 存活上报：宽限内收到了，什么都不做（成功路径零变化）；超时没收到，把系统
+/// 标题栏还回来，让窗口至少有套能用的窗口控件。
+///
+/// 用普通线程 + sleep 轮询，而不是 tokio 定时器：这件事一秒级的精度就够，
+/// 不值得为它依赖 async runtime 的计时器。
+fn watch_title_bar(window: tauri::WebviewWindow, mounted: Arc<AtomicBool>) {
+    const STEP: Duration = Duration::from_secs(1);
+    std::thread::spawn(move || {
+        let mut waited = Duration::ZERO;
+        while waited < MOUNT_GRACE {
+            std::thread::sleep(STEP);
+            waited += STEP;
+            if mounted.load(Ordering::Relaxed) {
+                return;
+            }
+        }
+        log_line(&format!(
+            "{} 秒没收到前端的存活上报——页面多半没起来。恢复系统标题栏，\
+             否则这个窗口连关闭按钮都没有（按钮是前端画的）",
+            MOUNT_GRACE.as_secs()
+        ));
+        // 窗口可能已经被用户关了（Alt+F4 / 任务栏），那时恢复失败不算错误
+        if let Err(e) = window.set_decorations(true) {
+            log_line(&format!("恢复系统标题栏失败（窗口可能已关闭）：{e}"));
+        }
+    });
+}
+
 /// 壳注入 API 基地址用的全局变量名。
 /// 与 `apps/web/src/lib/api.ts` 里的 `BASE_GLOBAL` 必须一致（那边有对应说明）。
 const API_BASE_GLOBAL: &str = "__GIT_NEST_API_BASE__";
@@ -591,6 +646,8 @@ pub fn run() {
         // `apps/web/src/lib/platform.ts` 会如实报告「这项能力没有」
         // ——不画按钮比画一个点了没反应的按钮好，但用户也就少了那个便利。
         .plugin(tauri_plugin_dialog::init())
+        // 唯一的自定义命令：前端的存活上报（见 `app_mounted` 与 `watch_title_bar`）。
+        .invoke_handler(tauri::generate_handler![app_mounted])
         .setup({
             let root = root.clone();
             move |app| {
@@ -600,9 +657,17 @@ pub fn run() {
                 // WebView2 的用户数据目录指到数据根下（必须在建窗之前）。
                 prepare_webview2_data_dir(&root);
 
+                // 存活标记：前端挂载成功后调 `app_mounted` 把它置上。
+                // 必须在建窗之前 manage——页面一加载就可能上报，届时状态得已就位。
+                let mounted = Arc::new(AtomicBool::new(false));
+                app.manage(AppMounted(mounted.clone()));
+
                 // 第二步：建窗口（它负责把 API 基地址注入页面）。
                 let window = create_main_window(handle)?;
                 let _ = window.set_focus();
+
+                // 页面没起来时把系统标题栏还回来（不然窗口没有关闭按钮）。
+                watch_title_bar(window.clone(), mounted);
 
                 // 第三步：拉服务（release 形态）。数据库落在数据根里。
                 let child = spawn_api_server(handle, &root);
